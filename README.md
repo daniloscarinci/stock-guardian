@@ -2,6 +2,11 @@
 
 **Offline Preparedness & Resource Management**
 
+### → **https://daniloscarinci.github.io/stock-guardian/**
+
+Open that once on any phone or computer and install it. After that it runs with
+no internet, no account and no server — nothing needs to be switched on.
+
 Track emergency supplies, food, water, medical stock, tools and equipment. The
 application runs entirely on your device. It makes no network requests, needs no
 account, and keeps working with the radio off — which is the point, because the
@@ -101,24 +106,38 @@ writes a file to your device. Keep one somewhere you trust.
 
 ---
 
-## Installing it as an app
+## Installing it on a phone or computer
 
-The browser needs to load the page once over `https://` or from `localhost` to
-install it. After that it runs offline permanently.
+Open **https://daniloscarinci.github.io/stock-guardian/** once, then:
 
-- **Desktop (Chrome, Edge):** open the page, then use the install icon in the
-  address bar.
-- **Android (Chrome):** menu → *Add to Home screen*.
-- **iPhone/iPad (Safari):** Share → *Add to Home Screen*. On iOS this matters for
-  more than convenience: an installed app is far less likely to have its storage
-  cleared.
+| Device | How |
+|---|---|
+| **iPhone / iPad** | Safari → Share → *Add to Home Screen* |
+| **Android** | Chrome → menu → *Add to Home screen* |
+| **Windows / macOS** | Chrome or Edge → the install icon in the address bar |
 
-`docs/BUILD.md` covers the three ways to serve it, including from your own
-machine over the local network so nothing is published anywhere.
+On **iOS this is worth doing properly rather than just bookmarking**. Safari
+clears storage for sites that are not installed after roughly seven idle days,
+and for an application you might not open for months that is a real way to lose
+data. An installed app is far more likely to keep its storage.
 
-Opening `index.html` directly from a folder does **not** work, and the
-application says so rather than silently losing what you type: browsers grant no
-persistent storage to a `file://` page.
+After installing, the page never needs to be visited again. The app is on the
+device.
+
+### Two things that will not work, by design
+
+**A plain `http://` address on your home network.** Browsers do not grant
+storage outside a secure context, so the application refuses to start with "This
+page cannot store data" rather than appearing to work and losing what you type.
+
+**Opening `index.html` from a folder.** Same reason.
+
+### Each device keeps its own data
+
+There is no cloud and no account, so nothing syncs. Your dad's phone and his
+computer each hold their own database. To copy between them: **Settings → Backup
+→ Export** on one, move the file however you like, **Import** on the other. The
+import shows you what the file contains and asks before writing anything.
 
 ---
 

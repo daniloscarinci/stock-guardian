@@ -16,7 +16,7 @@ npm install
 npm run dev          # development server, hot reload, http://localhost:5173
 npm run build        # production build → dist/, then the offline audit
 npm run preview      # serve dist/ at http://localhost:4173
-npm test             # 363 unit tests
+npm test             # 402 unit tests
 npm run smoke        # drive the production build in a real browser
 npm run typecheck    # TypeScript, strict
 npm run lint         # ESLint
@@ -67,21 +67,44 @@ npx vite preview --host
 Note the network address it prints (something like `http://192.168.1.x:4173`) and
 open it on the phone, on the same Wi-Fi.
 
-One caveat: most browsers treat a bare `http://` LAN address as insecure, so the
-service worker will not install. It is fine for trying the app out. For a real
-install, use one of the two below.
+**This does not work, and it is worth knowing exactly why.** A bare `http://`
+LAN address is not a secure context, and OPFS is unavailable outside one — so
+the application does not merely fail to install, it refuses to start:
 
-### On a static host
+```
+isSecureContext      : false
+OPFS API available   : false
+→ "This page cannot store data"
+```
 
-Any host works — GitHub Pages, Netlify, Cloudflare Pages, a plain nginx. Upload
-`dist/`. No configuration, no rewrite rules: routing uses a hash router precisely
-so that a reload or a shared link needs nothing from the server.
+That refusal is deliberate. Appearing to work and then losing everything the
+user typed would be far worse. Use HTTPS — the deployed site described below, or a
+local certificate.
+
+### On a static host — this is what is deployed
+
+Live at **https://daniloscarinci.github.io/stock-guardian/**, published by `.github/workflows/deploy.yml` on every push to
+`main`.
+
+The workflow runs the test suite, builds with `VITE_BASE=/stock-guardian/`, and
+publishes `dist/`. Building in CI rather than committing the output means the
+published site cannot drift from the source, and `npm run build` fails on any
+external URL in the output — so the offline guarantee is checked on every deploy.
+
+Any other static host works the same way — Netlify, Cloudflare Pages, a plain
+nginx. Upload `dist/`. No rewrite rules needed: routing uses a hash router
+precisely so a reload or a shared link needs nothing from the server.
 
 For a subdirectory, set the base path:
 
 ```bash
 VITE_BASE=/stock-guardian/ npm run build
 ```
+
+**On Windows in Git Bash, prefix that with `MSYS_NO_PATHCONV=1`.** MSYS rewrites
+any value that looks like a POSIX path, silently turning `/stock-guardian/` into
+`/Program Files/Git/stock-guardian/` and producing a build whose asset paths are
+all wrong. PowerShell and CI are unaffected.
 
 Your inventory is *not* published by doing this. The application code goes on the
 internet; your data stays in your browser.
@@ -96,13 +119,7 @@ can — it is the one directive a `<meta>` tag cannot deliver.
 
 ## Installing it
 
-Load the page once over https or localhost, then:
-
-- **Chrome / Edge desktop:** the install icon in the address bar.
-- **Android Chrome:** menu → *Add to Home screen*.
-- **iOS Safari:** Share → *Add to Home Screen*. On iOS this is worth doing for
-  more than convenience — an installed app is far less likely to have its storage
-  cleared.
+Per-device steps are in the README, alongside the URL people actually need.
 
 ---
 
@@ -189,7 +206,7 @@ shrink.
 ## Reproducing a build
 
 ```bash
-git clone <repository>
+git clone https://github.com/daniloscarinci/stock-guardian.git
 cd stock-guardian
 npm install
 npm run build
