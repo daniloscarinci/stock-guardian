@@ -21,6 +21,8 @@ import { ReplenishmentScreen } from '../features/replenishment/ReplenishmentScre
 import { CatalogScreen } from '../features/catalog/CatalogScreen';
 import { LocationsScreen } from '../features/locations/LocationsScreen';
 import { CategoriesScreen } from '../features/categories/CategoriesScreen';
+import { ContactsScreen } from '../features/contacts/ContactsScreen';
+import { ReportsScreen } from '../features/reports/ReportsScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 
 /** Wraps the routes so the navigation badge can read live counts. */
@@ -44,6 +46,8 @@ function Shell() {
         <Route path="catalog" element={<CatalogScreen />} />
         <Route path="locations" element={<LocationsScreen />} />
         <Route path="categories" element={<CategoriesScreen />} />
+        <Route path="contacts" element={<ContactsScreen />} />
+        <Route path="reports" element={<ReportsScreen />} />
         <Route path="settings" element={<SettingsScreen />} />
         {/* Any unknown route lands on the dashboard rather than a dead end. */}
         <Route path="*" element={<DashboardScreen />} />

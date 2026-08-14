@@ -102,6 +102,12 @@ it.
 - **Filters that combine** — category, location, stock status, expiry, priority,
   condition, archived.
 - **CSV export** and a print stylesheet, alongside JSON backup.
+- **Four reports** — inventory, expiration, replenishment and preparedness —
+  each exportable to CSV and printable. They render the numbers `domain/`
+  already computed rather than recomputing them, so a report cannot disagree
+  with the screen the user was just looking at.
+- **Emergency contacts**, ordered by urgency. The table and the backup format
+  have carried them since the first release; this adds the screen.
 - **Backups with integrity checking**: format and schema versions, record counts,
   and a SHA-256 checksum.
 - **Installable as an app**, with a hand-written service worker and verified cold
@@ -133,7 +139,6 @@ None of these appears in the application as a disabled button or a "coming soon"
 panel.
 
 Photographs (stored by the schema, no interface), barcode scanning (manual entry
-works), emergency contacts (stored and backed up, no screen), application lock,
-notifications, a dedicated reports screen, and the desktop build — whose
+works), application lock, notifications, and the desktop build — whose
 configuration is complete and reviewed but has never been compiled, because this
 machine has no Rust toolchain.

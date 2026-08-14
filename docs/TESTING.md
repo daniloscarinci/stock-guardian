@@ -1,8 +1,8 @@
 # Testing
 
 ```bash
-npm test              # 363 unit tests
-npm run smoke         # 13 browser checks against the production build
+npm test              # 401 unit tests
+npm run smoke         # 18 browser checks against the production build
 npm run typecheck     # TypeScript, strict
 ```
 
@@ -38,6 +38,8 @@ silently diverge.
 | Repositories | CRUD, search, filters, pagination, referential safety |
 | Backup and import | Round-trip, merge vs replace, hostile input |
 | Legacy fixture | The real file in `fixtures/`, 14 assertions |
+| Reports | Four builders, CSV flattening, spreadsheet-formula guarding |
+| Contacts | CRUD, urgency ordering, accent-insensitive search, backup round-trip |
 | i18n | Completeness, placeholders, plurals, no untranslated copies |
 
 ### What the tests are actually for
@@ -92,9 +94,13 @@ It checks:
 8. Switching to Portuguese translates the interface and updates `document.lang`.
 9. **The app starts with the network disconnected.**
 10. Inventory is readable offline.
-11. No unexpected console errors.
+11. A contact saves, is listed, and is found by searching "jose" for "José".
+12. The reports screen renders rows, shows a preparedness percentage, and
+    exports a CSV file that actually downloads.
+13. No unexpected console errors.
 
-All 13 pass.
+All 18 pass. The reports check asserts a real CSV file arrives, not merely that
+the export did not throw.
 
 ---
 
@@ -107,6 +113,9 @@ Stated so nobody mistakes green for complete.
   `docs/BUILD.md` lists what to check.
 - **Component rendering.** No React Testing Library suite. Screens are exercised
   end to end by the smoke test, not unit tested.
+- **Printing.** The print stylesheet is written and the button calls
+  `window.print()`, but no test opens a print preview - browsers do not expose
+  one to automation.
 - **A second tab.** The single-connection path is handled in code and reported to
   the user, but not tested — it needs two browser contexts against one origin.
 - **The corruption ladder.** Quarantine and salvage are implemented and reviewed;

@@ -203,6 +203,26 @@ export const CategoryIcon = (props: IconProps) =>
     props,
   );
 
+export const ReportsIcon = (props: IconProps) =>
+  svg(
+    <>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6M9 17h4" />
+    </>,
+    props,
+  );
+
+export const ContactsIcon = (props: IconProps) =>
+  svg(
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+      <circle cx="9.5" cy="7" r="4" />
+      <path d="M19 8v6M22 11h-6" />
+    </>,
+    props,
+  );
+
 export const SettingsIcon = (props: IconProps) =>
   svg(
     <>

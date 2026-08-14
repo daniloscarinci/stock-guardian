@@ -46,16 +46,18 @@ driver is eighty lines: transaction semantics were written once, in
 src/
   app/           start-up, routing, shell, error boundary
   components/    UI primitives, status badges, charts, icons
-  features/      one directory per screen
+  features/      one directory per screen (inventory, dashboard, expiration,
+                 replenishment, catalog, locations, categories, contacts,
+                 reports, settings)
   database/
     driver/      SqlDriver contract, shared transaction logic, oo1 adapter
     worker/      the browser driver: worker, protocol, client
     tauri/       the desktop driver (not compiled here)
     migrations/  ordered .sql files and the runner
     seed/        system categories and the reference catalog
-  repositories/  items, categories, locations, catalog, settings
+  repositories/  items, categories, locations, catalog, contacts, settings
   domain/        dates, expiry, stock, preparedness, replenishment, normalize
-  services/      backup, import, export, download
+  services/      backup, import, export, reports, download
   i18n/          three locales and the translation function
   hooks/  types/  styles/  data/  test/
 scripts/         catalog extraction, icons, offline audit, smoke test

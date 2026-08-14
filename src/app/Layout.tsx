@@ -14,12 +14,14 @@ import { LOCALE_TAGS } from '../i18n/translate';
 import {
   CatalogIcon,
   CategoryIcon,
+  ContactsIcon,
   DashboardIcon,
   ExpiryIcon,
   InventoryIcon,
   LocationIcon,
   MenuIcon,
   ReplenishIcon,
+  ReportsIcon,
   SettingsIcon,
   type IconComponent,
 } from '../components/ui/icons';
@@ -68,6 +70,8 @@ export function Layout({ attentionCount }: { readonly attentionCount: number }) 
     { to: '/catalog', labelKey: 'nav.catalog', Icon: CatalogIcon },
     { to: '/locations', labelKey: 'nav.locations', Icon: LocationIcon },
     { to: '/categories', labelKey: 'nav.categories', Icon: CategoryIcon },
+    { to: '/contacts', labelKey: 'nav.contacts', Icon: ContactsIcon },
+    { to: '/reports', labelKey: 'nav.reports', Icon: ReportsIcon },
     { to: '/settings', labelKey: 'nav.settings', Icon: SettingsIcon },
   ];
 

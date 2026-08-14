@@ -341,3 +341,39 @@
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+
+/*
+ * A card that is part of a printed document rather than part of the interface.
+ *
+ * On screen it looks like any other card. On paper the border, background and
+ * rounding are wasted ink, and the table needs to be allowed to break across
+ * pages rather than being trapped inside a scrolling box.
+ */
+.printCard {
+  margin-bottom: var(--space-5);
+}
+
+@media print {
+  .printCard {
+    padding: 0;
+    border: none;
+    background: none;
+    break-inside: auto;
+  }
+
+  .printCard .tableWrap,
+  .tableWrap {
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+  }
+
+  .table {
+    min-width: 0;
+    font-size: 9pt;
+  }
+
+  .table th {
+    position: static;
+  }
+}

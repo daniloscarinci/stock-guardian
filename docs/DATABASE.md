@@ -93,15 +93,25 @@ Append-only history. Every quantity change records what it was before and after,
 so a mistake can be traced rather than guessed at. `ON DELETE CASCADE` from
 `items`.
 
-### `contacts`, `photos`, `settings`
+### `contacts`
 
-`contacts` and `photos` are created and included in backups; their interfaces are
-not built yet. `photos` stores image bytes as BLOBs in the database, so a single
-backup file is genuinely complete and a restore cannot land with dangling
-references.
+Emergency contacts, ordered by priority then folded name. Only `name` has a
+`name_norm` sibling; the other fields are searched in memory with the same
+`foldText`, because `LOWER()` in SQLite lowercases ASCII and leaves accents
+alone — so a SQL search for "medico" would silently miss a relationship recorded
+as "Médico". For a list of tens of rows, filtering in memory is the honest fix.
 
-`settings` is key/value with JSON values, so a setting can grow from a scalar
-into an object without a schema change.
+### `photos`
+
+Image bytes stored as BLOBs in the database, so a single backup file is
+genuinely complete and a restore cannot land with dangling references. The table
+exists and is carried by backups; the interface for adding photographs is not
+built yet.
+
+### `settings`
+
+Key/value with JSON values, so a setting can grow from a scalar into an object
+without a schema change.
 
 ### `_schema_migrations`
 

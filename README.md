@@ -65,6 +65,14 @@ nothing.
 **Locations.** A hierarchy of your own making — Property → House → Pantry →
 Shelf. Filtering by a place includes everything inside it.
 
+**Emergency contacts.** Who to reach, ordered by urgency rather than by the
+alphabet. Phone numbers and email addresses are tappable, handing off to the
+device's own dialler and mail app — neither is a network request.
+
+**Reports.** Four of them — inventory, expiration, replenishment and
+preparedness — each shown on screen, exportable to CSV, and printable. Printing
+opens your system dialog, which can save the report as a PDF.
+
 **Backup and restore.** Export a complete JSON backup or a CSV of your inventory.
 Import a Stock Guardian backup or an export from the original application.
 Nothing is written until you have seen what the file contains and chosen merge or
@@ -121,7 +129,7 @@ persistent storage to a `file://` page.
 | `npm run dev` | Development server with hot reload |
 | `npm run build` | Production build, then the offline audit |
 | `npm run preview` | Serve the production build locally |
-| `npm test` | The 363-test unit suite |
+| `npm test` | The 401-test unit suite |
 | `npm run smoke` | Drive the production build in a real browser (needs Edge or Chrome) |
 | `npm run typecheck` | TypeScript, strict |
 | `npm run lint` | ESLint |
@@ -164,7 +172,7 @@ to see the behaviour for yourself.
 
 ## What is not built yet
 
-Stated plainly, because the alternative is a interface full of buttons that do
+Stated plainly, because the alternative is an interface full of buttons that do
 nothing. Nothing in this list appears in the application as a disabled control or
 a "coming soon" panel — if it is not built, it is not shown.
 
@@ -172,13 +180,9 @@ a "coming soon" panel — if it is not built, it is not shown.
   them yet.
 - **Barcode scanning.** A barcode can be typed in and is searchable. Scanning
   with a camera is not built.
-- **Emergency contacts.** The table exists and is included in backups; the
-  screen is not built.
 - **Application lock.** Not built.
 - **Notifications.** Not built. The expiration centre serves the same purpose
   when the app is open.
-- **A reports screen.** Inventory exports to CSV, the replenishment list exports
-  to CSV and prints. There is no dedicated reports section yet.
 - **The desktop application.** `src-tauri/` is complete and reviewed, but it has
   never been compiled — this machine has no Rust toolchain. `docs/BUILD.md` says
   what to install and what to check afterwards. **No installer has been built, and

@@ -147,7 +147,57 @@ try {
   const catalogText = await page.locator('#main-content').innerText();
   check('reference catalog reports 194 items', catalogText.includes('194'), 'from the subtitle');
 
-  // ---- 7. Language switching ----------------------------------------------
+  // ---- 7. Contacts ---------------------------------------------------------
+  console.log('\ncontacts');
+  await page.goto(`${BASE}/#/contacts`);
+  await page.waitForTimeout(900);
+
+  const contactName = `Dr. José ${String(Date.now()).slice(-5)}`;
+  await page.getByRole('button', { name: /add contact/i }).first().click();
+  await page.waitForSelector('dialog[open]', { timeout: 10_000 });
+  await page.locator('dialog[open]').getByLabel(/^name/i).first().fill(contactName);
+  await page.locator('dialog[open]').getByLabel(/phone/i).first().fill('+55 11 91234-5678');
+  await page.locator('dialog[open]').getByRole('button', { name: /^save$/i }).click();
+  await page.waitForSelector('dialog[open]', { state: 'detached', timeout: 10_000 });
+  await page.waitForTimeout(600);
+
+  check('contact is saved and listed', await page.getByText(contactName).first().isVisible(), contactName);
+
+  // The same accent-folding promise the rest of the app makes.
+  await page.locator('#contacts-search').fill('jose');
+  await page.waitForTimeout(600);
+  check('searching "jose" finds "José"', await page.getByText(contactName).first().isVisible());
+  await page.locator('#contacts-search').fill('');
+  await page.waitForTimeout(400);
+
+  // ---- 8. Reports ----------------------------------------------------------
+  console.log('\nreports');
+  await page.goto(`${BASE}/#/reports`);
+  await page.waitForTimeout(1200);
+
+  const reportRows = await page.locator('main table tbody tr').count();
+  check('inventory report renders rows', reportRows > 0, `${String(reportRows)} rows`);
+
+  await page.getByText(/preparedness report/i).first().click();
+  await page.waitForTimeout(900);
+  const preparednessText = await page.locator('#main-content').innerText();
+  check(
+    'preparedness report shows a score',
+    /\d+%/.test(preparednessText),
+    'a percentage is present',
+  );
+
+  // Exporting must produce a real file, not merely not throw.
+  const download = page.waitForEvent('download', { timeout: 15_000 });
+  await page.getByRole('button', { name: /export csv/i }).first().click();
+  const file = await download;
+  check(
+    'report exports a CSV',
+    file.suggestedFilename().endsWith('.csv'),
+    file.suggestedFilename(),
+  );
+
+  // ---- 9. Language switching ----------------------------------------------
   console.log('\nlanguage');
   await page.goto(`${BASE}/#/`);
   await page.waitForTimeout(500);
