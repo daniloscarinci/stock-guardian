@@ -18,7 +18,9 @@
     "generate:catalog": "node scripts/extract-legacy-catalog.mjs",
     "audit:offline": "node scripts/audit-offline.mjs",
     "generate:icons": "node scripts/generate-icons.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "generate:sample": "node scripts/generate-sample-backup.mjs",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@sqlite.org/sqlite-wasm": "3.53.0-build1",

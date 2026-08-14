@@ -1,0 +1,131 @@
+[
+  {
+    "name": "Arroz",
+    "qty": "10",
+    "loc": "Despensa",
+    "expiry": "2027-03-15",
+    "cat": "Alimentos"
+  },
+  {
+    "name": "Feijão",
+    "qty": "8",
+    "loc": "Despensa",
+    "expiry": "2027-01-20",
+    "cat": "Alimentos"
+  },
+  {
+    "name": "Rice",
+    "qty": "5",
+    "loc": "Pantry",
+    "expiry": "2026-12-01",
+    "cat": "Food"
+  },
+  {
+    "name": "Água Mineral",
+    "qty": "24",
+    "loc": "Garagem",
+    "expiry": "2028-06-30",
+    "cat": "Água"
+  },
+  {
+    "name": "Agua Embotellada",
+    "qty": "12",
+    "loc": "garagem",
+    "expiry": "2028-06-30",
+    "cat": "Agua"
+  },
+  {
+    "name": "Gaze Esterilizada",
+    "qty": "6",
+    "loc": "Kit Médico",
+    "expiry": "2026-09-01",
+    "cat": "Médico"
+  },
+  {
+    "name": "Surgical Gloves",
+    "qty": "50",
+    "loc": "Kit Médico",
+    "expiry": "2029-01-01",
+    "cat": "Medical"
+  },
+  {
+    "name": "Pilhas",
+    "qty": "16",
+    "loc": "Garagem",
+    "expiry": "2030-01-01",
+    "cat": "Energia"
+  },
+  {
+    "name": "Power Bank",
+    "qty": "2",
+    "loc": "Mochila",
+    "expiry": "2031-01-01",
+    "cat": "Power"
+  },
+  {
+    "name": "Isqueiro",
+    "qty": "3",
+    "loc": "Mochila",
+    "expiry": "2035-01-01",
+    "cat": "Fogo"
+  },
+
+  {
+    "_comment_do_not_edit": "The records below are deliberately awkward. They exercise the paths that must preserve rather than discard - see docs/MIGRATION.md. They are not mistakes.",
+    "name": "Martelo",
+    "qty": "1",
+    "loc": "Oficina",
+    "expiry": "",
+    "cat": "Ferramentas"
+  },
+  {
+    "name": "Bússola",
+    "qty": "1",
+    "loc": "Mochila",
+    "cat": "Comunicação"
+  },
+  {
+    "name": "Lona Impermeável",
+    "qty": "cerca de 3",
+    "loc": "Galpão",
+    "expiry": "2029-05-01",
+    "cat": "Abrigo"
+  },
+  {
+    "name": "Leite em Pó",
+    "qty": "4",
+    "loc": "Despensa",
+    "expiry": "2026-02-30",
+    "cat": "Alimentos"
+  },
+  {
+    "name": "Sementes de Feijão",
+    "qty": "12",
+    "loc": "Sítio",
+    "expiry": "2027-08-01",
+    "cat": "Horta do Sítio"
+  },
+  {
+    "name": "Sabonete",
+    "qty": "",
+    "loc": "",
+    "expiry": "",
+    "cat": ""
+  },
+  {
+    "name": "Rádio a Manivela",
+    "qty": "1",
+    "loc": "Mochila",
+    "expiry": "2033-01-01",
+    "cat": "Comunicação",
+    "comprado_em": "2024-11-03",
+    "observacao": "Testar as pilhas a cada seis meses"
+  },
+  {
+    "name": "   ",
+    "qty": "5",
+    "loc": "Despensa",
+    "expiry": "2027-01-01",
+    "cat": "Alimentos"
+  }
+]

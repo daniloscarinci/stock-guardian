@@ -1,0 +1,788 @@
+{
+  "format": "stock-guardian-backup",
+  "formatVersion": 2,
+  "schemaVersion": 1,
+  "appVersion": "2.0.0",
+  "exportedAt": "2026-08-14T09:00:00.000Z",
+  "counts": {
+    "items": 17,
+    "categories": 21,
+    "locations": 8,
+    "contacts": 0,
+    "transactions": 3
+  },
+  "checksum": "sha256:636c506772df9c3df9cbba6de47ca3660e1f5dfb9453bdc61272ea4c0c5077e8",
+  "data": {
+    "items": [
+      {
+        "id": "074ec336-cba9-4fe3-81a5-0ea2fdb315cb",
+        "name": "Arroz",
+        "categoryId": "food",
+        "locationId": "947e9bcb-08d0-41f1-9943-9299e179810f",
+        "quantity": 10,
+        "unit": "un",
+        "minimumQuantity": 10,
+        "idealQuantity": 30,
+        "expirationDate": "2027-03-15",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T09:00:00.000Z"
+      },
+      {
+        "id": "17a4bc29-279c-4e22-84b0-ca3fe754dfbf",
+        "name": "Sementes de Feijão",
+        "categoryId": "imported-horta-do-sitio",
+        "locationId": "706d8ad2-6783-4280-b6b9-9e89e9cfe68b",
+        "quantity": 12,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2027-08-01",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": "{\"importedFrom\":\"v1\",\"notes\":[{\"kind\":\"category-unrecognised\",\"original\":\"Horta do Sítio\"}]}",
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "1e608dcb-0a25-491d-92d9-f1dc470d13bf",
+        "name": "Gaze Esterilizada",
+        "categoryId": "medical",
+        "locationId": "1e54930d-bc9e-4bdc-9b11-0933a8907d12",
+        "quantity": 6,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2026-09-01",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "20e7de55-55ec-45ce-94b0-12bfd137fed2",
+        "name": "Pilhas",
+        "categoryId": "power",
+        "locationId": "8550dfad-3977-403f-ad4d-c539ad5d8eb2",
+        "quantity": 16,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2030-01-01",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "2225261c-060e-4072-8389-ab815936d33d",
+        "name": "Surgical Gloves",
+        "categoryId": "medical",
+        "locationId": "1e54930d-bc9e-4bdc-9b11-0933a8907d12",
+        "quantity": 50,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2029-01-01",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "5597fe8a-5a67-43f6-a63d-854d715220c2",
+        "name": "Power Bank",
+        "categoryId": "power",
+        "locationId": "fdae800c-329d-4750-a9d8-65cfc2831a3e",
+        "quantity": 2,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2031-01-01",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "6f09cd6e-7f11-4842-bbf7-d8f05a71e5e5",
+        "name": "Feijão",
+        "categoryId": "food",
+        "locationId": "947e9bcb-08d0-41f1-9943-9299e179810f",
+        "quantity": 8,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2027-01-20",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "7a4b84da-23dd-4dae-b4c5-2e6a795d765e",
+        "name": "Isqueiro",
+        "categoryId": "fire",
+        "locationId": "fdae800c-329d-4750-a9d8-65cfc2831a3e",
+        "quantity": 3,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2035-01-01",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "90185549-a4b7-4b88-8447-0b46b8492338",
+        "name": "Lona Impermeável",
+        "categoryId": "shelter",
+        "locationId": "63f593b7-220c-45c5-a31a-1b7694d9eb45",
+        "quantity": 0,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2029-05-01",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": "{\"importedFrom\":\"v1\",\"notes\":[{\"kind\":\"quantity-unreadable\",\"original\":\"cerca de 3\"}]}",
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "92209cbb-0db0-49cc-b4af-3d94cc530e07",
+        "name": "Martelo",
+        "categoryId": "tools",
+        "locationId": "8010bb8e-19b8-4c97-a1a3-04ee4848d3f5",
+        "quantity": 1,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": null,
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": "{\"importedFrom\":\"v1\",\"notes\":[{\"kind\":\"extra-fields\",\"fields\":{\"_comment_do_not_edit\":\"The records below are deliberately awkward. They exercise the paths that must preserve rather than discard - see docs/MIGRATION.md. They are not mistakes.\"}}]}",
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "a227552a-df1f-4124-aefd-4f1116459953",
+        "name": "Água Mineral",
+        "categoryId": "water",
+        "locationId": "8550dfad-3977-403f-ad4d-c539ad5d8eb2",
+        "quantity": 24,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2028-06-30",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "a907a33d-c264-4404-904d-9cd94d266d35",
+        "name": "Leite em Pó",
+        "categoryId": "food",
+        "locationId": "947e9bcb-08d0-41f1-9943-9299e179810f",
+        "quantity": 4,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": null,
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": "{\"importedFrom\":\"v1\",\"notes\":[{\"kind\":\"expiry-unreadable\",\"original\":\"2026-02-30\"}]}",
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "b1985b69-fec9-42c1-ab30-874ae07f04be",
+        "name": "Sabonete",
+        "categoryId": null,
+        "locationId": null,
+        "quantity": 0,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": null,
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "b2a9f48a-4f31-478e-a436-c744e0e23377",
+        "name": "Rice",
+        "categoryId": "food",
+        "locationId": "cab67494-acb7-415b-976d-43d4e5306da6",
+        "quantity": 5,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2026-12-01",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "cbfdfc9e-1960-4e0b-96fb-bdc9a5a57f4d",
+        "name": "Rádio a Manivela",
+        "categoryId": "communication",
+        "locationId": "fdae800c-329d-4750-a9d8-65cfc2831a3e",
+        "quantity": 1,
+        "unit": "un",
+        "minimumQuantity": null,
+        "idealQuantity": null,
+        "expirationDate": "2033-01-01",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": "{\"importedFrom\":\"v1\",\"notes\":[{\"kind\":\"extra-fields\",\"fields\":{\"comprado_em\":\"2024-11-03\",\"observacao\":\"Testar as pilhas a cada seis meses\"}}]}",
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T14:31:59.071Z"
+      },
+      {
+        "id": "cfdf8283-2fc8-4864-b81c-a5f17c183743",
+        "name": "Bússola",
+        "categoryId": "communication",
+        "locationId": "fdae800c-329d-4750-a9d8-65cfc2831a3e",
+        "quantity": 1,
+        "unit": "un",
+        "minimumQuantity": 15,
+        "idealQuantity": 45,
+        "expirationDate": null,
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T09:00:00.000Z"
+      },
+      {
+        "id": "d6b216cc-685d-4c14-b78a-ab2364992543",
+        "name": "Agua Embotellada",
+        "categoryId": "water",
+        "locationId": "8550dfad-3977-403f-ad4d-c539ad5d8eb2",
+        "quantity": 12,
+        "unit": "un",
+        "minimumQuantity": 5,
+        "idealQuantity": 15,
+        "expirationDate": "2028-06-30",
+        "purchaseDate": null,
+        "openedDate": null,
+        "condition": null,
+        "priority": 3,
+        "notes": null,
+        "barcode": null,
+        "catalogItemId": null,
+        "archivedAt": null,
+        "migrationNotes": null,
+        "createdAt": "2026-08-14T14:31:59.071Z",
+        "updatedAt": "2026-08-14T09:00:00.000Z"
+      }
+    ],
+    "itemNames": [],
+    "categories": [
+      {
+        "id": "food",
+        "names": {
+          "pt-BR": "Alimentos",
+          "en": "Food",
+          "es": "Alimentos"
+        },
+        "icon": "wheat",
+        "color": "amber",
+        "sortOrder": 0,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "water",
+        "names": {
+          "pt-BR": "Água",
+          "en": "Water",
+          "es": "Agua"
+        },
+        "icon": "droplet",
+        "color": "sky",
+        "sortOrder": 1,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "medical",
+        "names": {
+          "pt-BR": "Médico",
+          "en": "Medical",
+          "es": "Médico"
+        },
+        "icon": "cross",
+        "color": "rose",
+        "sortOrder": 2,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "power",
+        "names": {
+          "pt-BR": "Energia",
+          "en": "Energy",
+          "es": "Energía"
+        },
+        "icon": "bolt",
+        "color": "yellow",
+        "sortOrder": 3,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "tools",
+        "names": {
+          "pt-BR": "Ferramentas",
+          "en": "Tools",
+          "es": "Herramientas"
+        },
+        "icon": "wrench",
+        "color": "slate",
+        "sortOrder": 4,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "shelter",
+        "names": {
+          "pt-BR": "Abrigo",
+          "en": "Shelter",
+          "es": "Refugio"
+        },
+        "icon": "tent",
+        "color": "emerald",
+        "sortOrder": 5,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "fire",
+        "names": {
+          "pt-BR": "Fogo",
+          "en": "Fire",
+          "es": "Fuego"
+        },
+        "icon": "flame",
+        "color": "orange",
+        "sortOrder": 6,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "hygiene",
+        "names": {
+          "pt-BR": "Higiene",
+          "en": "Hygiene",
+          "es": "Higiene"
+        },
+        "icon": "soap",
+        "color": "cyan",
+        "sortOrder": 7,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "communication",
+        "names": {
+          "pt-BR": "Comunicação",
+          "en": "Communication",
+          "es": "Comunicación"
+        },
+        "icon": "radio",
+        "color": "violet",
+        "sortOrder": 8,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "transportation",
+        "names": {
+          "pt-BR": "Transporte",
+          "en": "Transportation",
+          "es": "Transporte"
+        },
+        "icon": "truck",
+        "color": "blue",
+        "sortOrder": 9,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "clothing",
+        "names": {
+          "pt-BR": "Vestuário",
+          "en": "Clothing",
+          "es": "Ropa"
+        },
+        "icon": "shirt",
+        "color": "indigo",
+        "sortOrder": 10,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "cooking",
+        "names": {
+          "pt-BR": "Cozinha",
+          "en": "Cooking",
+          "es": "Cocina"
+        },
+        "icon": "pot",
+        "color": "red",
+        "sortOrder": 11,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "security",
+        "names": {
+          "pt-BR": "Segurança",
+          "en": "Security",
+          "es": "Seguridad"
+        },
+        "icon": "shield",
+        "color": "stone",
+        "sortOrder": 12,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "documents",
+        "names": {
+          "pt-BR": "Documentos",
+          "en": "Documents",
+          "es": "Documentos"
+        },
+        "icon": "file",
+        "color": "zinc",
+        "sortOrder": 13,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "navigation",
+        "names": {
+          "pt-BR": "Navegação",
+          "en": "Navigation",
+          "es": "Navegación"
+        },
+        "icon": "compass",
+        "color": "teal",
+        "sortOrder": 14,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "agriculture",
+        "names": {
+          "pt-BR": "Agricultura",
+          "en": "Agriculture",
+          "es": "Agricultura"
+        },
+        "icon": "sprout",
+        "color": "lime",
+        "sortOrder": 15,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "sanitation",
+        "names": {
+          "pt-BR": "Saneamento",
+          "en": "Sanitation",
+          "es": "Saneamiento"
+        },
+        "icon": "trash",
+        "color": "green",
+        "sortOrder": 16,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "lighting",
+        "names": {
+          "pt-BR": "Iluminação",
+          "en": "Lighting",
+          "es": "Iluminación"
+        },
+        "icon": "lamp",
+        "color": "fuchsia",
+        "sortOrder": 17,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "fuel",
+        "names": {
+          "pt-BR": "Combustível",
+          "en": "Fuel",
+          "es": "Combustible"
+        },
+        "icon": "fuel",
+        "color": "brown",
+        "sortOrder": 18,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "other",
+        "names": {
+          "pt-BR": "Outros",
+          "en": "Other",
+          "es": "Otros"
+        },
+        "icon": "box",
+        "color": "gray",
+        "sortOrder": 19,
+        "isSystem": true,
+        "active": true
+      },
+      {
+        "id": "imported-horta-do-sitio",
+        "names": {
+          "en": "Horta do Sítio"
+        },
+        "icon": null,
+        "color": null,
+        "sortOrder": 999,
+        "isSystem": false,
+        "active": true
+      }
+    ],
+    "locations": [
+      {
+        "id": "1e54930d-bc9e-4bdc-9b11-0933a8907d12",
+        "name": "Kit Médico",
+        "description": null,
+        "parentId": null,
+        "notes": null,
+        "sortOrder": 0
+      },
+      {
+        "id": "63f593b7-220c-45c5-a31a-1b7694d9eb45",
+        "name": "Galpão",
+        "description": null,
+        "parentId": null,
+        "notes": null,
+        "sortOrder": 0
+      },
+      {
+        "id": "706d8ad2-6783-4280-b6b9-9e89e9cfe68b",
+        "name": "Sítio",
+        "description": null,
+        "parentId": null,
+        "notes": null,
+        "sortOrder": 0
+      },
+      {
+        "id": "8010bb8e-19b8-4c97-a1a3-04ee4848d3f5",
+        "name": "Oficina",
+        "description": null,
+        "parentId": null,
+        "notes": null,
+        "sortOrder": 0
+      },
+      {
+        "id": "8550dfad-3977-403f-ad4d-c539ad5d8eb2",
+        "name": "Garagem",
+        "description": null,
+        "parentId": null,
+        "notes": null,
+        "sortOrder": 0
+      },
+      {
+        "id": "947e9bcb-08d0-41f1-9943-9299e179810f",
+        "name": "Despensa",
+        "description": null,
+        "parentId": null,
+        "notes": null,
+        "sortOrder": 0
+      },
+      {
+        "id": "cab67494-acb7-415b-976d-43d4e5306da6",
+        "name": "Pantry",
+        "description": null,
+        "parentId": null,
+        "notes": null,
+        "sortOrder": 0
+      },
+      {
+        "id": "fdae800c-329d-4750-a9d8-65cfc2831a3e",
+        "name": "Mochila",
+        "description": null,
+        "parentId": null,
+        "notes": null,
+        "sortOrder": 0
+      }
+    ],
+    "contacts": [],
+    "transactions": [
+      {
+        "id": "sample-tx-2",
+        "itemId": "cfdf8283-2fc8-4864-b81c-a5f17c183743",
+        "type": "purchase",
+        "quantity": 2,
+        "quantityBefore": 0,
+        "quantityAfter": 2,
+        "sourceLocationId": null,
+        "destinationLocationId": null,
+        "occurredAt": "2026-08-14T09:00:00.000Z",
+        "notes": "sample movement"
+      },
+      {
+        "id": "sample-tx-1",
+        "itemId": "074ec336-cba9-4fe3-81a5-0ea2fdb315cb",
+        "type": "purchase",
+        "quantity": 2,
+        "quantityBefore": 0,
+        "quantityAfter": 2,
+        "sourceLocationId": null,
+        "destinationLocationId": null,
+        "occurredAt": "2026-08-14T09:00:00.000Z",
+        "notes": "sample movement"
+      },
+      {
+        "id": "sample-tx-0",
+        "itemId": "d6b216cc-685d-4c14-b78a-ab2364992543",
+        "type": "purchase",
+        "quantity": 2,
+        "quantityBefore": 0,
+        "quantityAfter": 2,
+        "sourceLocationId": null,
+        "destinationLocationId": null,
+        "occurredAt": "2026-08-14T09:00:00.000Z",
+        "notes": "sample movement"
+      }
+    ],
+    "settings": {
+      "language": "en",
+      "theme": "dark",
+      "dateFormat": "DD/MM/YYYY",
+      "measurementSystem": "metric",
+      "defaultLowStockThreshold": 5,
+      "expiryWarningDays": [
+        7,
+        30,
+        90
+      ],
+      "defaultLocationId": null,
+      "preparednessCategoryIds": [],
+      "storagePersistenceRequested": false,
+      "replenishmentDismissed": []
+    }
+  }
+}

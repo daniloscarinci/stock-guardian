@@ -1,0 +1,33 @@
+[package]
+name = "stock-guardian"
+version = "2.0.0"
+description = "Stock Guardian - Offline Preparedness & Resource Management"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# rusqlite with the bundled SQLite, deliberately.
+#
+# `bundled` compiles SQLite from source into the binary rather than linking
+# whatever the host happens to have. For an application whose whole promise is
+# that it keeps working, depending on a system library that may be older than
+# the schema expects is not a trade worth making.
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+
+[features]
+# Kept for `cargo tauri build --features custom-protocol`, per Tauri convention.
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
