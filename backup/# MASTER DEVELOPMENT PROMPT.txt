@@ -1,0 +1,1633 @@
+# MASTER DEVELOPMENT PROMPT
+
+## Stock Guardian — Professional Offline-First Survival & Logistics Management Application
+
+### ROLE
+
+You are a senior software architect, product designer, UX engineer, database engineer, security engineer, QA engineer, and offline-first application specialist.
+
+Your task is to transform the supplied reference application:
+
+**`End_of_world_V11-Pro_Upgraded.html`**
+
+into a **professional, production-quality, fully offline application** suitable for installation and daily use on desktop and mobile devices.
+
+Do NOT merely wrap the existing HTML in an Electron/WebView container.
+
+You must analyze the existing application, preserve its useful functionality and data model, then redesign and rebuild it as a maintainable, scalable application.
+
+---
+
+# 1. PRIMARY OBJECTIVE
+
+Create a professional application for managing:
+
+* emergency supplies
+* survival inventory
+* household inventory
+* food stocks
+* water resources
+* medical supplies
+* tools
+* shelter equipment
+* fire resources
+* hygiene supplies
+* energy resources
+* communication equipment
+* emergency contacts
+* locations/storage areas
+* expiration dates
+* quantities
+* stock levels
+* replenishment requirements
+* preparedness status
+
+The application must operate **100% offline after installation**.
+
+Internet access must NOT be required for:
+
+* application startup
+* navigation
+* inventory management
+* searching
+* calculations
+* dashboards
+* reports
+* database access
+* importing/exporting data
+* language switching
+* notifications already supported locally
+* configuration
+* backups
+
+The application should behave as an **offline-first local database application**, not as a website dependent on a server.
+
+---
+
+# 2. REFERENCE APPLICATION — FUNCTIONAL BASELINE
+
+First reverse-engineer the supplied HTML application.
+
+The existing application contains, at minimum:
+
+* Stock Guardian branding
+* PT / EN / ES language selection
+* inventory creation
+* inventory editing
+* inventory deletion
+* quantity
+* location
+* category
+* expiration date
+* expiry status
+* search
+* expiry sorting
+* low-stock threshold
+* dashboard statistics
+* JSON export
+* JSON import
+* browser persistence
+* predefined inventory database
+* categorized reference items
+
+The reference application currently stores inventory locally and supports JSON backup/restore. Preserve these capabilities while substantially improving the architecture and UX.
+
+The reference database already contains categories including Food, Water, Medical, Power, Tools, Shelter, Fire, Hygiene and Communication, with multilingual item names.
+
+The existing application also includes dashboard indicators for total items, expired items, items expiring within 30 days, and low stock.
+
+These functions are the minimum baseline.
+
+Do not remove existing functionality unless there is a compelling architectural reason.
+
+---
+
+# 3. TECHNOLOGY REQUIREMENT
+
+Choose a modern, stable technology stack suitable for a serious offline application.
+
+Preferred architecture:
+
+### Frontend
+
+* React
+* TypeScript
+* modern component architecture
+* responsive design
+* accessible UI
+* mobile-first principles
+
+### Desktop
+
+Prefer:
+
+* Tauri
+
+over Electron when practical, because of its smaller footprint and strong native integration.
+
+### Mobile
+
+The architecture should be capable of being packaged for:
+
+* Android
+* iOS
+
+through an appropriate native bridge/framework if required.
+
+### Database
+
+Use a proper local database rather than relying exclusively on localStorage.
+
+Preferred:
+
+* SQLite
+
+with an appropriate application abstraction layer.
+
+For browser/PWA builds, use:
+
+* IndexedDB
+
+or another robust local persistence layer.
+
+The application architecture must isolate the data layer so that the same business logic can operate against the appropriate local database implementation.
+
+---
+
+# 4. OFFLINE-FIRST ARCHITECTURE
+
+This is a critical requirement.
+
+The application must be:
+
+**LOCAL-FIRST.**
+
+All primary application data belongs to the user's device.
+
+There must be:
+
+* no mandatory cloud account
+* no mandatory login
+* no mandatory API
+* no mandatory internet connection
+* no remote database dependency
+* no external CDN dependency
+* no Google Fonts dependency
+* no externally hosted JavaScript
+* no externally hosted CSS
+* no analytics required for operation
+
+All assets required to run the application must be packaged locally.
+
+If the application is launched on a machine with no internet connection, it must function normally.
+
+---
+
+# 5. DATA MODEL
+
+Design a normalized and extensible database.
+
+At minimum create entities/tables for:
+
+### InventoryItem
+
+Fields should include:
+
+* id
+* name
+* localized names
+* categoryId
+* quantity
+* unit
+* minimumQuantity
+* idealQuantity
+* locationId
+* expirationDate
+* purchaseDate
+* openedDate
+* condition
+* priority
+* notes
+* barcode/identifier
+* photo reference
+* createdAt
+* updatedAt
+
+### Category
+
+* id
+* localized names
+* icon
+* description
+* color/theme reference
+* sortOrder
+* active
+
+### Location
+
+Examples:
+
+* House
+* Garage
+* Basement
+* Pantry
+* Vehicle
+* Emergency Storage
+* Rural Property
+* Other
+
+Fields:
+
+* id
+* name
+* description
+* parentLocationId
+* notes
+
+### StockTransaction
+
+Track:
+
+* additions
+* removals
+* consumption
+* transfers
+* corrections
+
+Fields:
+
+* id
+* itemId
+* transactionType
+* quantity
+* sourceLocation
+* destinationLocation
+* timestamp
+* notes
+
+### EmergencyContact
+
+Fields:
+
+* id
+* name
+* relationship
+* phone
+* email
+* location
+* notes
+* priority
+
+### BackupMetadata
+
+Track:
+
+* backup date
+* application version
+* schema version
+* record count
+* checksum if appropriate
+
+---
+
+# 6. INVENTORY MANAGEMENT
+
+Implement a professional inventory workflow.
+
+Users must be able to:
+
+* add item
+* edit item
+* duplicate item
+* delete item
+* archive item
+* restore archived item
+* increase quantity
+* decrease quantity
+* transfer item between locations
+* change category
+* change expiration date
+* change minimum stock level
+* add notes
+* attach image
+* search
+* filter
+* sort
+* batch edit where practical
+
+Do not make users repeatedly open forms for routine quantity changes.
+
+Provide convenient:
+
+**+ / − controls**
+
+for rapid inventory adjustment.
+
+---
+
+# 7. DASHBOARD
+
+Create a professional operational dashboard.
+
+Display at minimum:
+
+### Inventory Overview
+
+* Total items
+* Total quantity
+* Categories
+* Locations
+* Low-stock items
+* Critical items
+* Expired items
+* Expiring soon
+* Items with no expiration
+* Recently modified
+
+### Preparedness Indicators
+
+Create a preparedness score based on configurable rules.
+
+Example:
+
+**Preparedness Score: 78%**
+
+The calculation must be transparent.
+
+Allow the user to see:
+
+* what is missing
+* what is below minimum
+* what is expired
+* what requires attention
+* which categories are weakest
+
+Do not invent a misleading score.
+
+Show the methodology.
+
+---
+
+# 8. EXPIRATION MANAGEMENT
+
+Improve the existing expiration system.
+
+Support:
+
+* expired
+* expires today
+* expires within 7 days
+* expires within 30 days
+* expires within 90 days
+* valid
+* no expiration
+
+Allow configurable warning periods.
+
+Example:
+
+```text
+EXPIRED
+7 DAYS
+30 DAYS
+90 DAYS
+```
+
+The user must be able to configure these periods.
+
+Provide a dedicated:
+
+**Expiration Center**
+
+with filtering and sorting.
+
+---
+
+# 9. STOCK MANAGEMENT
+
+Improve the existing low-stock mechanism.
+
+Each item should support:
+
+* minimum quantity
+* target quantity
+* current quantity
+
+Calculate:
+
+```text
+Stock Status
+```
+
+as:
+
+* Critical
+* Low
+* Adequate
+* Surplus
+
+Example:
+
+```text
+Rice
+Current: 4 kg
+Minimum: 10 kg
+Target: 30 kg
+
+STATUS: CRITICAL
+Need: 26 kg
+```
+
+Allow the user to configure thresholds globally and per item.
+
+---
+
+# 10. SMART REPLENISHMENT
+
+Create a:
+
+**Replenishment Center**
+
+that automatically generates a list of items requiring attention.
+
+For every item show:
+
+* current stock
+* minimum stock
+* target stock
+* quantity required
+* priority
+* expiration condition
+
+Example:
+
+```text
+REPLENISHMENT LIST
+
+Rice .............. +20 kg
+Water ............. +40 L
+Batteries ......... +12
+Medical Gauze ..... +5
+```
+
+Allow:
+
+* mark as purchased
+* mark as partially purchased
+* dismiss
+* export shopping/replenishment list
+
+---
+
+# 11. REFERENCE DATABASE
+
+Preserve and expand the reference database from the original application.
+
+The supplied application already contains a large predefined database of preparedness items and multilingual names.
+
+Do NOT discard this database during migration.
+
+Separate:
+
+### Reference Catalog
+
+from:
+
+### User Inventory
+
+This distinction is important.
+
+A reference item should NOT automatically become part of the user's inventory.
+
+Users should be able to:
+
+* browse reference items
+* search reference items
+* filter by category
+* add reference item to inventory
+* customize the name
+* assign location
+* define quantity
+* define minimum stock
+* define expiration
+
+---
+
+# 12. PREPAREDNESS CATEGORIES
+
+Structure the catalog professionally.
+
+At minimum support:
+
+1. Food
+2. Water
+3. Medical
+4. Energy
+5. Tools
+6. Shelter
+7. Fire
+8. Hygiene
+9. Communication
+10. Transportation
+11. Clothing
+12. Cooking
+13. Security
+14. Documents
+15. Navigation
+16. Agriculture
+17. Sanitation
+18. Lighting
+19. Fuel
+20. Other
+
+The category architecture must be configurable.
+
+Users must be able to create custom categories.
+
+---
+
+# 13. MULTILINGUAL SYSTEM
+
+Preserve:
+
+* Portuguese
+* English
+* Spanish
+
+as first-class languages.
+
+Do not hard-code UI text into components.
+
+Use a proper internationalization architecture.
+
+Example:
+
+```text
+/locales
+    /pt-BR
+    /en
+    /es
+```
+
+The language selector must change the entire interface.
+
+Language preference must persist locally.
+
+The system should be architected so additional languages can be added later without modifying application logic.
+
+---
+
+# 14. SEARCH ENGINE
+
+Implement fast local search.
+
+Search across:
+
+* item name
+* translated names
+* category
+* location
+* notes
+* barcode
+* tags
+
+Support:
+
+* partial matches
+* case-insensitive search
+* accent-insensitive search
+
+Example:
+
+Searching:
+
+```text
+agua
+```
+
+should find:
+
+```text
+Água
+Água Mineral
+Filtro de Água
+```
+
+Search must work completely offline.
+
+---
+
+# 15. FILTERING
+
+Provide advanced filters:
+
+* category
+* location
+* stock status
+* expiration status
+* priority
+* condition
+* archived/non-archived
+
+Allow combinations.
+
+Example:
+
+```text
+Medical
++
+Low Stock
++
+Expiring within 30 days
+```
+
+---
+
+# 16. LOCATIONS
+
+Create a dedicated location management system.
+
+Allow hierarchical storage:
+
+```text
+Property
+ ├── House
+ │    ├── Pantry
+ │    ├── Garage
+ │    └── Bedroom
+ │
+ ├── Vehicle
+ │
+ └── Rural Property
+      ├── Shed
+      ├── Storage Room
+      └── Workshop
+```
+
+Users must be able to create their own hierarchy.
+
+---
+
+# 17. BARCODE / QR SUPPORT
+
+Architect the application to support:
+
+* barcode scanning
+* QR code scanning
+* barcode lookup
+* QR identification
+
+The system must continue functioning if scanning hardware/camera is unavailable.
+
+Allow manual entry.
+
+If external product databases are unavailable offline, do not make the application dependent on them.
+
+---
+
+# 18. PHOTOS
+
+Allow users to attach a photograph to an inventory item.
+
+Photos must be stored locally.
+
+Provide:
+
+* thumbnail
+* full-size view
+* replace
+* remove
+
+Do not upload photographs anywhere.
+
+---
+
+# 19. BACKUP AND RESTORE
+
+The existing application already supports JSON export/import.
+
+Replace this with a professional backup system while maintaining JSON compatibility.
+
+Support:
+
+### Export
+
+* JSON
+* CSV
+* human-readable report
+* complete backup
+
+### Import
+
+* JSON
+* CSV
+* legacy Stock Guardian JSON
+
+Backups should contain:
+
+* inventory
+* categories
+* locations
+* contacts
+* configuration
+* language
+* application metadata
+* schema version
+
+Before restoring, validate the backup.
+
+Show:
+
+```text
+Backup Version
+Records
+Date
+Compatibility
+```
+
+Never silently overwrite data.
+
+Offer:
+
+* merge
+* replace
+* cancel
+
+---
+
+# 20. DATA INTEGRITY
+
+Implement:
+
+* schema versioning
+* migration system
+* validation
+* duplicate detection
+* transaction integrity
+* graceful recovery
+* corrupted database detection
+
+Never allow a failed import to destroy the existing inventory.
+
+Use atomic database operations wherever appropriate.
+
+---
+
+# 21. SECURITY AND PRIVACY
+
+Because this is a personal preparedness application:
+
+* local data should remain local
+* no unnecessary telemetry
+* no advertising SDK
+* no tracking
+* no external analytics
+
+Optionally support:
+
+### Application Lock
+
+* PIN
+* password
+* biometric authentication where the platform supports it
+
+Do not make security features dependent on an internet connection.
+
+---
+
+# 22. USER EXPERIENCE
+
+The current interface is functional but visually basic.
+
+Create a modern professional UI.
+
+Design principles:
+
+* clean
+* intuitive
+* fast
+* responsive
+* information-dense without being cluttered
+* excellent typography
+* clear status indicators
+* accessible contrast
+* touch-friendly controls
+
+Maintain the general dark operational aesthetic of the original application, but modernize it substantially.
+
+Use:
+
+* cards
+* tabs
+* drawers
+* dialogs
+* badges
+* progress indicators
+* charts
+* responsive tables
+* mobile-friendly lists
+
+Do not over-design the application.
+
+Functionality and clarity take priority.
+
+---
+
+# 23. RESPONSIVE DESIGN
+
+The same application must work well on:
+
+* desktop
+* laptop
+* tablet
+* smartphone
+
+Desktop should prioritize:
+
+* dashboard
+* tables
+* multiple information panels
+
+Mobile should prioritize:
+
+* quick inventory changes
+* search
+* scanning
+* alerts
+* location
+* quantity adjustment
+
+Avoid horizontal scrolling wherever reasonably possible.
+
+---
+
+# 24. MOBILE QUICK ACTIONS
+
+Provide prominent actions:
+
+```text
++ ADD ITEM
+SCAN
+USE ITEM
+MOVE ITEM
+CHECK STOCK
+EXPIRATION
+REPLENISH
+```
+
+The application should be practical to use during stressful conditions.
+
+Minimize the number of taps necessary for common operations.
+
+---
+
+# 25. REPORTING
+
+Provide local report generation.
+
+Reports should include:
+
+### Inventory Report
+
+* all items
+* quantity
+* location
+* category
+* status
+
+### Expiration Report
+
+* expired
+* expiring soon
+* dates
+
+### Replenishment Report
+
+* items below minimum
+* required quantities
+
+### Preparedness Report
+
+* category coverage
+* deficiencies
+* score
+* recommendations
+
+Reports should be exportable to:
+
+* PDF
+* CSV
+* printable HTML
+
+No internet required.
+
+---
+
+# 26. DASHBOARD VISUALIZATION
+
+Use lightweight locally bundled charting capabilities or implement simple visualizations without external dependencies.
+
+Useful visualizations:
+
+* inventory by category
+* inventory by location
+* stock status
+* expiration status
+* preparedness by category
+
+Charts must remain functional offline.
+
+---
+
+# 27. NOTIFICATION SYSTEM
+
+Implement local notifications where supported by the operating system.
+
+Potential notifications:
+
+* item expired
+* item expiring soon
+* stock critical
+* replenishment required
+
+The application must continue functioning without notification permission.
+
+Never depend on a remote notification server for essential functionality.
+
+---
+
+# 28. CONFIGURATION CENTER
+
+Create a settings section containing:
+
+### General
+
+* language
+* theme
+* date format
+* measurement system
+
+### Inventory
+
+* default low-stock threshold
+* expiration warning periods
+* default location
+
+### Security
+
+* application lock
+
+### Backup
+
+* backup/import/export settings
+
+### Categories
+
+* category management
+
+### Locations
+
+* location management
+
+### Data
+
+* reset
+* archive
+* migration
+* diagnostics
+
+---
+
+# 29. DATA MIGRATION FROM ORIGINAL HTML
+
+This is mandatory.
+
+The original application uses a local inventory structure and predefined reference database.
+
+Create a migration/import mechanism capable of reading the original JSON inventory format.
+
+Legacy records such as:
+
+```javascript
+{
+    name,
+    qty,
+    loc,
+    expiry,
+    cat
+}
+```
+
+must be mapped into the new schema.
+
+Example:
+
+```text
+Legacy name       → InventoryItem.name
+Legacy qty        → InventoryItem.quantity
+Legacy loc        → Location
+Legacy expiry     → InventoryItem.expirationDate
+Legacy cat        → Category
+```
+
+Do not lose information.
+
+If a field cannot be mapped automatically, preserve it in a migration notes field rather than deleting it.
+
+---
+
+# 30. LEGACY UI FUNCTIONALITY
+
+Ensure that the following existing operations remain available:
+
+* save/update
+* delete
+* search
+* expiry sorting
+* low-stock threshold
+* export
+* import
+* language selection
+* dashboard statistics
+* reference database browsing
+
+The original application already implements these operations in JavaScript and they should be treated as the functional baseline.
+
+---
+
+# 31. ARCHITECTURE
+
+Use a clean architecture.
+
+Suggested structure:
+
+```text
+src/
+│
+├── app/
+│
+├── components/
+│
+├── features/
+│   ├── inventory/
+│   ├── dashboard/
+│   ├── expiration/
+│   ├── replenishment/
+│   ├── categories/
+│   ├── locations/
+│   ├── contacts/
+│   ├── reports/
+│   ├── backup/
+│   └── settings/
+│
+├── database/
+│
+├── services/
+│
+├── hooks/
+│
+├── stores/
+│
+├── utils/
+│
+├── i18n/
+│
+├── types/
+│
+├── assets/
+│
+└── tests/
+```
+
+Separate:
+
+* UI
+* business logic
+* persistence
+* validation
+* localization
+* reporting
+* platform-specific functionality
+
+Do not put everything into one component.
+
+---
+
+# 32. STATE MANAGEMENT
+
+Use a predictable state-management strategy.
+
+Do not duplicate the same data in multiple independent stores.
+
+The database should be the source of truth.
+
+UI state should remain separate from persistent application state.
+
+---
+
+# 33. PERFORMANCE
+
+The application should remain responsive with at least:
+
+* 10,000 inventory records
+* 50,000 reference records
+
+Use:
+
+* indexed database queries
+* pagination or virtualization where necessary
+* debounced search
+* efficient rendering
+
+Do not load unnecessary data into memory.
+
+---
+
+# 34. ACCESSIBILITY
+
+Implement:
+
+* keyboard navigation
+* visible focus states
+* semantic HTML
+* screen-reader labels
+* adequate contrast
+* touch targets
+* accessible dialogs
+* accessible forms
+
+Do not rely exclusively on color to communicate status.
+
+---
+
+# 35. ERROR HANDLING
+
+Every failure must have a user-readable response.
+
+Examples:
+
+```text
+Unable to import backup.
+The file appears to be corrupted.
+Your existing data has NOT been changed.
+```
+
+Never expose raw JavaScript errors to normal users.
+
+Provide developer diagnostics separately.
+
+---
+
+# 36. TESTING
+
+Create automated tests for:
+
+### Database
+
+* create
+* update
+* delete
+* migration
+* backup
+* restore
+
+### Inventory
+
+* quantity calculations
+* low-stock calculations
+* expiration calculations
+
+### Search
+
+* partial search
+* accent-insensitive search
+* multilingual search
+
+### Import
+
+* valid JSON
+* malformed JSON
+* legacy JSON
+* duplicate records
+* incompatible versions
+
+### UI
+
+* language switching
+* responsive layouts
+* dialogs
+* forms
+
+---
+
+# 37. SECURITY TESTING
+
+Test:
+
+* malformed imports
+* oversized imports
+* invalid data types
+* database corruption
+* malicious strings
+* HTML injection
+* script injection
+* path traversal where filesystem access exists
+
+Never directly inject user-generated content into HTML.
+
+---
+
+# 38. PWA / INSTALLABLE MODE
+
+In addition to desktop packaging, create an installable PWA if practical.
+
+Requirements:
+
+* manifest
+* service worker
+* offline cache
+* installable
+* local assets
+* offline startup
+* responsive UI
+
+The PWA must be useful even when completely disconnected from the internet.
+
+---
+
+# 39. DESKTOP APPLICATION
+
+Provide a desktop build architecture.
+
+Preferred:
+
+**Tauri**
+
+The application should eventually produce:
+
+* Windows installer
+* macOS application
+* Linux package
+
+Do not require the user to install Node.js or development dependencies to run the finished application.
+
+---
+
+# 40. APPLICATION BRANDING
+
+Use the name:
+
+# STOCK GUARDIAN
+
+Suggested subtitle:
+
+**Offline Preparedness & Resource Management**
+
+Do not retain the old "Logistics Pro" subtitle if a better professional identity is appropriate.
+
+Create a professional visual identity around:
+
+* preparedness
+* reliability
+* control
+* resilience
+* operational awareness
+
+---
+
+# 41. NO PLACEHOLDER FUNCTIONALITY
+
+This is extremely important.
+
+Do NOT produce:
+
+```text
+Coming soon
+TODO
+Demo only
+Placeholder
+Mock data
+Not implemented
+```
+
+for core functions.
+
+Every visible feature must either work or not be included in the production UI.
+
+Do not create fake buttons.
+
+---
+
+# 42. DEVELOPMENT PROCESS
+
+Follow this sequence.
+
+## PHASE 1 — ANALYZE
+
+Before writing application code:
+
+1. Inspect the entire supplied HTML.
+2. Identify all UI components.
+3. Identify all JavaScript functions.
+4. Identify all data structures.
+5. Extract all reference database records.
+6. Identify all languages.
+7. Identify all business rules.
+8. Identify all existing persistence behavior.
+9. Identify import/export formats.
+10. Create a migration specification.
+
+Do not begin by blindly rewriting the HTML.
+
+---
+
+## PHASE 2 — ARCHITECT
+
+Produce:
+
+* architecture diagram
+* database schema
+* component architecture
+* state architecture
+* migration architecture
+* offline strategy
+* testing strategy
+
+Then validate the architecture against the requirements.
+
+---
+
+## PHASE 3 — IMPLEMENT
+
+Implement the application incrementally.
+
+Priority order:
+
+1. database
+2. migration
+3. inventory
+4. categories
+5. locations
+6. dashboard
+7. expiration
+8. stock management
+9. search/filter
+10. backup/restore
+11. multilingual UI
+12. reports
+13. settings
+14. PWA
+15. desktop packaging
+
+---
+
+# 43. CODE QUALITY
+
+Write production-quality code.
+
+Requirements:
+
+* TypeScript strict mode
+* meaningful names
+* modular architecture
+* no unnecessary duplication
+* no giant components
+* no global spaghetti state
+* no hard-coded UI strings
+* no unnecessary dependencies
+* clear interfaces
+* proper error handling
+* comments only where useful
+
+Prefer simple maintainable code over clever code.
+
+---
+
+# 44. DOCUMENTATION
+
+Create:
+
+```text
+README.md
+ARCHITECTURE.md
+DATABASE.md
+MIGRATION.md
+OFFLINE.md
+BUILD.md
+TESTING.md
+CHANGELOG.md
+```
+
+README must explain:
+
+* installation
+* development
+* build
+* testing
+* backup
+* restore
+* migration
+* offline operation
+
+---
+
+# 45. BUILD SYSTEM
+
+The finished project must contain reproducible build instructions.
+
+A fresh developer environment should be able to:
+
+```bash
+npm install
+npm run dev
+npm run test
+npm run build
+```
+
+and, where applicable:
+
+```bash
+npm run tauri build
+```
+
+Do not rely on undocumented manual steps.
+
+---
+
+# 46. DELIVERABLES
+
+At completion provide:
+
+1. Complete source code
+2. Database implementation
+3. Migration system
+4. Reference database
+5. Localization files
+6. Tests
+7. PWA configuration
+8. Desktop configuration
+9. Documentation
+10. Build scripts
+11. Sample backup
+12. Migration test data
+
+---
+
+# 47. ACCEPTANCE CRITERIA
+
+The project is NOT complete until all of the following are true:
+
+### Offline
+
+* [ ] Application starts with Wi-Fi disabled.
+* [ ] Application starts with internet disconnected.
+* [ ] Inventory remains accessible offline.
+* [ ] Search works offline.
+* [ ] Dashboard works offline.
+* [ ] Reports work offline.
+* [ ] Import/export works offline.
+* [ ] Language switching works offline.
+
+### Inventory
+
+* [ ] Add item
+* [ ] Edit item
+* [ ] Delete item
+* [ ] Archive item
+* [ ] Restore item
+* [ ] Adjust quantity
+* [ ] Move location
+* [ ] Set expiration
+* [ ] Set minimum stock
+* [ ] Add notes
+* [ ] Search
+* [ ] Filter
+* [ ] Sort
+
+### Preparedness
+
+* [ ] Low-stock detection
+* [ ] Expiration detection
+* [ ] Replenishment calculation
+* [ ] Preparedness analysis
+* [ ] Category analysis
+* [ ] Location analysis
+
+### Data
+
+* [ ] SQLite/local database
+* [ ] Backup
+* [ ] Restore
+* [ ] Import legacy JSON
+* [ ] Export JSON
+* [ ] Export CSV
+* [ ] Schema versioning
+* [ ] Data validation
+
+### Languages
+
+* [ ] Portuguese
+* [ ] English
+* [ ] Spanish
+
+### Quality
+
+* [ ] Responsive
+* [ ] Accessible
+* [ ] No fake buttons
+* [ ] No placeholder core functionality
+* [ ] Automated tests
+* [ ] Production build succeeds
+
+---
+
+# 48. IMPORTANT DEVELOPMENT RULE
+
+When uncertain about an implementation detail:
+
+DO NOT silently invent behavior that could destroy data or alter the meaning of the original application.
+
+Instead:
+
+1. inspect the reference implementation
+2. preserve existing behavior
+3. document the assumption
+4. choose the safest implementation
+5. make the behavior configurable when practical
+
+Data preservation takes priority over cosmetic modernization.
+
+---
+
+# 49. FINAL QUALITY GATE
+
+Before declaring the project complete, perform a full audit.
+
+Ask:
+
+### FUNCTIONAL
+
+Does every original feature still work?
+
+### DATA
+
+Was every legacy record preserved?
+
+### OFFLINE
+
+Can the application operate indefinitely without internet?
+
+### SECURITY
+
+Can malformed data compromise the application?
+
+### UX
+
+Can a user perform common tasks quickly?
+
+### MOBILE
+
+Can the application be comfortably used on a phone?
+
+### PERFORMANCE
+
+Does it remain responsive with thousands of records?
+
+### MAINTAINABILITY
+
+Can another developer understand the architecture?
+
+### RECOVERY
+
+Can the user recover from a corrupted or incompatible backup?
+
+### INSTALLATION
+
+Can a non-technical user install and run the finished application?
+
+If any answer is "no", continue development.
+
+---
+
+# 50. YOUR FIRST RESPONSE
+
+Before implementing the application, do NOT immediately generate thousands of lines of code.
+
+First provide:
+
+1. Reverse-engineering summary of the supplied application
+2. Complete feature inventory
+3. Database/schema proposal
+4. Recommended technology stack
+5. Proposed project structure
+6. Migration strategy
+7. Offline architecture
+8. Development phases
+9. Identified risks
+10. Acceptance-test strategy
+
+Then begin implementation.
+
+The objective is not merely to reproduce the supplied HTML.
+
+The objective is to evolve it into a **serious, reliable, offline-first preparedness management platform** while preserving the original application's functionality and data.

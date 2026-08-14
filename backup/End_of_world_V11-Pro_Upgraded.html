@@ -1,0 +1,2194 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Stock Guardian: Logistics Pro</title>
+    <style>
+        :root { --primary: #6366f1; --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --danger: #ef4444; --ok: #22c55e; --edit: #f59e0b; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+        .container { max-width: 1200px; margin: auto; background: var(--card); padding: 30px; border-radius: 20px; }
+        .controls { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 20px; }
+        input, select, button { padding: 12px; border-radius: 8px; border: 1px solid #475569; background: #334155; color: white; }
+        .ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 20px; }
+        .cat-box { background: #0f172a; padding: 15px; border-radius: 12px; border: 1px solid #334155; }
+        .item-pill { display: block; padding: 4px 0; cursor: pointer; color: #94a3b8; font-size: 0.85rem; }
+        .item-pill:hover { color: #60a5fa; }
+        .status-ok { color: var(--ok); font-weight: bold; }
+        .status-exp { color: var(--danger); font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { text-align: left; padding: 12px; color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; }
+        td { padding: 12px; border-top: 1px solid #334155; }
+        .status-soon { color: var(--edit); font-weight: bold; }
+        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 20px; }
+        .stat-card { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 14px 16px; }
+        .stat-card .num { font-size: 1.6rem; font-weight: 700; display: block; }
+        .stat-card .label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; }
+        .toolbar { display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap; align-items: center; }
+        .toolbar input[type="text"] { flex: 1; min-width: 160px; }
+        .toolbar button { background: #334155; cursor: pointer; white-space: nowrap; }
+        .toolbar .threshold { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #94a3b8; }
+        .toolbar .threshold input { width: 60px; padding: 8px; }
+        .low-badge { color: var(--edit); font-size: 0.75rem; margin-left: 6px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2>Stock Guardian</h2>
+        <select id="langSelect" onchange="render()"><option value="pt">PT</option><option value="en">EN</option><option value="es">ES</option></select>
+    </div>
+
+    <div class="controls">
+        <input type="hidden" id="editIndex" value="-1">
+        <input type="text" id="itemName" placeholder="Item" style="grid-column: span 2;">
+        <input type="number" id="itemQty" placeholder="Qtd">
+        <input type="text" id="itemLoc" placeholder="Local">
+        <input type="date" id="expiryDate">
+        <select id="itemCat"></select>
+        <button onclick="saveItem()" style="background:var(--primary); cursor:pointer;">Save / Update</button>
+    </div>
+
+    <div class="dashboard" id="dashboard"></div>
+
+    <div class="toolbar">
+        <input type="text" id="searchBox" placeholder="Search..." oninput="render()">
+        <button id="sortBtn" onclick="toggleSort()">Sort by Expiry</button>
+        <span class="threshold">≤ <input type="number" id="lowStockThreshold" value="5" onchange="saveThreshold()"></span>
+        <button onclick="exportData()">Export</button>
+        <button onclick="document.getElementById('importFile').click()">Import</button>
+        <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+    </div>
+
+    <table><thead><tr id="tableHeader"></tr></thead><tbody id="inventoryBody"></tbody></table>
+
+    <div style="margin-top:40px;">
+        <h3 id="ref-title">Database</h3>
+        <div id="ref-grid" class="ref-grid"></div>
+    </div>
+</div>
+
+<script>
+    const db = [
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Arroz",
+                "en": "Rice",
+                "es": "Arroz"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Feijão",
+                "en": "Beans",
+                "es": "Frijoles"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Macarrão",
+                "en": "Pasta",
+                "es": "Pasta"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Farinha",
+                "en": "Flour",
+                "es": "Harina"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Açúcar",
+                "en": "Sugar",
+                "es": "Azúcar"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Sal",
+                "en": "Salt",
+                "es": "Sal"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Óleo de Cozinha",
+                "en": "Cooking Oil",
+                "es": "Aceite de Cocina"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Leite em Pó",
+                "en": "Powdered Milk",
+                "es": "Leche en Polvo"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Atum Enlatado",
+                "en": "Canned Tuna",
+                "es": "Atún Enlatado"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Carne Enlatada",
+                "en": "Canned Meat",
+                "es": "Carne Enlatada"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Milho Enlatado",
+                "en": "Canned Corn",
+                "es": "Maíz Enlatado"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Sopa Instantânea",
+                "en": "Instant Soup",
+                "es": "Sopa Instantánea"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Biscoitos",
+                "en": "Crackers",
+                "es": "Galletas"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Mel",
+                "en": "Honey",
+                "es": "Miel"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Café",
+                "en": "Coffee",
+                "es": "Café"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Chá",
+                "en": "Tea",
+                "es": "Té"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Frutas Secas",
+                "en": "Dried Fruit",
+                "es": "Fruta Seca"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Barras de Cereal",
+                "en": "Granola Bars",
+                "es": "Barras de Granola"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Chocolate",
+                "en": "Chocolate",
+                "es": "Chocolate"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Ovos em Pó",
+                "en": "Powdered Eggs",
+                "es": "Huevos en Polvo"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Lentilhas",
+                "en": "Lentils",
+                "es": "Lentejas"
+        },
+        {
+                "cat": {
+                        "pt": "Alimentos",
+                        "en": "Food",
+                        "es": "Alimentos"
+                },
+                "pt": "Aveia",
+                "en": "Oatmeal",
+                "es": "Avena"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Água Mineral",
+                "en": "Bottled Water",
+                "es": "Agua Embotellada"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Pastilhas de Purificação",
+                "en": "Purification Tablets",
+                "es": "Pastillas Purificadoras"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Filtro de Água Portátil",
+                "en": "Portable Water Filter",
+                "es": "Filtro de Agua Portátil"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Garrafa Térmica",
+                "en": "Thermal Bottle",
+                "es": "Botella Térmica"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Recipiente Dobrável",
+                "en": "Collapsible Container",
+                "es": "Recipiente Plegable"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Cloro para Água",
+                "en": "Water Chlorine",
+                "es": "Cloro para Agua"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Bomba de Água Manual",
+                "en": "Manual Water Pump",
+                "es": "Bomba de Agua Manual"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Saco de Água",
+                "en": "Water Bladder",
+                "es": "Bolsa de Agua"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Funil",
+                "en": "Funnel",
+                "es": "Embudo"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Vasilha Coletora de Chuva",
+                "en": "Rain Catcher Basin",
+                "es": "Recipiente para Lluvia"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Filtro de Carvão",
+                "en": "Charcoal Filter",
+                "es": "Filtro de Carbón"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Comprimidos de Iodo",
+                "en": "Iodine Tablets",
+                "es": "Tabletas de Yodo"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Mangueira de Sifão",
+                "en": "Siphon Hose",
+                "es": "Manguera de Sifón"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Balde com Tampa",
+                "en": "Bucket with Lid",
+                "es": "Cubo con Tapa"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Bidão 20L",
+                "en": "20L Jug",
+                "es": "Bidón 20L"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Filtro Estilo Lifestraw",
+                "en": "Lifestraw-style Filter",
+                "es": "Filtro Estilo Lifestraw"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Garrafa Reutilizável",
+                "en": "Reusable Bottle",
+                "es": "Botella Reutilizable"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Kit de Teste de Água",
+                "en": "Water Test Kit",
+                "es": "Kit de Prueba de Agua"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Saco Destilador Solar",
+                "en": "Solar Still Bag",
+                "es": "Bolsa Destiladora Solar"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Esponja Filtrante",
+                "en": "Filter Sponge",
+                "es": "Esponja Filtrante"
+        },
+        {
+                "cat": {
+                        "pt": "Água",
+                        "en": "Water",
+                        "es": "Agua"
+                },
+                "pt": "Caneta Purificadora UV",
+                "en": "UV Purifier Pen",
+                "es": "Bolígrafo Purificador UV"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Ataduras",
+                "en": "Bandages",
+                "es": "Vendajes"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Gaze Esterilizada",
+                "en": "Sterile Gauze",
+                "es": "Gasa Estéril"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Esparadrapo",
+                "en": "Adhesive Tape",
+                "es": "Cinta Adhesiva"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Antisséptico",
+                "en": "Antiseptic",
+                "es": "Antiséptico"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Analgésico",
+                "en": "Painkiller",
+                "es": "Analgésico"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Antibiótico",
+                "en": "Antibiotic",
+                "es": "Antibiótico"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Termômetro",
+                "en": "Thermometer",
+                "es": "Termómetro"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Luvas Cirúrgicas",
+                "en": "Surgical Gloves",
+                "es": "Guantes Quirúrgicos"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Tesoura Médica",
+                "en": "Medical Scissors",
+                "es": "Tijeras Médicas"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Pinça",
+                "en": "Tweezers",
+                "es": "Pinzas"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Soro Fisiológico",
+                "en": "Saline Solution",
+                "es": "Solución Salina"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Anti-histamínico",
+                "en": "Antihistamine",
+                "es": "Antihistamínico"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Pomada para Queimadura",
+                "en": "Burn Ointment",
+                "es": "Pomada para Quemaduras"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Colar Cervical",
+                "en": "Cervical Collar",
+                "es": "Collarín Cervical"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Tala",
+                "en": "Splint",
+                "es": "Tablilla"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Torniquete",
+                "en": "Tourniquet",
+                "es": "Torniquete"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Soro Antiofídico",
+                "en": "Antivenom",
+                "es": "Antiveneno"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Remédio para Diarreia",
+                "en": "Anti-diarrheal Medicine",
+                "es": "Antidiarreico"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Curativo Adesivo",
+                "en": "Adhesive Bandage",
+                "es": "Tirita"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Máscara Cirúrgica",
+                "en": "Surgical Mask",
+                "es": "Mascarilla Quirúrgica"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Kit de Sutura",
+                "en": "Suture Kit",
+                "es": "Kit de Sutura"
+        },
+        {
+                "cat": {
+                        "pt": "Médico",
+                        "en": "Medical",
+                        "es": "Médico"
+                },
+                "pt": "Repelente de Insetos",
+                "en": "Insect Repellent",
+                "es": "Repelente de Insectos"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Pilhas",
+                "en": "Batteries",
+                "es": "Pilas"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Lanterna",
+                "en": "Flashlight",
+                "es": "Linterna"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Painel Solar Portátil",
+                "en": "Portable Solar Panel",
+                "es": "Panel Solar Portátil"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Gerador Manual",
+                "en": "Manual Generator",
+                "es": "Generador Manual"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Power Bank",
+                "en": "Power Bank",
+                "es": "Batería Externa"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Velas",
+                "en": "Candles",
+                "es": "Velas"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Lampião a Gás",
+                "en": "Gas Lantern",
+                "es": "Farol de Gas"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Carregador Solar",
+                "en": "Solar Charger",
+                "es": "Cargador Solar"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Cabo de Extensão",
+                "en": "Extension Cable",
+                "es": "Cable de Extensión"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Bateria Recarregável",
+                "en": "Rechargeable Battery",
+                "es": "Batería Recargable"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Inversor de Energia",
+                "en": "Power Inverter",
+                "es": "Inversor de Energía"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Lanterna de Manivela",
+                "en": "Hand Crank Flashlight",
+                "es": "Linterna de Manivela"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Lâmpada LED",
+                "en": "LED Lamp",
+                "es": "Lámpara LED"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Pilha Alcalina",
+                "en": "Alkaline Battery",
+                "es": "Pila Alcalina"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Carregador Veicular",
+                "en": "Car Charger",
+                "es": "Cargador para Auto"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Rádio a Manivela",
+                "en": "Crank Radio",
+                "es": "Radio de Manivela"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Gerador a Combustível",
+                "en": "Fuel Generator",
+                "es": "Generador de Combustible"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Kit de Energia Solar",
+                "en": "Solar Power Kit",
+                "es": "Kit de Energía Solar"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Bateria de Carro",
+                "en": "Car Battery",
+                "es": "Batería de Auto"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Fios e Conectores",
+                "en": "Wires and Connectors",
+                "es": "Cables y Conectores"
+        },
+        {
+                "cat": {
+                        "pt": "Energia",
+                        "en": "Power",
+                        "es": "Energía"
+                },
+                "pt": "Lâmpada de Emergência",
+                "en": "Emergency Lamp",
+                "es": "Lámpara de Emergencia"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Canivete",
+                "en": "Multitool",
+                "es": "Navaja"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Martelo",
+                "en": "Hammer",
+                "es": "Martillo"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Machado",
+                "en": "Axe",
+                "es": "Hacha"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Pá",
+                "en": "Shovel",
+                "es": "Pala"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Alicate",
+                "en": "Pliers",
+                "es": "Alicate"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Chave de Fenda",
+                "en": "Screwdriver",
+                "es": "Destornillador"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Serra Manual",
+                "en": "Hand Saw",
+                "es": "Sierra Manual"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Corda",
+                "en": "Rope",
+                "es": "Cuerda"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Fita Adesiva Industrial",
+                "en": "Duct Tape",
+                "es": "Cinta Adhesiva Industrial"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Arame",
+                "en": "Wire",
+                "es": "Alambre"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Furadeira Manual",
+                "en": "Manual Drill",
+                "es": "Taladro Manual"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Trena",
+                "en": "Tape Measure",
+                "es": "Cinta Métrica"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Lima",
+                "en": "File",
+                "es": "Lima"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Chave Inglesa",
+                "en": "Wrench",
+                "es": "Llave Inglesa"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Picareta",
+                "en": "Pickaxe",
+                "es": "Pico"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Tesoura de Poda",
+                "en": "Pruning Shears",
+                "es": "Tijeras de Podar"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Kit de Reparo",
+                "en": "Repair Kit",
+                "es": "Kit de Reparación"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Pregos",
+                "en": "Nails",
+                "es": "Clavos"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Parafusos",
+                "en": "Screws",
+                "es": "Tornillos"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Lona",
+                "en": "Tarp",
+                "es": "Lona"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Cinto de Ferramentas",
+                "en": "Tool Belt",
+                "es": "Cinturón de Herramientas"
+        },
+        {
+                "cat": {
+                        "pt": "Ferramentas",
+                        "en": "Tools",
+                        "es": "Herramientas"
+                },
+                "pt": "Faca de Sobrevivência",
+                "en": "Survival Knife",
+                "es": "Cuchillo de Supervivencia"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Barraca",
+                "en": "Tent",
+                "es": "Tienda"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Saco de Dormir",
+                "en": "Sleeping Bag",
+                "es": "Saco de Dormir"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Cobertor Térmico",
+                "en": "Thermal Blanket",
+                "es": "Manta Térmica"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Colchonete",
+                "en": "Sleeping Pad",
+                "es": "Colchoneta"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Lona Impermeável",
+                "en": "Waterproof Tarp",
+                "es": "Lona Impermeable"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Rede de Dormir",
+                "en": "Hammock",
+                "es": "Hamaca"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Estacas",
+                "en": "Tent Stakes",
+                "es": "Estacas"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Travesseiro Inflável",
+                "en": "Inflatable Pillow",
+                "es": "Almohada Inflable"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Cobertor de Emergência",
+                "en": "Emergency Blanket",
+                "es": "Manta de Emergencia"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Mosquiteiro",
+                "en": "Mosquito Net",
+                "es": "Mosquitero"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Capa de Chuva",
+                "en": "Rain Poncho",
+                "es": "Poncho Impermeable"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Tenda Improvisada",
+                "en": "Improvised Shelter",
+                "es": "Refugio Improvisado"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Saco Bivy",
+                "en": "Bivy Sack",
+                "es": "Saco Bivy"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Cordas de Fixação",
+                "en": "Guy Lines",
+                "es": "Cuerdas de Fijación"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Piso para Barraca",
+                "en": "Tent Footprint",
+                "es": "Suelo para Tienda"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Abrigo Inflável",
+                "en": "Inflatable Shelter",
+                "es": "Refugio Inflable"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Lona de Plástico",
+                "en": "Plastic Sheeting",
+                "es": "Lámina Plástica"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Aquecedor Portátil",
+                "en": "Portable Heater",
+                "es": "Calentador Portátil"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Esteira de Isolamento",
+                "en": "Insulation Mat",
+                "es": "Esterilla Aislante"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Barraca tipo Sino",
+                "en": "Bell Tent",
+                "es": "Tienda Campana"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Lonas de Reforço",
+                "en": "Reinforcement Tarps",
+                "es": "Lonas de Refuerzo"
+        },
+        {
+                "cat": {
+                        "pt": "Abrigo",
+                        "en": "Shelter",
+                        "es": "Refugio"
+                },
+                "pt": "Kit de Montagem",
+                "en": "Setup Kit",
+                "es": "Kit de Montaje"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Isqueiro",
+                "en": "Lighter",
+                "es": "Encendedor"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Fósforos",
+                "en": "Matches",
+                "es": "Cerillos"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Pederneira",
+                "en": "Fire Starter Flint",
+                "es": "Pedernal"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Álcool em Gel",
+                "en": "Gel Alcohol",
+                "es": "Alcohol en Gel"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Lenha",
+                "en": "Firewood",
+                "es": "Leña"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Carvão",
+                "en": "Charcoal",
+                "es": "Carbón"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Lã de Aço",
+                "en": "Steel Wool",
+                "es": "Lana de Acero"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Vela de Emergência",
+                "en": "Emergency Candle",
+                "es": "Vela de Emergencia"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Fogareiro Portátil",
+                "en": "Portable Stove",
+                "es": "Estufa Portátil"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Gás de Cozinha",
+                "en": "Cooking Gas",
+                "es": "Gas de Cocina"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Acendedor Elétrico",
+                "en": "Electric Lighter",
+                "es": "Encendedor Eléctrico"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Isqueiro à Prova de Vento",
+                "en": "Windproof Lighter",
+                "es": "Encendedor a Prueba de Viento"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Pastilhas de Combustível",
+                "en": "Fuel Tablets",
+                "es": "Pastillas de Combustible"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Bastão de Magnésio",
+                "en": "Magnesium Rod",
+                "es": "Barra de Magnesio"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Pavio",
+                "en": "Wick",
+                "es": "Mecha"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Algodão Inflamável",
+                "en": "Flammable Cotton",
+                "es": "Algodón Inflamable"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Fósforos à Prova de Água",
+                "en": "Waterproof Matches",
+                "es": "Cerillos a Prueba de Agua"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Lata de Combustível",
+                "en": "Fuel Canister",
+                "es": "Lata de Combustible"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Grelha Portátil",
+                "en": "Portable Grill",
+                "es": "Parrilla Portátil"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Tocha",
+                "en": "Torch",
+                "es": "Antorcha"
+        },
+        {
+                "cat": {
+                        "pt": "Fogo",
+                        "en": "Fire",
+                        "es": "Fuego"
+                },
+                "pt": "Acendedor Piezoelétrico",
+                "en": "Piezo Lighter",
+                "es": "Encendedor Piezoeléctrico"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Sabonete",
+                "en": "Soap",
+                "es": "Jabón"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Pasta de Dente",
+                "en": "Toothpaste",
+                "es": "Pasta de Dientes"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Escova de Dente",
+                "en": "Toothbrush",
+                "es": "Cepillo de Dientes"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Papel Higiênico",
+                "en": "Toilet Paper",
+                "es": "Papel Higiénico"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Shampoo",
+                "en": "Shampoo",
+                "es": "Champú"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Toalha",
+                "en": "Towel",
+                "es": "Toalla"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Desodorante",
+                "en": "Deodorant",
+                "es": "Desodorante"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Lenços Umedecidos",
+                "en": "Wet Wipes",
+                "es": "Toallitas Húmedas"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Absorvente Higiênico",
+                "en": "Sanitary Pad",
+                "es": "Toalla Sanitaria"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Sabão em Barra",
+                "en": "Bar Soap",
+                "es": "Jabón en Barra"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Álcool Gel",
+                "en": "Hand Sanitizer",
+                "es": "Gel Antibacterial"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Lâmina de Barbear",
+                "en": "Razor",
+                "es": "Maquinilla de Afeitar"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Cortador de Unha",
+                "en": "Nail Clipper",
+                "es": "Cortaúñas"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Pente",
+                "en": "Comb",
+                "es": "Peine"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Fralda",
+                "en": "Diaper",
+                "es": "Pañal"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Saco de Lixo",
+                "en": "Trash Bags",
+                "es": "Bolsas de Basura"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Detergente",
+                "en": "Detergent",
+                "es": "Detergente"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Esponja de Banho",
+                "en": "Bath Sponge",
+                "es": "Esponja de Baño"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Sabão de Roupa",
+                "en": "Laundry Soap",
+                "es": "Jabón de Ropa"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Kit Dental",
+                "en": "Dental Kit",
+                "es": "Kit Dental"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Pá de Higiene",
+                "en": "Hygiene Trowel",
+                "es": "Pala de Higiene"
+        },
+        {
+                "cat": {
+                        "pt": "Higiene",
+                        "en": "Hygiene",
+                        "es": "Higiene"
+                },
+                "pt": "Lenço de Papel",
+                "en": "Paper Tissue",
+                "es": "Pañuelo de Papel"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Rádio",
+                "en": "Radio",
+                "es": "Radio"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Rádio Comunicador",
+                "en": "Walkie Talkie",
+                "es": "Radio Walkie Talkie"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Apito",
+                "en": "Whistle",
+                "es": "Silbato"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Sinalizador",
+                "en": "Flare",
+                "es": "Bengala"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Espelho de Sinalização",
+                "en": "Signal Mirror",
+                "es": "Espejo de Señales"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Mapa",
+                "en": "Map",
+                "es": "Mapa"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Bússola",
+                "en": "Compass",
+                "es": "Brújula"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Telefone Satelital",
+                "en": "Satellite Phone",
+                "es": "Teléfono Satelital"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Antena Portátil",
+                "en": "Portable Antenna",
+                "es": "Antena Portátil"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Carregador de Rádio",
+                "en": "Radio Charger",
+                "es": "Cargador de Radio"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Bandeira de Sinalização",
+                "en": "Signal Flag",
+                "es": "Bandera de Señalización"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Caderno e Lápis",
+                "en": "Notebook and Pencil",
+                "es": "Cuaderno y Lápiz"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Megafone",
+                "en": "Megaphone",
+                "es": "Megáfono"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Rastreador GPS",
+                "en": "GPS Tracker",
+                "es": "Rastreador GPS"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Guia de Código Morse",
+                "en": "Morse Code Guide",
+                "es": "Guía de Código Morse"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Cartão SIM Reserva",
+                "en": "Backup SIM Card",
+                "es": "Tarjeta SIM de Respaldo"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Painel de Sinalização",
+                "en": "Signal Panel",
+                "es": "Panel de Señalización"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Luz Estroboscópica",
+                "en": "Strobe Light",
+                "es": "Luz Estroboscópica"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Rádio AM/FM",
+                "en": "AM/FM Radio",
+                "es": "Radio AM/FM"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Power Bank para Rádio",
+                "en": "Radio Power Bank",
+                "es": "Batería para Radio"
+        },
+        {
+                "cat": {
+                        "pt": "Comunicação",
+                        "en": "Communication",
+                        "es": "Comunicación"
+                },
+                "pt": "Lista de Contatos de Emergência",
+                "en": "Emergency Contact List",
+                "es": "Lista de Contactos de Emergencia"
+        }
+];
+
+    const dict = {
+        pt: { head: ["Item", "Qtd", "Local", "Categoria", "Validade", "Status", "Ação"], status: ["Bom", "Vence em breve", "Vencido"], ref: "Banco de Dados",
+              search: "Buscar...", sortAsc: "Validade ↑", sortDesc: "Validade ↓", sortOff: "Ordenar por Validade",
+              exportBtn: "Exportar", importBtn: "Importar", catBlank: "-- Categoria --",
+              confirmDelete: "Tem certeza que deseja excluir este item?", low: "baixo",
+              dash: { total: "Itens Totais", expired: "Vencidos", soon: "Vencendo em 30 dias", low: "Estoque Baixo" } },
+        en: { head: ["Item", "Qty", "Loc", "Category", "Expiry", "Status", "Action"], status: ["Good", "Expiring soon", "Expired"], ref: "Database",
+              search: "Search...", sortAsc: "Expiry ↑", sortDesc: "Expiry ↓", sortOff: "Sort by Expiry",
+              exportBtn: "Export", importBtn: "Import", catBlank: "-- Category --",
+              confirmDelete: "Are you sure you want to delete this item?", low: "low",
+              dash: { total: "Total Items", expired: "Expired", soon: "Expiring in 30 days", low: "Low Stock" } },
+        es: { head: ["Ítem", "Cant", "Ubic", "Categoría", "Caducidad", "Estado", "Acción"], status: ["Bueno", "Vence pronto", "Vencido"], ref: "Base de Datos",
+              search: "Buscar...", sortAsc: "Caducidad ↑", sortDesc: "Caducidad ↓", sortOff: "Ordenar por Caducidad",
+              exportBtn: "Exportar", importBtn: "Importar", catBlank: "-- Categoría --",
+              confirmDelete: "¿Seguro que deseas eliminar este ítem?", low: "bajo",
+              dash: { total: "Ítems Totales", expired: "Vencidos", soon: "Vencen en 30 días", low: "Stock Bajo" } }
+    };
+
+    let sortOrder = null; // null | 'asc' | 'desc'
+
+    function toggleSort() {
+        sortOrder = sortOrder === null ? 'asc' : (sortOrder === 'asc' ? 'desc' : null);
+        render();
+    }
+
+    function saveThreshold() {
+        localStorage.setItem('lowStockThreshold', document.getElementById('lowStockThreshold').value);
+        render();
+    }
+
+    function exportData() {
+        const blob = new Blob([JSON.stringify(inventory, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'stock_guardian_backup.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function importData(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = JSON.parse(e.target.result);
+                if (Array.isArray(data)) {
+                    inventory = data;
+                    render();
+                }
+            } catch (err) {
+                console.error('Invalid file', err);
+            }
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+    }
+
+    function deleteItem(idx) {
+        const lang = document.getElementById('langSelect').value;
+        if (confirm(dict[lang].confirmDelete)) {
+            inventory.splice(idx, 1);
+            render();
+        }
+    }
+
+    let inventory = JSON.parse(localStorage.getItem('myStock')) || [];
+
+    function saveItem() {
+        const idx = document.getElementById('editIndex').value;
+        const item = {
+            name: document.getElementById('itemName').value,
+            qty: document.getElementById('itemQty').value,
+            loc: document.getElementById('itemLoc').value,
+            expiry: document.getElementById('expiryDate').value,
+            cat: document.getElementById('itemCat').value
+        };
+        if(!item.name || !item.expiry) return;
+        if(idx == -1) inventory.push(item); else inventory[idx] = item;
+        document.getElementById('editIndex').value = -1;
+        document.getElementById('itemName').value = '';
+        document.getElementById('itemQty').value = '';
+        document.getElementById('itemLoc').value = '';
+        document.getElementById('expiryDate').value = '';
+        document.getElementById('itemCat').value = '';
+        render();
+    }
+
+    function editItem(idx) {
+        const i = inventory[idx];
+        document.getElementById('itemName').value = i.name;
+        document.getElementById('itemQty').value = i.qty;
+        document.getElementById('itemLoc').value = i.loc;
+        document.getElementById('expiryDate').value = i.expiry;
+        document.getElementById('itemCat').value = i.cat || '';
+        document.getElementById('editIndex').value = idx;
+    }
+
+    function render() {
+        const lang = document.getElementById('langSelect').value;
+        const t = dict[lang];
+        document.getElementById('tableHeader').innerHTML = t.head.map(h => `<th>${h}</th>`).join('');
+        document.getElementById('ref-title').innerText = t.ref;
+
+        const refGrid = document.getElementById('ref-grid');
+        const cats = [...new Set(db.map(i => i.cat[lang]))];
+        refGrid.innerHTML = cats.map(c => `
+            <div class="cat-box"><strong>${c}</strong>
+                ${db.filter(i => i.cat[lang] === c).map(i => `<span class="item-pill" onclick="document.getElementById('itemName').value='${i[lang]}'; document.getElementById('itemCat').value='${c}'">+ ${i[lang]}</span>`).join('')}
+            </div>
+        `).join('');
+
+        // Populate category select, preserving current selection if possible
+        const catSelect = document.getElementById('itemCat');
+        const currentCatVal = catSelect.value;
+        catSelect.innerHTML = `<option value="">${t.catBlank}</option>` + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+        if (cats.includes(currentCatVal)) catSelect.value = currentCatVal;
+
+        // Restore sort button label
+        document.getElementById('sortBtn').innerText = sortOrder === 'asc' ? t.sortAsc : (sortOrder === 'desc' ? t.sortDesc : t.sortOff);
+        document.getElementById('searchBox').placeholder = t.search;
+
+        const lowThreshold = parseFloat(localStorage.getItem('lowStockThreshold')) || 5;
+        document.getElementById('lowStockThreshold').value = lowThreshold;
+
+        const today = new Date().toISOString().split('T')[0];
+        const soonDate = new Date();
+        soonDate.setDate(soonDate.getDate() + 30);
+        const soonStr = soonDate.toISOString().split('T')[0];
+
+        function statusOf(expiry) {
+            if (expiry < today) return 2; // expired
+            if (expiry <= soonStr) return 1; // soon
+            return 0; // ok
+        }
+        const statusClass = ['status-ok', 'status-soon', 'status-exp'];
+
+        // Dashboard stats (based on full inventory, not filtered)
+        const totalItems = inventory.length;
+        const expiredCount = inventory.filter(i => statusOf(i.expiry) === 2).length;
+        const soonCount = inventory.filter(i => statusOf(i.expiry) === 1).length;
+        const lowCount = inventory.filter(i => parseFloat(i.qty) <= lowThreshold).length;
+        document.getElementById('dashboard').innerHTML = `
+            <div class="stat-card"><span class="num">${totalItems}</span><span class="label">${t.dash.total}</span></div>
+            <div class="stat-card"><span class="num" style="color:var(--danger)">${expiredCount}</span><span class="label">${t.dash.expired}</span></div>
+            <div class="stat-card"><span class="num" style="color:var(--edit)">${soonCount}</span><span class="label">${t.dash.soon}</span></div>
+            <div class="stat-card"><span class="num" style="color:var(--edit)">${lowCount}</span><span class="label">${t.dash.low}</span></div>
+        `;
+
+        // Build searchable/sortable view while keeping original indices for actions
+        const query = (document.getElementById('searchBox').value || '').toLowerCase();
+        let rows = inventory.map((item, idx) => ({ item, idx })).filter(({ item }) => {
+            if (!query) return true;
+            return (item.name || '').toLowerCase().includes(query) ||
+                   (item.loc || '').toLowerCase().includes(query) ||
+                   (item.cat || '').toLowerCase().includes(query);
+        });
+        if (sortOrder === 'asc') rows.sort((a, b) => a.item.expiry.localeCompare(b.item.expiry));
+        if (sortOrder === 'desc') rows.sort((a, b) => b.item.expiry.localeCompare(a.item.expiry));
+
+        document.getElementById('inventoryBody').innerHTML = rows.map(({ item: i, idx }) => {
+            const s = statusOf(i.expiry);
+            const isLow = parseFloat(i.qty) <= lowThreshold;
+            return `
+            <tr><td>${i.name}</td><td>${i.qty}${isLow ? `<span class="low-badge">▼ ${t.low}</span>` : ''}</td><td>${i.loc}</td><td>${i.cat || ''}</td><td>${i.expiry}</td>
+            <td class="${statusClass[s]}">${t.status[s]}</td>
+            <td>
+                <button onclick="editItem(${idx})" style="background:var(--edit)">✎</button>
+                <button onclick="deleteItem(${idx})" style="background:var(--danger)">X</button>
+            </td></tr>`;
+        }).join('');
+        localStorage.setItem('myStock', JSON.stringify(inventory));
+    }
+    render();
+</script>
+</body>
+</html>
