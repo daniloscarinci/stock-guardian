@@ -6,6 +6,7 @@
  * which cannot be focused or activated from a keyboard at all.
  */
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { cx } from './cx';
 import styles from './primitives.module.css';
 
 export type Tone = 'critical' | 'warning' | 'ok' | 'info' | 'neutral';
@@ -29,16 +30,14 @@ export function Button({
   children,
   ...rest
 }: ButtonProps) {
-  const classes = [
+  const classes = cx(
     styles.button,
     styles[variant],
-    size === 'small' ? styles.small : '',
-    iconOnly ? (size === 'small' ? styles.smallIcon : styles.iconOnly) : '',
-    fullWidth ? styles.fullWidth : '',
-    className ?? '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+    size === 'small' && styles.small,
+    iconOnly && (size === 'small' ? styles.smallIcon : styles.iconOnly),
+    fullWidth && styles.fullWidth,
+    className,
+  );
 
   return (
     <button type={type} className={classes} {...rest}>
@@ -67,7 +66,7 @@ export function Badge({
   readonly title?: string | undefined;
 }) {
   return (
-    <span className={`${styles.badge} ${styles[tone]}`} title={title}>
+    <span className={cx(styles.badge, styles[tone])} title={title}>
       {glyph !== undefined && (
         <span className={styles.badgeGlyph} aria-hidden="true">
           {glyph}
@@ -98,7 +97,7 @@ export function Card({
   readonly 'aria-labelledby'?: string | undefined;
 }) {
   return (
-    <Element className={`${styles.card} ${className ?? ''}`} {...rest}>
+    <Element className={cx(styles.card, className)} {...rest}>
       {(title !== undefined || actions !== undefined) && (
         <header className={styles.cardHeader}>
           <div>
@@ -153,7 +152,7 @@ export function Stat({
     return (
       <button
         type="button"
-        className={`${styles.stat} ${styles.statInteractive} ${toneClass}`}
+        className={cx(styles.stat, styles.statInteractive, toneClass)}
         onClick={onClick}
         aria-label={ariaLabel}
       >
@@ -162,7 +161,7 @@ export function Stat({
     );
   }
 
-  return <div className={`${styles.stat} ${toneClass}`}>{content}</div>;
+  return <div className={cx(styles.stat, toneClass)}>{content}</div>;
 }
 
 /* ---- Empty state ---------------------------------------------------------- */
@@ -210,7 +209,7 @@ export function Alert({
   readonly role?: 'status' | 'alert' | undefined;
 }) {
   return (
-    <div className={`${styles.alert} ${styles[tone]}`} role={role}>
+    <div className={cx(styles.alert, styles[tone])} role={role}>
       {title !== undefined && <p className={styles.alertTitle}>{title}</p>}
       {children}
     </div>

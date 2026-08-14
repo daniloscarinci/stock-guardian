@@ -23,6 +23,7 @@ import {
   SettingsIcon,
   type IconComponent,
 } from '../components/ui/icons';
+import { cx } from '../components/ui/cx';
 import styles from './Layout.module.css';
 
 interface NavEntry {
@@ -88,7 +89,7 @@ export function Layout({ attentionCount }: { readonly attentionCount: number }) 
       )}
 
       <nav
-        className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ''}`}
+        className={cx(styles.sidebar, menuOpen && styles.sidebarOpen)}
         aria-label={t('a11y.mainNavigation')}
       >
         <div className={styles.brand}>
@@ -108,7 +109,7 @@ export function Layout({ attentionCount }: { readonly attentionCount: number }) 
                 to={entry.to}
                 end={entry.to === '/'}
                 className={({ isActive }) =>
-                  `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
+                  cx(styles.navLink, isActive && styles.navLinkActive)
                 }
               >
                 <span className={styles.navIcon}>
@@ -178,28 +179,28 @@ export function Layout({ attentionCount }: { readonly attentionCount: number }) 
           <Button
             variant="primary"
             onClick={() => {
-              navigate('/inventory?new=1');
+              void navigate('/inventory?new=1');
             }}
           >
             + {t('common.add')}
           </Button>
           <Button
             onClick={() => {
-              navigate('/inventory');
+              void navigate('/inventory');
             }}
           >
             {t('common.search')}
           </Button>
           <Button
             onClick={() => {
-              navigate('/expiration');
+              void navigate('/expiration');
             }}
           >
             {t('expiry.label')}
           </Button>
           <Button
             onClick={() => {
-              navigate('/replenishment');
+              void navigate('/replenishment');
             }}
           >
             {t('replenishment.title')}

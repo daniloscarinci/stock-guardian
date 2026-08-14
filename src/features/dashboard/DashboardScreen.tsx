@@ -71,7 +71,7 @@ export function DashboardScreen() {
   }, [analysisItems.data, itemContext, settings.preparednessCategoryIds]);
 
   const goToInventory = (query: string) => {
-    navigate(`/inventory${query}`);
+    void navigate(`/inventory${query}`);
   };
 
   if (stats.loading && stats.data === undefined) {
@@ -113,14 +113,14 @@ export function DashboardScreen() {
               </Button>
               <Button
                 onClick={() => {
-                  navigate('/catalog');
+                  void navigate('/catalog');
                 }}
               >
                 {t('dashboard.browseCatalog')}
               </Button>
               <Button
                 onClick={() => {
-                  navigate('/settings');
+                  void navigate('/settings');
                 }}
               >
                 {t('dashboard.importExisting')}
@@ -221,7 +221,7 @@ export function DashboardScreen() {
           value={numberFormat.format(s.expiringToday + s.expiringSoon)}
           tone={s.expiringToday + s.expiringSoon > 0 ? 'warning' : undefined}
           onClick={() => {
-            navigate('/expiration');
+            void navigate('/expiration');
           }}
         />
         <StatButton
@@ -229,7 +229,7 @@ export function DashboardScreen() {
           value={numberFormat.format(s.critical + s.low)}
           tone={s.critical > 0 ? 'critical' : s.low > 0 ? 'warning' : undefined}
           onClick={() => {
-            navigate('/replenishment');
+            void navigate('/replenishment');
           }}
         />
         <StatButton
@@ -244,7 +244,7 @@ export function DashboardScreen() {
           label={t('dashboard.categoriesUsed')}
           value={numberFormat.format(s.categoriesUsed)}
           onClick={() => {
-            navigate('/categories');
+            void navigate('/categories');
           }}
         />
         <StatButton
@@ -296,7 +296,7 @@ export function DashboardScreen() {
           report={preparedness}
           categoryName={categoryName}
           onSeeAll={() => {
-            navigate('/replenishment');
+            void navigate('/replenishment');
           }}
         />
       </div>

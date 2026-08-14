@@ -13,6 +13,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
+import { cx } from './cx';
 import styles from './Field.module.css';
 
 interface FieldShellProps {
@@ -72,7 +73,7 @@ export function TextField({ label, help, error, optionalLabel, ...rest }: TextFi
       {({ id, describedBy, invalid }) => (
         <input
           id={id}
-          className={`${styles.control} ${invalid ? styles.invalid : ''}`}
+          className={cx(styles.control, invalid && styles.invalid)}
           aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
           {...rest}
@@ -104,7 +105,7 @@ export function SelectField({
       {({ id, describedBy, invalid }) => (
         <select
           id={id}
-          className={`${styles.select} ${invalid ? styles.invalid : ''}`}
+          className={cx(styles.select, invalid && styles.invalid)}
           aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
           {...rest}
@@ -136,7 +137,7 @@ export function TextAreaField({
       {({ id, describedBy, invalid }) => (
         <textarea
           id={id}
-          className={`${styles.textarea} ${invalid ? styles.invalid : ''}`}
+          className={cx(styles.textarea, invalid && styles.invalid)}
           aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
           {...rest}
@@ -161,7 +162,7 @@ export function OptionChip({
   readonly children: ReactNode;
 }) {
   return (
-    <label className={`${styles.option} ${checked ? styles.optionChecked : ''}`}>
+    <label className={cx(styles.option, checked && styles.optionChecked)}>
       <input
         type={type}
         name={name}

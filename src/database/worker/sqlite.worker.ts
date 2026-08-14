@@ -56,6 +56,11 @@ interface PoolUtil {
   reserveMinimumCapacity: (minCapacity: number) => Promise<number>;
 }
 
+/** PRAGMA results are text; anything else is not something to stringify. */
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
+}
+
 let state: OpenState | undefined;
 
 function requireOpen(): OpenState {
@@ -103,7 +108,7 @@ async function open(filename: string): Promise<DatabaseDiagnostics> {
   // WAL is impossible on this VFS - it implements no xShm* methods - and
   // `PRAGMA journal_mode = WAL` fails *silently* rather than erroring. Read the
   // mode back so a future edit cannot quietly cost us crash safety.
-  const journalMode = String(db.selectValue('PRAGMA journal_mode') ?? '').toLowerCase();
+  const journalMode = asText(db.selectValue('PRAGMA journal_mode')).toLowerCase();
   if (journalMode !== 'truncate') {
     db.close();
     throw new Error(
@@ -121,12 +126,12 @@ function diagnostics(): DatabaseDiagnostics {
   return {
     sqliteVersion: sqlite3.version.libVersion,
     vfsName: poolUtil.vfsName,
-    journalMode: String(db.selectValue('PRAGMA journal_mode') ?? ''),
+    journalMode: asText(db.selectValue('PRAGMA journal_mode')),
     foreignKeys: db.selectValue('PRAGMA foreign_keys') === 1,
     // quick_check skips the expensive cross-index verification; it is fast
     // enough to run on every boot, which is what makes corruption detectable
     // before the user has a chance to write on top of it.
-    integrity: String(db.selectValue('PRAGMA quick_check(1)') ?? 'unknown'),
+    integrity: asText(db.selectValue('PRAGMA quick_check(1)')) || 'unknown',
     poolCapacity: Number(poolUtil.getCapacity()),
     poolFileCount: Number(poolUtil.getFileCount()),
     pageCount: Number(db.selectValue('PRAGMA page_count') ?? 0),

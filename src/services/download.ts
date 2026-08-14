@@ -55,7 +55,17 @@ export function readFileAsText(file: File, maxBytes: number): Promise<string> {
  */
 export function csvField(value: unknown): string {
   if (value === null || value === undefined) return '';
-  const text = String(value);
+
+  // Narrowed rather than `String(value)`: an object would otherwise become the
+  // literal text "[object Object]" in an exported spreadsheet, which looks like
+  // data and is not.
+  const text =
+    typeof value === 'string'
+      ? value
+      : typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint'
+        ? String(value)
+        : JSON.stringify(value);
+
   const guarded = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
   return /[",\n\r]/.test(guarded) ? `"${guarded.replace(/"/g, '""')}"` : guarded;
 }
@@ -63,6 +73,8 @@ export function csvField(value: unknown): string {
 export function toCsv(headers: readonly string[], rows: readonly (readonly unknown[])[]): string {
   const lines = [headers.map(csvField).join(',')];
   for (const row of rows) lines.push(row.map(csvField).join(','));
-  // A BOM so Excel opens UTF-8 correctly - without it, "Água" arrives as "Ãgua".
-  return `﻿${lines.join('\r\n')}\r\n`;
+  // A byte-order mark, so Excel opens the file as UTF-8. Without it "Água"
+  // arrives as "Ãgua". Written as an escape because the literal character is
+  // invisible in an editor and looks like a stray byte.
+  return `\uFEFF${lines.join('\r\n')}\r\n`;
 }

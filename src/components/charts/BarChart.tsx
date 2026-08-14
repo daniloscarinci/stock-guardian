@@ -17,6 +17,7 @@
  * alone and the chart doubles as the table view.
  */
 import type { ReactNode } from 'react';
+import { cx } from '../ui/cx';
 import styles from './BarChart.module.css';
 
 export interface BarDatum {
@@ -47,7 +48,7 @@ function Row({
       {showSwatch ? (
         <span className={styles.labelWithSwatch}>
           <span className={styles.swatch} style={{ background: color }} aria-hidden="true" />
-          <span className={`${styles.label} ${styles.labelText}`} title={datum.label}>
+          <span className={cx(styles.label, styles.labelText)} title={datum.label}>
             {datum.label}
           </span>
         </span>

@@ -9,6 +9,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { Button } from './primitives';
 import { CloseIcon } from './icons';
+import { cx } from './cx';
 import styles from './Dialog.module.css';
 
 export interface DialogProps {
@@ -62,7 +63,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      className={`${styles.dialog} ${wide ? styles.wide : ''}`}
+      className={cx(styles.dialog, wide && styles.wide)}
       aria-labelledby={titleId}
       aria-describedby={description === undefined ? undefined : descriptionId}
       // Clicking the backdrop closes: the click lands on the dialog element

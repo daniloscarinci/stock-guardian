@@ -24,8 +24,18 @@ export interface ExportOptions {
   readonly includeTransactions?: boolean;
 }
 
+/**
+ * Narrows a column value to text for the backup.
+ *
+ * Narrowed rather than `String(value)`: a BLOB column would otherwise become the
+ * literal text "[object Object]" in the backup file, which looks like data and
+ * would restore as data.
+ */
 function nullable(value: unknown): string | null {
-  return value === null || value === undefined ? null : String(value);
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return null;
 }
 
 export async function buildBackup(
