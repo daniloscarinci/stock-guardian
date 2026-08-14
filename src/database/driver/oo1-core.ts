@@ -40,16 +40,32 @@ function narrowRow(row: Record<string, unknown>): SqlRow {
 }
 
 /**
- * `oo1` accepts arrays and objects for binding, but an *empty* array is treated
- * as "no bindings", and passing `undefined` for a statement that has none is
- * safest. Normalize to keep behavior identical across call sites.
+ * Normalizes bindings before they reach the engine.
+ *
+ * Two sharp edges are smoothed here so no call site has to remember them:
+ *
+ *   - An empty array or object means "no bindings"; passing one through makes
+ *     the engine complain about a statement that takes no parameters.
+ *   - Named bindings must arrive with their sigil (`:name`). Writing `{ id }`
+ *     instead of `{ ':id': ... }` is the natural thing to do and fails at
+ *     runtime with "Invalid bind() parameter name". Keys are prefixed with `:`
+ *     unless they already carry `:`, `@` or `$`.
  */
 function normalizeParams(params?: BindParams): BindParams | undefined {
   if (params === undefined) return undefined;
+
   if (Array.isArray(params)) return params.length === 0 ? undefined : params;
-  return Object.keys(params as Record<string, SqlValue>).length === 0
-    ? undefined
-    : (params as BindParams);
+
+  const named = params as Record<string, SqlValue>;
+  const keys = Object.keys(named);
+  if (keys.length === 0) return undefined;
+
+  const prefixed: Record<string, SqlValue> = {};
+  for (const key of keys) {
+    const sigil = key.charAt(0);
+    prefixed[sigil === ':' || sigil === '@' || sigil === '$' ? key : `:${key}`] = named[key] as SqlValue;
+  }
+  return prefixed;
 }
 
 export interface Oo1Core {

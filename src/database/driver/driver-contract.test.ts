@@ -60,12 +60,27 @@ export function describeDriverContract(name: string, makeDriver: () => Promise<S
         expect(await db.selectValue<number>('SELECT qty FROM item WHERE id = ?', ['a'])).toBe(7);
       });
 
-      it('binds named parameters', async () => {
+      it('binds named parameters written with the colon', async () => {
         await insert('a');
         const row = await db.selectOne<{ id: string }>('SELECT id FROM item WHERE id = :id', {
           ':id': 'a',
         });
         expect(row?.id).toBe('a');
+      });
+
+      it('binds named parameters written without the colon', async () => {
+        // Writing `{ id }` is the natural thing to do and the engine rejects it
+        // outright; the driver adds the sigil so no call site has to remember.
+        await insert('a');
+        const row = await db.selectOne<{ id: string }>('SELECT id FROM item WHERE id = :id', {
+          id: 'a',
+        });
+        expect(row?.id).toBe('a');
+      });
+
+      it('ignores an empty parameter object', async () => {
+        await insert('a');
+        expect(await db.select('SELECT id FROM item', {})).toHaveLength(1);
       });
 
       it('round-trips a BLOB as Uint8Array', async () => {
