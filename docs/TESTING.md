@@ -1,7 +1,7 @@
 # Testing
 
 ```bash
-npm test              # 401 unit tests
+npm test              # 402 unit tests
 npm run smoke         # 18 browser checks against the production build
 npm run typecheck     # TypeScript, strict
 ```

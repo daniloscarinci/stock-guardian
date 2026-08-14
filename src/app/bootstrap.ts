@@ -71,7 +71,30 @@ function buildRepositories(db: SqlDriver): Repositories {
   };
 }
 
-export async function startApplication(): Promise<StartupResult> {
+/**
+ * The one and only start-up.
+ *
+ * Memoized deliberately, and this is load-bearing rather than an optimisation.
+ * The OPFS SAH-pool VFS permits exactly one connection: whichever worker
+ * acquires the sync access handles holds them, and a second worker asking for
+ * the same pool fails with `NoModificationAllowedError`.
+ *
+ * React StrictMode double-invokes effects in development. Without this guard the
+ * first invocation opened a worker that took the pool, the second opened another
+ * that could never get it, and the application showed "cannot start" on a
+ * perfectly healthy database. The effect's cleanup could not help - it can stop
+ * the result being used, but the worker it started is already holding the pool.
+ *
+ * There is one database, so there is one start-up. Callers get the same promise.
+ */
+let startup: Promise<StartupResult> | undefined;
+
+export function startApplication(): Promise<StartupResult> {
+  startup ??= runStartup();
+  return startup;
+}
+
+async function runStartup(): Promise<StartupResult> {
   let opened: Awaited<ReturnType<typeof openDatabase>>;
 
   try {

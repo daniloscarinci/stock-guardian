@@ -102,6 +102,11 @@ cross-origin isolated — proving the assumption rather than trusting it.
   then read back; a mismatch throws. Bulk imports are chunked, because a writer
   blocks readers for the whole transaction.
 - **One connection.** A second tab cannot open the database, and is told so.
+  The same constraint bites within a single tab: React StrictMode double-invokes
+  effects in development, so start-up is memoized to a single promise. Without
+  that, the first call took the pool and the second could never get it - the
+  application reported "cannot start" over a healthy database, and only in
+  development, so the production build hid it. `bootstrap.test.ts` pins it.
 - **A secure context.** OPFS is unavailable on `file://`. The application refuses
   to start there rather than appearing to work and losing everything.
 
