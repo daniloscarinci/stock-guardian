@@ -1,0 +1,64 @@
+# Builds the application and publishes it to GitHub Pages.
+#
+# The site is built here rather than committed, so what is published can never
+# drift from the source. `npm run build` gates itself on the way through: it
+# regenerates the 194-item reference catalog from the original HTML and asserts
+# the count, typechecks, and then runs an audit that FAILS THE BUILD if any
+# external URL appears in the output. That last one is the offline guarantee, so
+# it now runs on every deploy rather than only on my machine.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # So a deploy can be re-run from the Actions tab without an empty commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race. In-progress runs finish rather than being
+# cancelled, so a half-published site cannot be left behind.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Build
+        # A project site is served from /<repo>/, so assets, the manifest scope
+        # and the service worker registration all need that prefix.
+        env:
+          VITE_BASE: /stock-guardian/
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
