@@ -1,0 +1,143 @@
+/*
+ * Horizontal bar charts.
+ *
+ * HTML and CSS rather than SVG: the marks are rectangles with text beside them,
+ * which is what a grid of divs already is. It reflows on a phone without
+ * viewBox arithmetic, inherits the theme tokens directly, and every label is
+ * real selectable text rather than an <svg><text> that ignores the reader's
+ * font-size setting.
+ */
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 9rem) 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track {
+  position: relative;
+  height: 0.625rem;
+  background: var(--chart-track);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+/*
+ * Thin marks, anchored to the baseline, with rounded data-ends. `min-width`
+ * keeps a non-zero value from vanishing into a hairline - a count of 1 next to
+ * a count of 900 must still be visible as a mark, not just as a number.
+ */
+.bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 0.375rem;
+  border-radius: var(--radius-full);
+  transition: width var(--transition-base);
+}
+
+.value {
+  min-width: 3rem;
+  text-align: right;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+/* Values are always shown, so identity never rests on colour alone. */
+.swatch {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  margin-right: var(--space-2);
+  vertical-align: baseline;
+  flex-shrink: 0;
+}
+
+.labelWithSwatch {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.labelText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: var(--space-4) 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* ---- Score meter ---------------------------------------------------------- */
+
+.score {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.scoreValue {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.scoreCaption {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.scoreTrack {
+  height: 0.75rem;
+  margin-top: var(--space-3);
+  background: var(--chart-track);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.scoreFill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width var(--transition-base);
+}
+
+@media (max-width: 40rem) {
+  .row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'label value'
+      'track track';
+    gap: var(--space-1) var(--space-3);
+  }
+  .labelWithSwatch,
+  .label {
+    grid-area: label;
+  }
+  .track {
+    grid-area: track;
+  }
+  .value {
+    grid-area: value;
+  }
+}

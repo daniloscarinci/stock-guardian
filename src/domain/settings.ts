@@ -56,6 +56,16 @@ export const settingsSchema = z.object({
 
   /** Whether the browser has been asked for persistent storage. */
   storagePersistenceRequested: z.boolean().default(false),
+
+  /**
+   * Items the user has taken off the replenishment list.
+   *
+   * Dismissal is a decision ("I know, and I am not restocking it"), so it has to
+   * survive a reload or the list nags forever. Marking something as bought is
+   * NOT stored here - that adds the quantity to the item, which removes it from
+   * the list on its own and leaves a purchase in the item's history.
+   */
+  replenishmentDismissed: z.array(z.string()).default([]),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;

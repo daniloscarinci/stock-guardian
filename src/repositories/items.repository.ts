@@ -52,18 +52,23 @@ export interface ItemSort {
   readonly direction: 'asc' | 'desc';
 }
 
+/**
+ * Every field states `| undefined` explicitly. The project runs with
+ * `exactOptionalPropertyTypes`, and the interface builds these objects by
+ * spreading, where an absent filter naturally arrives as an explicit undefined.
+ */
 export interface ItemFilters {
-  readonly search?: string;
-  readonly categoryIds?: readonly string[];
-  readonly locationIds?: readonly string[];
+  readonly search?: string | undefined;
+  readonly categoryIds?: readonly string[] | undefined;
+  readonly locationIds?: readonly string[] | undefined;
   /** Include items in descendant locations of the selected ones. */
-  readonly includeSublocations?: boolean;
-  readonly stockStatuses?: readonly StockStatus[];
-  readonly expiryBuckets?: readonly ExpiryBucket[];
-  readonly priorities?: readonly Priority[];
-  readonly conditions?: readonly ItemCondition[];
-  readonly archived?: ArchivedFilter;
-  readonly catalogItemId?: string;
+  readonly includeSublocations?: boolean | undefined;
+  readonly stockStatuses?: readonly StockStatus[] | undefined;
+  readonly expiryBuckets?: readonly ExpiryBucket[] | undefined;
+  readonly priorities?: readonly Priority[] | undefined;
+  readonly conditions?: readonly ItemCondition[] | undefined;
+  readonly archived?: ArchivedFilter | undefined;
+  readonly catalogItemId?: string | undefined;
 }
 
 export interface ListItemsOptions {
@@ -81,25 +86,26 @@ export interface ItemContext {
   readonly expiryWindows: readonly number[];
 }
 
+/** Optional fields state `| undefined` explicitly; see the note on ItemFilters. */
 export interface CreateItemInput {
   readonly name: string;
-  readonly categoryId?: string | null;
-  readonly locationId?: string | null;
-  readonly quantity?: number;
-  readonly unit?: string;
-  readonly minimumQuantity?: number | null;
-  readonly idealQuantity?: number | null;
-  readonly expirationDate?: string | null;
-  readonly purchaseDate?: string | null;
-  readonly openedDate?: string | null;
-  readonly condition?: ItemCondition | null;
-  readonly priority?: Priority;
-  readonly notes?: string | null;
-  readonly barcode?: string | null;
-  readonly catalogItemId?: string | null;
-  readonly migrationNotes?: string | null;
-  readonly id?: string;
-  readonly createdAt?: string;
+  readonly categoryId?: string | null | undefined;
+  readonly locationId?: string | null | undefined;
+  readonly quantity?: number | undefined;
+  readonly unit?: string | undefined;
+  readonly minimumQuantity?: number | null | undefined;
+  readonly idealQuantity?: number | null | undefined;
+  readonly expirationDate?: string | null | undefined;
+  readonly purchaseDate?: string | null | undefined;
+  readonly openedDate?: string | null | undefined;
+  readonly condition?: ItemCondition | null | undefined;
+  readonly priority?: Priority | undefined;
+  readonly notes?: string | null | undefined;
+  readonly barcode?: string | null | undefined;
+  readonly catalogItemId?: string | null | undefined;
+  readonly migrationNotes?: string | null | undefined;
+  readonly id?: string | undefined;
+  readonly createdAt?: string | undefined;
 }
 
 export type UpdateItemInput = Partial<Omit<CreateItemInput, 'id' | 'createdAt'>>;

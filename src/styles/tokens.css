@@ -1,0 +1,272 @@
+/**
+ * Design tokens.
+ *
+ * The original application's dark operational look is kept - deep slate,
+ * high-contrast text, colour reserved for status - but rebuilt on a token layer
+ * so a theme change is a variable swap rather than a hunt through markup for
+ * hard-coded hex values.
+ *
+ * Status colours are never the only signal. Every status also carries a label
+ * and a shape, because roughly one man in twelve cannot reliably separate the
+ * red and green these states depend on.
+ *
+ * The full light palette is defined on bare `:root` so a value always exists
+ * even before any theme attribute is applied.
+ */
+
+:root {
+  /* ---- Neutrals: light theme ------------------------------------------- */
+  --surface-base: #f6f7f9;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eceef2;
+  --surface-overlay: #ffffff;
+  --surface-hover: #e8eaf0;
+
+  --border-subtle: #dcdfe6;
+  --border-strong: #b9bec9;
+  --border-focus: #3b5bdb;
+
+  --text-primary: #11141a;
+  --text-secondary: #4a5160;
+  --text-muted: #6b7385;
+  --text-inverse: #ffffff;
+
+  /* ---- Brand ------------------------------------------------------------ */
+  --accent: #3b5bdb;
+  --accent-hover: #2f4bc4;
+  --accent-subtle: #e3e8fb;
+  --accent-text: #ffffff;
+
+  /* ---- Status ----------------------------------------------------------- */
+  --status-critical: #c02b3f;
+  --status-critical-surface: #fdeaec;
+  --status-critical-border: #f0b5bd;
+
+  --status-warning: #a35a00;
+  --status-warning-surface: #fdf1e0;
+  --status-warning-border: #eecfa0;
+
+  --status-ok: #10704a;
+  --status-ok-surface: #e5f4ee;
+  --status-ok-border: #a8d8c4;
+
+  --status-info: #1a5b93;
+  --status-info-surface: #e5f0f9;
+  --status-info-border: #a8cbe6;
+
+  --status-neutral: #545b6a;
+  --status-neutral-surface: #eceef2;
+  --status-neutral-border: #cbd0da;
+
+  /*
+   * ---- Chart fills -------------------------------------------------------
+   *
+   * Separate from the --status-* colours above, and deliberately so. Those are
+   * TEXT: badge labels judged by WCAG text contrast, which pushes them light in
+   * dark mode. These are AREA FILLS, judged by a different standard - lightness
+   * band, chroma floor, colour-blind separation from their neighbours, and 3:1
+   * against the chart surface.
+   *
+   * Both sets were checked with the palette validator rather than by eye. Every
+   * check passes in both modes. The binding constraint was red against amber:
+   * they are close for deuteranopes and protanopes, and were separated by
+   * pulling them apart on lightness rather than by adding secondary encoding
+   * alone. Re-step with the validator before changing any of these.
+   *
+   * --chart-none is intentionally outside the categorical set: it marks "not
+   * applicable" (an item with no expiry date), always carries its own label,
+   * and is meant to recede rather than compete.
+   */
+  --chart-critical: #b02640;
+  --chart-warning: #bd8710;
+  --chart-ok: #0f7a53;
+  --chart-info: #1f66a8;
+  --chart-none: #8b93a3;
+  --chart-accent: #3b5bdb;
+  --chart-track: #e4e7ee;
+
+  /* ---- Type ------------------------------------------------------------- */
+  /*
+   * System stacks only. No webfont is loaded: a font request is a network
+   * request, and this application must render identically with the radio off.
+   */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.55;
+
+  /* ---- Space (4px base) -------------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ---- Shape ------------------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06), 0 1px 3px rgb(0 0 0 / 0.08);
+  --shadow-md: 0 2px 6px rgb(0 0 0 / 0.08), 0 6px 16px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.14), 0 2px 8px rgb(0 0 0 / 0.1);
+
+  /* ---- Layout ------------------------------------------------------------ */
+  --sidebar-width: 15rem;
+  --header-height: 3.5rem;
+  --content-max: 90rem;
+  --tap-target: 2.75rem;
+
+  --transition-fast: 120ms ease;
+  --transition-base: 180ms ease;
+
+  color-scheme: light;
+}
+
+/*
+ * Dark theme. Applied when the user chose it, or when they left the setting on
+ * "match system" and the system asks for dark. It is the default look: the
+ * original application was dark-only, and this is a tool people reach for in
+ * bad conditions.
+ */
+:root[data-theme='dark'],
+:root[data-theme='system']:where(:root) {
+  color-scheme: dark;
+
+  --surface-base: #0b1220;
+  --surface-raised: #141b2b;
+  --surface-sunken: #080d18;
+  --surface-overlay: #1a2233;
+  --surface-hover: #1e2739;
+
+  --border-subtle: #232d42;
+  --border-strong: #364259;
+  --border-focus: #7c93ff;
+
+  --text-primary: #f1f4f9;
+  --text-secondary: #a9b3c6;
+  --text-muted: #7d879b;
+  --text-inverse: #0b1220;
+
+  --accent: #6b83ff;
+  --accent-hover: #8398ff;
+  --accent-subtle: #1c2542;
+  --accent-text: #0b1220;
+
+  --status-critical: #ff7b8a;
+  --status-critical-surface: #2a1520;
+  --status-critical-border: #5d2733;
+
+  --status-warning: #f0b256;
+  --status-warning-surface: #2a2013;
+  --status-warning-border: #5c4522;
+
+  --status-ok: #4ecfa0;
+  --status-ok-surface: #10261f;
+  --status-ok-border: #1f5744;
+
+  --status-info: #6bb6f5;
+  --status-info-surface: #10222f;
+  --status-info-border: #23495f;
+
+  --status-neutral: #97a1b5;
+  --status-neutral-surface: #171f2f;
+  --status-neutral-border: #2b3648;
+
+  /* Validated against the dark chart surface (#141b2b). See the note above. */
+  --chart-critical: #c0304a;
+  --chart-warning: #b78a1a;
+  --chart-ok: #1fa478;
+  --chart-info: #3d86d9;
+  --chart-none: #6b7488;
+  --chart-accent: #6b83ff;
+  --chart-track: #1c2436;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 2px 8px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
+}
+
+/* "Match system" resolves through the media query. */
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] {
+    color-scheme: light;
+
+    --surface-base: #f6f7f9;
+    --surface-raised: #ffffff;
+    --surface-sunken: #eceef2;
+    --surface-overlay: #ffffff;
+    --surface-hover: #e8eaf0;
+
+    --border-subtle: #dcdfe6;
+    --border-strong: #b9bec9;
+    --border-focus: #3b5bdb;
+
+    --text-primary: #11141a;
+    --text-secondary: #4a5160;
+    --text-muted: #6b7385;
+    --text-inverse: #ffffff;
+
+    --accent: #3b5bdb;
+    --accent-hover: #2f4bc4;
+    --accent-subtle: #e3e8fb;
+    --accent-text: #ffffff;
+
+    --status-critical: #c02b3f;
+    --status-critical-surface: #fdeaec;
+    --status-critical-border: #f0b5bd;
+
+    --status-warning: #a35a00;
+    --status-warning-surface: #fdf1e0;
+    --status-warning-border: #eecfa0;
+
+    --status-ok: #10704a;
+    --status-ok-surface: #e5f4ee;
+    --status-ok-border: #a8d8c4;
+
+    --status-info: #1a5b93;
+    --status-info-surface: #e5f0f9;
+    --status-info-border: #a8cbe6;
+
+    --status-neutral: #545b6a;
+    --status-neutral-surface: #eceef2;
+    --status-neutral-border: #cbd0da;
+
+    --chart-critical: #b02640;
+    --chart-warning: #bd8710;
+    --chart-ok: #0f7a53;
+    --chart-info: #1f66a8;
+    --chart-none: #8b93a3;
+    --chart-accent: #3b5bdb;
+    --chart-track: #e4e7ee;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06), 0 1px 3px rgb(0 0 0 / 0.08);
+    --shadow-md: 0 2px 6px rgb(0 0 0 / 0.08), 0 6px 16px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.14), 0 2px 8px rgb(0 0 0 / 0.1);
+  }
+}

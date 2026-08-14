@@ -11,6 +11,12 @@
       Content Security Policy. This application is entirely local: it must never
       load or contact anything off-device. 'wasm-unsafe-eval' is required to
       instantiate the SQLite WebAssembly module and grants nothing else.
+
+      `frame-ancestors` is deliberately absent: it is ignored when delivered in a
+      <meta> element and can only be set as an HTTP response header. Including it
+      here would look like protection while providing none. If this is ever
+      hosted somewhere that can set headers, add
+      `Content-Security-Policy: frame-ancestors 'none'` there - see docs/OFFLINE.md.
     -->
     <meta
       http-equiv="Content-Security-Policy"
@@ -23,8 +29,7 @@
                worker-src 'self' blob:;
                object-src 'none';
                base-uri 'none';
-               form-action 'none';
-               frame-ancestors 'none'"
+               form-action 'none'"
     />
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

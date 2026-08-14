@@ -16,16 +16,16 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "generate:catalog": "node scripts/extract-legacy-catalog.mjs",
-    "audit:offline": "node scripts/audit-offline.mjs"
+    "audit:offline": "node scripts/audit-offline.mjs",
+    "generate:icons": "node scripts/generate-icons.mjs",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@sqlite.org/sqlite-wasm": "3.53.0-build1",
-    "@tanstack/react-query": "^5.101.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.18.2",
-    "zod": "^4.4.3",
-    "zustand": "^5.0.15"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
@@ -38,6 +38,7 @@
     "eslint": "^9.0.0",
     "eslint-plugin-react-hooks": "^7.0.0",
     "happy-dom": "^20.0.0",
+    "playwright": "^1.62.1",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.67.0",
     "vite": "^8.2.1",

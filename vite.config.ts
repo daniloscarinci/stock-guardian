@@ -34,6 +34,19 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      /*
+       * `injectManifest`, not `generateSW`: the service worker is written out in
+       * src/sw.ts and the build only injects the asset list into it.
+       *
+       * Partly because that file is the offline guarantee and deserves to be
+       * readable, and partly out of necessity - this project's path contains an
+       * apostrophe ("Dad's games"), and workbox's generated template writes
+       * absolute module paths into single-quoted strings, which produces a
+       * service worker that will not parse.
+       */
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       // 'prompt', never 'autoUpdate': swapping the service worker while a write
       // transaction is open against a single-connection database invites trouble.
       registerType: 'prompt',
@@ -55,18 +68,15 @@ export default defineConfig({
           { src: 'icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: {
-        // `wasm` is in workbox's default patterns, but we state it explicitly so a
-        // future default change cannot silently break the cold offline start.
+      injectManifest: {
+        // Stated explicitly rather than relying on defaults, so a future change
+        // to those defaults cannot silently break the cold offline start. The
+        // wasm binary in particular MUST be precached: without it the database
+        // cannot open, and the application is not merely degraded but dead.
         globPatterns: ['**/*.{js,css,html,wasm,ico,png,svg,webmanifest,woff2}'],
-        // Default is 2 MiB. The sqlite wasm binary alone is ~865 KB and the glue
-        // is ~578 KB; raising this is cheap insurance against a silent precache miss.
-        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-        navigateFallback: 'index.html',
-        // Without this, a .wasm request can be answered with index.html, producing
-        // a baffling "magic word not found" WebAssembly error.
-        navigateFallbackDenylist: [/\.wasm$/],
-        cleanupOutdatedCaches: true,
+        // Default is 2 MiB; the sqlite wasm binary alone is ~865 KB and the
+        // application chunk is larger still.
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
       devOptions: {
         enabled: false,
