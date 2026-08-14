@@ -14,8 +14,13 @@
 
 export type StockStatus = 'critical' | 'low' | 'adequate' | 'surplus';
 
-/** Below this fraction of the minimum, an item is critical rather than low. */
-const CRITICAL_FRACTION = 0.5;
+/**
+ * Below this fraction of the minimum, an item is critical rather than low.
+ *
+ * Exported because the SQL filter in `repositories/sql/status-expressions.ts`
+ * is built from it - the rule is expressed twice, but the constant only once.
+ */
+export const CRITICAL_FRACTION = 0.5;
 
 export interface StockInput {
   readonly quantity: number;
