@@ -97,11 +97,19 @@ because a service worker updates on its own schedule. `VITE_TARGET=android`
 therefore drops it from the build. The APK is the offline mechanism on Android;
 the service worker is the offline mechanism on the web.
 
-**No permissions at all.** Capacitor's template requests `INTERNET`. This build
-does not, because the application makes no network requests and needs none. Open
-**Settings → Apps → Stock Guardian → Permissions** and see for yourself. The
-build also fails if a permission ever appears in the APK, so it stays a promise
-you can check rather than one you have to believe.
+**It asks the system for nothing.** Capacitor's template requests `INTERNET`.
+This build does not, because the application makes no network requests and needs
+none. Open **Settings → Apps → Stock Guardian → Permissions** and see for
+yourself. The build fails if any system permission ever appears in the APK, so
+it stays a promise you can check rather than one you have to believe.
+
+One entry does appear in the manifest, and it is not a permission the
+application asks for. androidx declares
+`app.stockguardian.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` — a
+permission belonging to this application, which exists so that other
+applications cannot reach its broadcast receivers. It grants no capability, asks
+the system for nothing, and never appears in front of a user. The build's check
+allows that one name and rejects everything else.
 
 **No automatic backup.** `allowBackup` is off. Android's automatic backup would
 copy the application's private storage — the whole database — to the user's

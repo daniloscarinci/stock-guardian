@@ -52,7 +52,7 @@
     </application>
 
     <!--
-        Permissions: none.
+        Permissions requested from the system: none.
 
         Capacitor's template requests android.permission.INTERNET. This
         application makes no network requests - the build is audited for that on
@@ -61,6 +61,12 @@
         permission costs nothing and turns "it works offline" from a claim in a
         README into something anyone can check in Settings, App info,
         Permissions, without taking my word for it.
+
+        The merged manifest does carry one entry, added by androidx:
+        DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION, namespaced under this
+        application's own id. It is a permission this application defines to
+        keep other applications away from its broadcast receivers, not one it
+        asks anybody for. The workflow allows that name and fails on any other.
 
         The WebView still loads: Capacitor serves the application from
         https://localhost through WebViewAssetLoader, which reads the APK's

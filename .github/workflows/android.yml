@@ -120,18 +120,34 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           ls -lh "$name"
 
-      # Proof, in the build log, that the two promises the manifest makes are
-      # still true of the artifact that came out. aapt2 is part of build-tools.
-      - name: Check the APK requests no permissions
+      # Proof, in the build log, that the manifest's central promise is still
+      # true of the artifact that came out. aapt2 is part of build-tools.
+      #
+      # The test is not "zero permissions". androidx declares one belonging to
+      # the application itself - DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION - so
+      # that other applications cannot reach its broadcast receivers. It is
+      # namespaced under the application id, grants no capability, asks the
+      # system for nothing, and is never shown to a user.
+      #
+      # Anything outside that namespace is a real capability asked of the
+      # operating system, INTERNET above all, and must never appear here.
+      - name: Check the APK asks the system for nothing
+        env:
+          APK: ${{ steps.apk.outputs.name }}
         run: |
           AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
-          permissions=$("$AAPT2" dump permissions "${{ steps.apk.outputs.name }}" | grep -c "uses-permission" || true)
-          echo "uses-permission entries: $permissions"
-          if [ "$permissions" != "0" ]; then
-            "$AAPT2" dump permissions "${{ steps.apk.outputs.name }}"
-            echo "The APK requests permissions. It is meant to request none."
+          "$AAPT2" dump permissions "$APK" | tee permissions.txt
+
+          # cut on the quote: `uses-permission: name='android.permission.FOO'`
+          foreign=$(grep '^uses-permission:' permissions.txt | cut -d"'" -f2 | grep -v '^app.stockguardian.android.' || true)
+
+          if [ -n "$foreign" ]; then
+            echo "The APK asks the operating system for:"
+            echo "$foreign"
+            echo "It is meant to ask for nothing at all. See docs/ANDROID.md."
             exit 1
           fi
+          echo "The APK asks the operating system for no permission at all."
 
       - uses: actions/upload-artifact@v4
         with:

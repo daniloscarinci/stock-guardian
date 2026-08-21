@@ -128,8 +128,9 @@ device.
 
 Android also runs Stock Guardian as an installed application with its own icon,
 built from the same source and carrying every asset inside the file. It needs no
-network even on first launch, requests no permissions at all, and keeps Android's
-automatic backup switched off, so the database never reaches Google Drive.
+network even on first launch, asks the operating system for no permission at all,
+and keeps Android's automatic backup switched off, so the database never reaches
+Google Drive.
 
 `docs/ANDROID.md` explains how to produce the APK and what to check after
 installing it. Nothing else here changes: the phone still holds its own database,
