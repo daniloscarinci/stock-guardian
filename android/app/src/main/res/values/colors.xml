@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- --surface-base in src/styles/tokens.css. The one colour the native
+         shell and the web application both have to agree on. -->
+    <color name="surface_base">#0b1220</color>
+</resources>

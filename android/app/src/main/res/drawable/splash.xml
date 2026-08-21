@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Referenced by AppTheme.NoActionBarLaunch in values/styles.xml. Replaces the
+    ten density-and-orientation splash PNGs Capacitor's template ships: a solid
+    colour and a vector do the same job at any size, in either orientation.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/surface_base" />
+    <item
+        android:width="128dp"
+        android:height="128dp"
+        android:gravity="center"
+        android:drawable="@drawable/ic_splash_mark" />
+</layer-list>

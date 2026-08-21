@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Referenced by mipmap-anydpi-v26/ic_launcher.xml as the adaptive icon's
+         background layer. Kept as an alias rather than a second literal so the
+         launcher icon cannot drift from the splash screen. -->
+    <color name="ic_launcher_background">@color/surface_base</color>
+</resources>

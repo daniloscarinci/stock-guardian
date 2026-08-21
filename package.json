@@ -20,9 +20,13 @@
     "generate:icons": "node scripts/generate-icons.mjs",
     "smoke": "node scripts/smoke.mjs",
     "generate:sample": "node scripts/generate-sample-backup.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "generate:android-icons": "node scripts/generate-android-icons.mjs",
+    "generate:android-key": "node scripts/generate-android-key.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "@sqlite.org/sqlite-wasm": "3.53.0-build1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -30,6 +34,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@eslint/js": "^9.39.5",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -42,6 +47,7 @@
     "eslint-plugin-react-hooks": "^7.0.0",
     "globals": "^15.15.0",
     "happy-dom": "^20.0.0",
+    "node-forge": "^1.4.0",
     "playwright": "^1.62.1",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.67.0",

@@ -58,6 +58,14 @@ with nothing cached.
 **Updates are prompted, never automatic.** Swapping the service worker while a
 write transaction is open against a single-connection database invites trouble.
 
+**On Android, the APK plays that part.** The installed application carries every
+asset inside the package, so it has nothing to fetch and no cache to keep warm,
+and the Android build ships no service worker at all. The audit below still runs
+over the same `dist/`, so the guarantee is enforced identically either way. That
+build goes further and requests no Android permissions whatsoever — not even
+`INTERNET` — which makes "it does not use the network" checkable in the phone's
+own settings. See `docs/ANDROID.md`.
+
 ---
 
 ## Where your data lives

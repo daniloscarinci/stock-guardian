@@ -5,7 +5,32 @@
  * used, and still the right one: entirely local, no server, no dependency.
  */
 
+/**
+ * The most recent download, recorded for the Android shell and nothing else.
+ *
+ * A browser resolves the synthetic click below by itself. Android's WebView
+ * does not: it hands its DownloadListener a `blob:` URL and stops there - no
+ * filename, because the `download` attribute is not passed on, and no way to
+ * read the blob back, because `connect-src 'self'` in the Content-Security-
+ * Policy refuses a fetch of a `blob:` URL. Without this the export buttons
+ * would appear to work on Android and silently produce nothing, which for the
+ * backup export is the worst failure this application could have.
+ *
+ * So the native shell reads the file from here instead and writes it to the
+ * device's Downloads folder. See MainActivity.java in android/.
+ *
+ * Nothing in the web application reads this. Retaining one export's text costs
+ * a few hundred kilobytes at worst and is overwritten by the next one.
+ */
+declare global {
+  interface Window {
+    stockGuardianLastDownload?: { name: string; mime: string; text: string };
+  }
+}
+
 export function downloadText(filename: string, contents: string, mime: string): void {
+  window.stockGuardianLastDownload = { name: filename, mime, text: contents };
+
   const blob = new Blob([contents], { type: `${mime};charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

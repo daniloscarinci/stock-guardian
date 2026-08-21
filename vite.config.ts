@@ -4,6 +4,13 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath, URL } from 'node:url';
 
 /**
+ * The Android build, produced by `VITE_TARGET=android npm run build` and then
+ * wrapped by Capacitor. It differs from the web build in exactly one way: no
+ * service worker. See the plugin list below for why.
+ */
+const ANDROID_BUILD = process.env.VITE_TARGET === 'android';
+
+/**
  * Deliberately NO Cross-Origin-Opener-Policy / Cross-Origin-Embedder-Policy headers.
  *
  * The sqlite-wasm README suggests adding them, but that advice targets the `opfs` VFS,
@@ -33,7 +40,17 @@ export default defineConfig({
 
   plugins: [
     react(),
-    VitePWA({
+
+    /*
+     * No service worker in the Android build. The APK already contains every
+     * asset, so a worker there would be a second cache standing in front of
+     * files that are local either way - no offline benefit, and one real
+     * hazard: with `registerType: 'prompt'` a freshly installed APK would keep
+     * rendering the previous version's cached assets until someone accepted an
+     * update prompt. The APK is the offline mechanism on Android; the service
+     * worker is the offline mechanism on the web. Neither needs the other.
+     */
+    ...(ANDROID_BUILD ? [] : [VitePWA({
       /*
        * `injectManifest`, not `generateSW`: the service worker is written out in
        * src/sw.ts and the build only injects the asset list into it.
@@ -81,7 +98,7 @@ export default defineConfig({
       devOptions: {
         enabled: false,
       },
-    }),
+    })]),
   ],
 
   build: {

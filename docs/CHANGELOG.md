@@ -98,6 +98,13 @@ it.
 - **Quantity changes without a form** — `+` and `−` in the list.
 - **Archive and restore**, so removing something from view no longer means
   destroying it.
+- **An Android application.** The same build, wrapped by Capacitor and installed
+  as an APK. It ships no service worker (the APK is already the offline
+  mechanism), requests no Android permissions at all, and switches off Android's
+  automatic backup so the database never reaches Google Drive. The native shell
+  writes exports to the phone's Downloads folder, because Android's WebView
+  will not download a blob URL by itself and every export button would otherwise
+  do nothing. See `docs/ANDROID.md`.
 - **Twenty categories**, user-extensible, replacing nine fixed ones.
 - **Filters that combine** — category, location, stock status, expiry, priority,
   condition, archived.
@@ -142,3 +149,7 @@ Photographs (stored by the schema, no interface), barcode scanning (manual entry
 works), application lock, notifications, and the desktop build — whose
 configuration is complete and reviewed but has never been compiled, because this
 machine has no Rust toolchain.
+
+The Android project is complete, but no APK has been produced from it. GitHub
+Actions builds and signs one when a version tag is pushed; no tag has been
+pushed, and no phone has run this build.

@@ -27,6 +27,9 @@ export default tseslint.config(
       'dist/**',
       'coverage/**',
       'src-tauri/**',
+      // The Android project: Gradle, Java, and a copy of dist/ that Capacitor
+      // puts there. None of it is this project's TypeScript.
+      'android/**',
       'src/data/*.generated.ts',
       'backup/**',
       'fixtures/**',

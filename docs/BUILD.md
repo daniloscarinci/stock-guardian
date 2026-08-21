@@ -123,6 +123,18 @@ Per-device steps are in the README, alongside the URL people actually need.
 
 ---
 
+## The Android application
+
+Built by GitHub Actions, not here: the Android SDK is several gigabytes and this
+machine has none. `VITE_TARGET=android npm run build` produces a web build with
+no service worker, Capacitor wraps it, and the workflow signs the APK and
+attaches it to a release.
+
+**No APK has been produced yet.** `docs/ANDROID.md` covers the signing key, the
+tag that triggers a build, and what to check on the first install.
+
+---
+
 ## The desktop application
 
 **Not built. No installer exists, and none is claimed.**
@@ -195,9 +207,15 @@ because transaction semantics already live in `createDriver`.
 npm run generate:catalog   # 194 items ← backup/End_of_world_V11-Pro_Upgraded.html
 npm run generate:icons     # PNG icons and the favicon
 npm run generate:sample    # fixtures/sample-backup.json
+
+npm run generate:android-icons   # android/ launcher and splash resources
+npm run generate:android-key     # the release signing key - once, ever
 ```
 
-All three outputs are committed. The catalog script asserts exactly 194 items
+The first three outputs are committed, and so are the Android icons. The signing
+key is not, and must never be: see `docs/ANDROID.md`.
+
+ The catalog script asserts exactly 194 items
 across 9 categories and fails otherwise, so the reference data cannot silently
 shrink.
 

@@ -124,6 +124,17 @@ data. An installed app is far more likely to keep its storage.
 After installing, the page never needs to be visited again. The app is on the
 device.
 
+### Android can install a real app instead
+
+Android also runs Stock Guardian as an installed application with its own icon,
+built from the same source and carrying every asset inside the file. It needs no
+network even on first launch, requests no permissions at all, and keeps Android's
+automatic backup switched off, so the database never reaches Google Drive.
+
+`docs/ANDROID.md` explains how to produce the APK and what to check after
+installing it. Nothing else here changes: the phone still holds its own database,
+and backups still move between devices as a file.
+
 ### Two things that will not work, by design
 
 **A plain `http://` address on your home network.** Browsers do not grant
@@ -154,6 +165,8 @@ import shows you what the file contains and asks before writing anything.
 | `npm run lint` | ESLint |
 | `npm run generate:catalog` | Re-extract the 194 catalog items from the original HTML |
 | `npm run generate:icons` | Regenerate the app icons |
+| `npm run generate:android-icons` | Regenerate the Android launcher and splash artwork |
+| `npm run generate:android-key` | Create the Android signing key — once, ever |
 | `npm run generate:sample` | Regenerate `fixtures/sample-backup.json` |
 
 ---
@@ -184,6 +197,7 @@ to see the behaviour for yourself.
 | `docs/MIGRATION.md` | Legacy import, field by field |
 | `docs/OFFLINE.md` | How the offline guarantee is made and enforced |
 | `docs/BUILD.md` | Building, hosting, and the desktop build |
+| `docs/ANDROID.md` | The Android app: building, signing, installing |
 | `docs/TESTING.md` | What is tested, and how to run it |
 | `docs/CHANGELOG.md` | What changed from the original |
 
@@ -202,6 +216,10 @@ a "coming soon" panel — if it is not built, it is not shown.
 - **Application lock.** Not built.
 - **Notifications.** Not built. The expiration centre serves the same purpose
   when the app is open.
+- **A released Android APK.** The Android project is complete and committed, and
+  GitHub Actions builds and signs the APK when a version tag is pushed. That has
+  not been done yet, and no phone has run this build. **No APK exists yet, and
+  none is claimed.** `docs/ANDROID.md` lists what to check on the first install.
 - **The desktop application.** `src-tauri/` is complete and reviewed, but it has
   never been compiled — this machine has no Rust toolchain. `docs/BUILD.md` says
   what to install and what to check afterwards. **No installer has been built, and
