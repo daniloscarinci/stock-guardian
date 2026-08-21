@@ -77,7 +77,25 @@ function drawRound(size) {
   };
 }
 
+/**
+ * XML forbids `--` inside a comment, and aapt2 rejects the resource rather than
+ * repairing it. That is easy to write by accident here, where the comments refer
+ * to CSS custom properties, and it fails five minutes into a Gradle build in CI
+ * rather than in this script. So check before writing.
+ */
+function assertLegalXmlComments(relativePath, contents) {
+  for (const [, body] of contents.matchAll(/<!--([\s\S]*?)-->/g)) {
+    if (body.includes('--')) {
+      throw new Error(
+        `${relativePath}: an XML comment contains "--", which aapt2 rejects. ` +
+          'Reword it - a CSS custom property has to be named without its leading dashes.',
+      );
+    }
+  }
+}
+
 function write(relativePath, contents) {
+  if (relativePath.endsWith('.xml')) assertLegalXmlComments(relativePath, contents);
   const path = resolve(RES, relativePath);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, contents);
@@ -99,8 +117,8 @@ write(
   'values/colors.xml',
   `<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- --surface-base in src/styles/tokens.css. The one colour the native
-         shell and the web application both have to agree on. -->
+    <!-- The surface-base custom property in src/styles/tokens.css. The one
+         colour the native shell and the web application both have to agree on. -->
     <color name="surface_base">#0b1220</color>
 </resources>
 `,
