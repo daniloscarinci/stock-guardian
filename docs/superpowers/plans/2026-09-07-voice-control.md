@@ -61,6 +61,7 @@ No database, no React, no browser API. Everything in this phase is a function fr
 
 **Files:**
 - Create: `src/voice/numbers.ts`
+- Create: `src/voice/grammar/pt-BR.numbers.ts`
 - Test: `src/voice/numbers.test.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -224,7 +225,7 @@ export function parseNumber(words: NumberWords, text: string): number | null {
 - [ ] **Step 5: Run the test**
 
 Run: `npx vitest run src/voice/numbers.test.ts`
-Expected: PASS, 26 tests.
+Expected: PASS, 28 tests.
 
 - [ ] **Step 6: Commit**
 
