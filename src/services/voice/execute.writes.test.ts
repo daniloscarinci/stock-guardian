@@ -51,7 +51,8 @@ describe('execute: writes stay pending', () => {
     await execute(deps, { kind: 'ADJUST_QUANTITY', item: 'feijao preto', amount: 5,
       direction: 'up', transaction: 'add', unit: null, amountAssumed: false });
     await execute(deps, { kind: 'SET_QUANTITY', item: 'feijao preto', amount: 3, unit: null });
-    await execute(deps, { kind: 'SET_EXPIRY', item: 'feijao preto', expiresOn: '2027-01-01', dateAssumed: false });
+    await execute(deps, { kind: 'SET_EXPIRY', item: 'feijao preto',
+      expiresOn: '2027-01-01', dateAssumed: false });
     await execute(deps, { kind: 'CREATE_ITEM', name: 'quinoa', amount: 2, unit: 'kg',
       location: null, expiresOn: null });
 
@@ -195,7 +196,7 @@ describe('execute: writes stay pending', () => {
       assumptions: [],
     });
 
-    expect(result.quantity).toBe(4);
+    expect(result.item.quantity).toBe(4);
     expect(await deps.items.history(feijaoId)).toHaveLength(before.length);
   });
 });
@@ -230,9 +231,9 @@ describe('commit', () => {
       amount: 6, direction: 'up', transaction: 'purchase', unit: null, amountAssumed: false });
 
     const saved = await commit(deps, pendingWrite);
-    expect(saved.quantity).toBe(10);
+    expect(saved.item.quantity).toBe(10);
 
-    const history = await deps.items.history(saved.id);
+    const history = await deps.items.history(saved.item.id);
     expect(history[0]).toMatchObject({ type: 'purchase', notes: 'Por voz', quantity_after: 10 });
   });
 
@@ -241,7 +242,7 @@ describe('commit', () => {
       unit: null, location: null, expiresOn: null });
 
     const created = await commit(deps, pendingWrite);
-    expect(created).toMatchObject({
+    expect(created.item).toMatchObject({
       name: 'quinoa', quantity: 1, unit: 'un', locationId: null, expirationDate: null,
     });
   });
@@ -252,8 +253,8 @@ describe('commit', () => {
 
     const created = await commit(deps, pendingWrite);
     const shelf = await deps.locations.findByName('Despensa');
-    expect(created).toMatchObject({ quantity: 2, unit: 'kg', expirationDate: '2027-03-01' });
-    expect(created.locationId).toBe(shelf?.id);
+    expect(created.item).toMatchObject({ quantity: 2, unit: 'kg', expirationDate: '2027-03-01' });
+    expect(created.item.locationId).toBe(shelf?.id);
   });
 
   it('sets an expiry date', async () => {
@@ -261,6 +262,6 @@ describe('commit', () => {
       expiresOn: '2027-01-01', dateAssumed: false });
 
     const saved = await commit(deps, pendingWrite);
-    expect(saved.expirationDate).toBe('2027-01-01');
+    expect(saved.item.expirationDate).toBe('2027-01-01');
   });
 });
