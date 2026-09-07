@@ -487,7 +487,8 @@ export const en = {
     notUnderstood: 'I did not understand that.',
     examplesTitle: 'Try one of these',
     unavailable: 'This device cannot transcribe speech on its own, so the microphone opens straight to the typed box.',
-    installable: 'A speech pack for this language can be installed on this device.',
+    installable:
+      'A speech pack for this language can be installed. Installing downloads it — the one time anything here uses the network.',
     install: 'Install',
     nothingHeard: 'I did not hear anything. Try again, or type the command.',
     listenFailed: 'The microphone could not be used. Typing works.',
@@ -512,11 +513,13 @@ export const en = {
     expiryOfNone: '{name} has no expiry date.',
     score: 'Your preparedness score is {score}.',
     settingEnabled: 'Voice control',
-    settingEnabledHelp: 'Shows the microphone in the header. The typed command box stays either way.',
+    settingEnabledHelp:
+      'Shows the microphone in the header. The typed command box opens only from it, so switching this off removes both.',
     settingSpeak: 'Read answers aloud',
     settingSpeakHelp: "Uses the system voice. On Android the phone's silent switch wins over this.",
     availability: 'Speech recognition',
-    ready: 'Ready on this device, and it transcribes without leaving it.',
+    ready:
+      'Ready on this device. Chrome transcribes here or not at all; Android asks its recognizer to, and not every recognizer honours the request.',
     andMore: 'and {count} more',
     dayWindow_one: '{count} day',
     dayWindow_other: '{count} days',

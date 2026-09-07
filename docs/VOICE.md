@@ -54,6 +54,14 @@ Word order is forgiving where forgiving costs nothing. `tenho quanto de acucar`,
 these are read-only questions and the worst outcome of a generous reading is a
 number you did not want. Writes are not treated this way.
 
+`como esta minha preparacao` answers with the number the Preparedness card
+shows, not with a number of its own. `execute` calls `evaluatePreparedness` with
+the tracked categories from settings, exactly as the dashboard does, so the two
+cannot drift apart. That matters because the two are not the same arithmetic as
+a percentage of healthy items: categories count equally, so an empty water
+category pulls the score down however full the pantry is. `execute.queries.test.ts`
+asserts the equality rather than the plausibility of the spoken number.
+
 ### Changing
 
 | Português | English | Español |
@@ -236,7 +244,8 @@ asking the browser to download a speech model.
 That is the browser fetching on an explicit press, not the page fetching on its
 own, which is why the offline audit does not flag it. It never happens
 automatically, and it is the only thing in this feature that touches the
-network. It is written down here rather than left to be discovered.
+network. The line above the button says both of those things, because the
+decision is made there and not here.
 
 The button never appears inside the APK. `install` is optional on the seam, and
 only the Chrome implementation defines one; on Android the system recognizer

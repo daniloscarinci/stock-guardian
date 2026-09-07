@@ -58,8 +58,9 @@ export function VoiceButton() {
     setHeard(null);
   }, []);
 
-  // Rendering nothing is the setting's whole meaning. The typed box remains
-  // reachable through the sheet, which is opened by nothing else.
+  // Rendering nothing is the setting's whole meaning. The sheet, and the typed
+  // box inside it, open from this button and from nothing else, so switching
+  // the setting off removes the feature rather than only its microphone.
   if (!settings.voiceEnabled) return null;
 
   const press = async () => {

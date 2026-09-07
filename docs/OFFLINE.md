@@ -155,7 +155,10 @@ the way this promise would actually be lost.
 
 **Settings → Speech recognition → Install** appears when Chrome reports a
 downloadable speech pack for the interface language. Pressing it calls
-`installOnDevice(tag)` and the browser downloads the model.
+`installOnDevice(tag)` and the browser downloads the model. The line above the
+button says so — that installing downloads the pack, and that it is the one time
+anything in the feature uses the network — because this page is not where the
+decision is made.
 
 That is a byte crossing the network. It is the browser fetching on an explicit
 press rather than the page fetching on its own, which is why the audit is right

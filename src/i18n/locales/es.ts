@@ -489,7 +489,8 @@ export const es: LocaleTree = {
     examplesTitle: 'Prueba uno de estos',
     unavailable:
       'Este dispositivo no puede transcribir voz por sí solo, así que el micrófono abre directamente el cuadro de texto.',
-    installable: 'Se puede instalar un paquete de voz para este idioma en este dispositivo.',
+    installable:
+      'Se puede instalar un paquete de voz para este idioma. Instalarlo lo descarga: es la única vez que algo de aquí usa la red.',
     install: 'Instalar',
     nothingHeard: 'No escuché nada. Inténtalo otra vez o escribe el comando.',
     listenFailed: 'No se pudo usar el micrófono. Escribir funciona.',
@@ -514,11 +515,13 @@ export const es: LocaleTree = {
     expiryOfNone: '{name} no tiene fecha de caducidad.',
     score: 'Tu índice de preparación es {score}.',
     settingEnabled: 'Control por voz',
-    settingEnabledHelp: 'Muestra el micrófono en la cabecera. La caja de escritura sigue estando en ambos casos.',
+    settingEnabledHelp:
+      'Muestra el micrófono en la cabecera. El cuadro de texto solo se abre desde ahí, así que si lo desactivas desaparecen los dos.',
     settingSpeak: 'Leer las respuestas en voz alta',
     settingSpeakHelp: 'Usa la voz del sistema. En Android manda el interruptor de silencio del teléfono.',
     availability: 'Reconocimiento de voz',
-    ready: 'Listo en este dispositivo, y transcribe sin salir de él.',
+    ready:
+      'Listo en este dispositivo. Chrome transcribe aquí o no transcribe; en Android se le pide al reconocedor del sistema, y no todos atienden la petición.',
     andMore: 'y {count} más',
     dayWindow_one: '{count} día',
     dayWindow_other: '{count} días',

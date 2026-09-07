@@ -148,8 +148,15 @@ export function useVoice(speak: Speak): Voice {
       locations: repositories.locations,
       context: itemContext,
       language: settings.language,
+      trackedCategoryIds: settings.preparednessCategoryIds,
     }),
-    [repositories.items, repositories.locations, itemContext, settings.language],
+    [
+      repositories.items,
+      repositories.locations,
+      itemContext,
+      settings.language,
+      settings.preparednessCategoryIds,
+    ],
   );
 
   const options = useMemo<AnswerOptions>(

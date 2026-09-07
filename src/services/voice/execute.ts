@@ -13,6 +13,7 @@ import type { LocationsRepository } from '../../repositories/locations.repositor
 import type { Language } from '../../domain/settings';
 import type { ReplenishmentLine } from '../../domain/replenishment';
 import { buildReplenishmentList } from '../../domain/replenishment';
+import { evaluatePreparedness } from '../../domain/preparedness';
 import { foldText } from '../../domain/normalize';
 import { resolveItem } from './resolve';
 
@@ -21,6 +22,8 @@ export interface VoiceDeps {
   readonly locations: LocationsRepository;
   readonly context: ItemContext;
   readonly language: Language;
+  /** From settings.preparednessCategoryIds. Empty means every category that holds an item. */
+  readonly trackedCategoryIds: readonly string[];
 }
 
 export type Answer =
@@ -207,15 +210,21 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
       };
     }
 
+    // The same call the dashboard makes, with the same inputs, so the spoken
+    // number is the number on the screen. A flat percentage of healthy items
+    // would be easier and would be a different figure: it lets forty tins of
+    // food hide an empty water category, which is precisely what the equal
+    // weighting of categories exists to refuse.
     case 'QUERY_SCORE': {
-      const stats = await deps.items.dashboardStats(deps.context);
-      const total = stats.totalItems;
-      // An item can be both critical and expired, so the subtraction can go
-      // past zero. A negative preparedness score is not a number anyone can
-      // act on; zero is.
-      const healthy = total - stats.critical - stats.low - stats.expired;
-      const score = total === 0 ? 0 : Math.max(0, Math.round((healthy / total) * 100));
-      return { kind: 'answer', answer: { kind: 'SCORE', score } };
+      const report = evaluatePreparedness({
+        items: await deps.items.listForAnalysis(),
+        today: deps.context.today,
+        defaultThreshold: deps.context.defaultThreshold,
+        trackedCategoryIds: deps.trackedCategoryIds,
+        expiryWindows: deps.context.expiryWindows,
+      });
+      // Already a whole percent, 0-100, and already zero for an empty inventory.
+      return { kind: 'answer', answer: { kind: 'SCORE', score: report.score } };
     }
 
     case 'ADJUST_QUANTITY': {

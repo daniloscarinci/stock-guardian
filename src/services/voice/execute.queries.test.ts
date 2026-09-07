@@ -3,13 +3,44 @@ import { createMemoryDriver } from '../../database/driver/memory.driver';
 import type { SqlDriver } from '../../database/driver/types';
 import { migrate } from '../../database/migrations/runner';
 import { seedDatabase } from '../../database/seed/seed';
-import { createItemsRepository, type ItemContext } from '../../repositories/items.repository';
+import {
+  createItemsRepository,
+  type ItemContext,
+  type ItemsRepository,
+} from '../../repositories/items.repository';
 import { createLocationsRepository } from '../../repositories/locations.repository';
+import { evaluatePreparedness } from '../../domain/preparedness';
 import { execute, type VoiceDeps } from './execute';
 
 const CONTEXT: ItemContext = {
   today: '2026-09-07', defaultThreshold: 5, expiryWindows: [7, 30, 90],
 };
+
+/**
+ * The score the Preparedness card shows, computed the way `DashboardScreen`
+ * computes it. The point of the assertions below is that the spoken number
+ * equals this one, so this is the screen's own call and not a copy of the rule.
+ */
+async function screenScore(
+  items: ItemsRepository,
+  trackedCategoryIds: readonly string[],
+): Promise<number> {
+  return evaluatePreparedness({
+    items: await items.listForAnalysis(),
+    today: CONTEXT.today,
+    defaultThreshold: CONTEXT.defaultThreshold,
+    trackedCategoryIds,
+    expiryWindows: CONTEXT.expiryWindows,
+  }).score;
+}
+
+async function spokenScore(deps: VoiceDeps): Promise<number> {
+  const result = await execute(deps, { kind: 'QUERY_SCORE' });
+  if (result.kind !== 'answer' || result.answer.kind !== 'SCORE') {
+    throw new Error(`expected SCORE, got ${result.kind}`);
+  }
+  return result.answer.score;
+}
 
 describe('execute: queries', () => {
   let db: SqlDriver;
@@ -32,7 +63,7 @@ describe('execute: queries', () => {
       name: 'Feijão Preto', quantity: 1, unit: 'kg', minimumQuantity: 10, idealQuantity: 20,
     });
 
-    deps = { items, locations, context: CONTEXT, language: 'pt-BR' };
+    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [] };
   });
 
   afterEach(async () => {
@@ -176,13 +207,59 @@ describe('execute: queries', () => {
     }
   });
 
-  it('scores a stocked inventory above an empty one, and never below zero', async () => {
-    const result = await execute(deps, { kind: 'QUERY_SCORE' });
-    if (result.kind === 'answer' && result.answer.kind === 'SCORE') {
-      // Three items, two of them critical: one third is in good order.
-      expect(result.answer.score).toBe(33);
-    } else {
-      throw new Error(`expected SCORE, got ${result.kind}`);
+  it('speaks the number the preparedness screen shows', async () => {
+    const items = createItemsRepository(db);
+    const spoken = await spokenScore(deps);
+
+    expect(spoken).toBe(await screenScore(items, deps.trackedCategoryIds));
+    expect(spoken).toBeGreaterThan(0);
+  });
+
+  it('speaks the screen number when only some categories are tracked', async () => {
+    const items = createItemsRepository(db);
+    await items.create({
+      name: 'Arroz Agulhinha', quantity: 20, unit: 'kg', categoryId: 'food', minimumQuantity: 5,
+    });
+    const tracked = ['food', 'water'];
+    const scoped: VoiceDeps = { ...deps, trackedCategoryIds: tracked };
+
+    expect(await spokenScore(scoped)).toBe(await screenScore(items, tracked));
+  });
+
+  /**
+   * The case the old calculation got wrong, and the reason this one exists.
+   *
+   * Four fully stocked food items and an empty water category: every item on
+   * hand is healthy, so a flat percentage of healthy items answers 100. The
+   * application weights categories equally, which is what stops a full pantry
+   * hiding an empty water category, and answers 50. The screen says 50, so the
+   * voice must say 50.
+   */
+  it('lets an empty category pull the spoken score down, exactly as the screen does', async () => {
+    const stocked = await createMemoryDriver();
+    try {
+      await migrate(stocked);
+      await seedDatabase(stocked);
+      const items = createItemsRepository(stocked);
+      for (const name of ['Arroz', 'Feijão', 'Macarrão', 'Farinha']) {
+        await items.create({
+          name, quantity: 40, unit: 'kg', categoryId: 'food', minimumQuantity: 5,
+        });
+      }
+      const tracked = ['food', 'water'];
+
+      const spoken = await spokenScore({
+        items,
+        locations: createLocationsRepository(stocked),
+        context: CONTEXT,
+        language: 'pt-BR',
+        trackedCategoryIds: tracked,
+      });
+
+      expect(spoken).toBe(await screenScore(items, tracked));
+      expect(spoken).toBe(50);
+    } finally {
+      await stocked.close().catch(() => undefined);
     }
   });
 
@@ -191,20 +268,17 @@ describe('execute: queries', () => {
     try {
       await migrate(empty);
       await seedDatabase(empty);
-      const result = await execute(
-        {
-          items: createItemsRepository(empty),
-          locations: createLocationsRepository(empty),
-          context: CONTEXT,
-          language: 'pt-BR',
-        },
-        { kind: 'QUERY_SCORE' },
-      );
-      if (result.kind === 'answer' && result.answer.kind === 'SCORE') {
-        expect(result.answer.score).toBe(0);
-      } else {
-        throw new Error(`expected SCORE, got ${result.kind}`);
-      }
+      const items = createItemsRepository(empty);
+      const spoken = await spokenScore({
+        items,
+        locations: createLocationsRepository(empty),
+        context: CONTEXT,
+        language: 'pt-BR',
+        trackedCategoryIds: [],
+      });
+
+      expect(spoken).toBe(0);
+      expect(spoken).toBe(await screenScore(items, []));
     } finally {
       await empty.close().catch(() => undefined);
     }

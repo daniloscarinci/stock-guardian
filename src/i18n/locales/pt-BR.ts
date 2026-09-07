@@ -487,7 +487,8 @@ export const ptBR: LocaleTree = {
     notUnderstood: 'Não entendi.',
     examplesTitle: 'Tente um destes',
     unavailable: 'Este aparelho não transcreve voz por conta própria, então o microfone abre direto na caixa de texto.',
-    installable: 'Um pacote de voz para este idioma pode ser instalado neste aparelho.',
+    installable:
+      'Um pacote de voz para este idioma pode ser instalado. Instalar faz o download dele: é a única vez que algo aqui usa a rede.',
     install: 'Instalar',
     nothingHeard: 'Não ouvi nada. Tente de novo ou digite o comando.',
     listenFailed: 'Não foi possível usar o microfone. Digitar funciona.',
@@ -512,11 +513,13 @@ export const ptBR: LocaleTree = {
     expiryOfNone: '{name} não tem data de validade.',
     score: 'Sua pontuação de preparação é {score}.',
     settingEnabled: 'Controle por voz',
-    settingEnabledHelp: 'Mostra o microfone no cabeçalho. A caixa de digitar continua nos dois casos.',
+    settingEnabledHelp:
+      'Mostra o microfone no cabeçalho. A caixa de texto só abre por ele, então desligar aqui remove os dois.',
     settingSpeak: 'Ler respostas em voz alta',
     settingSpeakHelp: 'Usa a voz do sistema. No Android, o botão de silencioso do aparelho tem prioridade.',
     availability: 'Reconhecimento de voz',
-    ready: 'Pronto neste aparelho, e transcreve sem sair dele.',
+    ready:
+      'Pronto neste aparelho. O Chrome transcreve aqui ou não transcreve; no Android isso é pedido ao reconhecedor do sistema, e nem todos atendem o pedido.',
     andMore: 'e mais {count}',
     dayWindow_one: '{count} dia',
     dayWindow_other: '{count} dias',
