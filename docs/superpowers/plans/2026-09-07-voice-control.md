@@ -2982,7 +2982,7 @@ git commit -m "Voice: two settings, defaulting on"
     notUnderstood: 'I did not understand that.',
     examplesTitle: 'Try one of these',
     unavailable: 'This device cannot transcribe speech offline, so the microphone is hidden. Typing works.',
-    installable: 'A Portuguese speech pack can be installed on this device.',
+    installable: 'A speech pack for this language can be installed on this device.',
     install: 'Install',
     quantityAnswer: '{name}: {quantity} {unit}, in {location}.',
     quantityAnswerNoLocation: '{name}: {quantity} {unit}.',
@@ -2996,7 +2996,8 @@ git commit -m "Voice: two settings, defaulting on"
     whereItem: '{name} is in {location}.',
     whereItemUnplaced: '{name} has no location set.',
     whereLocationNone: 'There is nothing in {location}.',
-    whereLocationSome: '{location} holds {count} items: {names}.',
+    whereLocationSome_one: '{location} holds {count} item: {names}.',
+    whereLocationSome_other: '{location} holds {count} items: {names}.',
     expiryOf: '{name} expires on {date}.',
     expiryOfNone: '{name} has no expiry date.',
     score: 'Your preparedness score is {score}.',
@@ -3032,7 +3033,7 @@ Add the same keys to `pt-BR.ts` and `es.ts`. Portuguese, in full:
     notUnderstood: 'Não entendi.',
     examplesTitle: 'Tente um destes',
     unavailable: 'Este aparelho não transcreve voz sem internet, então o microfone está oculto. Digitar funciona.',
-    installable: 'Um pacote de voz em português pode ser instalado neste aparelho.',
+    installable: 'Um pacote de voz para este idioma pode ser instalado neste aparelho.',
     install: 'Instalar',
     quantityAnswer: '{name}: {quantity} {unit}, em {location}.',
     quantityAnswerNoLocation: '{name}: {quantity} {unit}.',
@@ -3046,7 +3047,8 @@ Add the same keys to `pt-BR.ts` and `es.ts`. Portuguese, in full:
     whereItem: '{name} está em {location}.',
     whereItemUnplaced: '{name} não tem local definido.',
     whereLocationNone: 'Não há nada em {location}.',
-    whereLocationSome: '{location} tem {count} itens: {names}.',
+    whereLocationSome_one: '{location} tem {count} item: {names}.',
+    whereLocationSome_other: '{location} tem {count} itens: {names}.',
     expiryOf: '{name} vence em {date}.',
     expiryOfNone: '{name} não tem data de validade.',
     score: 'Sua pontuação de preparação é {score}.',
@@ -3314,6 +3316,14 @@ export function VoiceSheet({ open, onClose }: { open: boolean; onClose: () => vo
 - `unknown` — `t('voice.notUnderstood')`, `t('voice.heard', { transcript })`, and `entry.outcome.examples` as a list.
 
 `VoiceButton` renders nothing when `settings.voiceEnabled` is false. It calls `selectRecognizer(LOCALE_TAGS[settings.language])` once on mount; when that reports `unavailable` it still renders and opens the sheet straight to the typed box, showing `t('voice.unavailable')` once. When it reports `ready` it calls `listen`, then hands the transcript to `voice.run`.
+
+**Use what the project already has.** Verified against the codebase:
+
+- `src/components/ui/Dialog.tsx` is a modal built on the native `<dialog>` element. `showModal()` supplies focus trapping, Escape-to-close, inertness of the page behind, and correct screen-reader semantics — "all things a hand-rolled overlay gets subtly wrong", as its own header says — and on narrow screens it becomes a bottom sheet through CSS alone. `VoiceSheet` wraps `Dialog`; it does not reimplement one. Note `Dialog` requires a `closeLabel`.
+- `Button` comes from `src/components/ui/primitives.tsx` and supports `variant="ghost"` and `iconOnly`, which is how the header's existing menu button is built.
+- **There is no microphone icon.** Add `MicIcon` to `src/components/ui/icons.tsx` following the file's `svg(<path … />, props)` idiom; every icon there is inline SVG, because a webfont would be a network request.
+- The header insertion point is the `headerActions` div in `src/app/Layout.tsx` (around line 157), before the language `<select>`.
+- `useAppContext()` supplies `repositories` (`items`, `categories`, `locations`, `catalog`, `settings`), `settings`, `t`, `itemContext`, `updateSettings` and `invalidate`.
 
 - [ ] **Step 5: Run the tests**
 
