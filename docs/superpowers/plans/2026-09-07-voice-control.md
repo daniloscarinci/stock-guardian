@@ -2912,12 +2912,15 @@ it('defaults voice on, and speaking on', () => {
 });
 
 it('keeps the application startable when a voice setting is corrupt', () => {
-  const settings = parseSettings([{ key: 'voiceEnabled', value: '"nonsense"' }]);
+  const { settings } = parseSettings([{ key: 'voiceEnabled', value: '"nonsense"' }]);
   expect(settings.voiceEnabled).toBe(true);
 });
 ```
 
-Match the exact call shape `parseSettings` already uses — read the existing test first.
+`parseSettings` returns `{ settings, invalidKeys }`, not a bare `Settings` — hence the
+destructure. The tests live in `src/database/seed/seed.test.ts`; there is no
+`src/domain/settings.test.ts`, and that seed file is the only test exercising
+`parseSettings` and `DEFAULT_SETTINGS` directly.
 
 - [ ] **Step 2: Run it and watch it fail**
 
