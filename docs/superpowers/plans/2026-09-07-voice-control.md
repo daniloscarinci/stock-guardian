@@ -1936,6 +1936,28 @@ describe('execute: writes are only ever pending', () => {
     expect(batch).not.toHaveBeenCalled();
   });
 
+  // WARNING: the test above does NOT prove the property on its own.
+  // `adjustQuantity` writes inside `db.transaction`, and `create-driver.ts`
+  // builds the transaction handle from the driver primitives directly, so
+  // `tx.exec` never passes through `db.exec`. A spy on `db.exec` is blind to
+  // the only write path an adjustment takes, and `batch` is never called by
+  // either module - so both assertions pass happily over a module that DID
+  // write. Spy on `transaction` too, and prove the spies are not watching
+  // nothing by committing a real write and asserting they fire.
+  it('the spies are actually watching the write path', async () => {
+    const exec = vi.spyOn(db, 'exec');
+    const transaction = vi.spyOn(db, 'transaction');
+
+    const result = await execute(deps, {
+      kind: 'ADJUST_QUANTITY', item: 'feijao preto', amount: 5,
+      direction: 'up', transaction: 'add', unit: null,
+    });
+    if (result.kind !== 'pending') throw new Error('expected a pending write');
+    await commit(deps, result.write);
+
+    expect(transaction.mock.calls.length + exec.mock.calls.length).toBeGreaterThan(0);
+  });
+
   it('commit is what actually writes', async () => {
     const result = await execute(deps, {
       kind: 'ADJUST_QUANTITY', item: 'feijao preto', amount: 5,
