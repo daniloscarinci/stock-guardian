@@ -33,6 +33,34 @@ function cleanItemPhrase(phrase: string): string {
   return kept.join(' ').trim();
 }
 
+/**
+ * Words that open or close a question but can never be part of a product name.
+ *
+ * The item capture in QUERY_QUANTITY is the loosest in the grammar, and when a
+ * speaker inverts the usual order - "tenho quanto de acucar", "restam quantos
+ * ovos" - one of these survives into it. That is not a cosmetic defect: the
+ * search then looks for a product called "quantos ovos", finds none, and tells
+ * the user with confidence that they have none of it.
+ *
+ * Removing them from the ITEM is safe in a way that loosening the PATTERN
+ * would not be. It cannot make a new sentence match, because the rule has
+ * already matched by the time this runs; it can only shorten what was
+ * captured, and a phrase it empties is declined rather than answered.
+ */
+const QUERY_WORDS = [
+  'quanto', 'quanta', 'quantos', 'quantas', 'eu',
+  'tem', 'tenho', 'temos', 'resta', 'restam', 'restaram',
+  'sobrou', 'sobraram', 'sobram',
+];
+
+function stripQueryWords(phrase: string): string {
+  return phrase
+    .split(' ')
+    .filter((word) => word !== '' && !QUERY_WORDS.includes(word))
+    .join(' ')
+    .trim();
+}
+
 /** Pulls the unit word out of a phrase, if one is there. */
 function findUnit(phrase: string): string | null {
   const found = phrase.split(' ').find((word) => UNITS.includes(word));
@@ -248,7 +276,17 @@ const rules: readonly Rule[] = [
       const remove = REMOVE_VERBS[verb];
       if (add === undefined && remove === undefined) return null;
 
-      const { amount, rest } = splitLeadingAmount(tools.numbers, match[2] ?? '');
+      // "poe mais 2 ovos" is how the sentence is actually spoken. "mais" sits
+      // between the verb and the number and carries no arithmetic of its own:
+      // the verb already said which way the stock moves, so "tira mais 2"
+      // removes two more rather than adding them.
+      //
+      // "menos" is deliberately NOT stripped here. "poe menos 2 ovos" has no
+      // settled meaning - two fewer than what? - and the verb says "add", so
+      // every reading of it is a guess at a write. It stays UNKNOWN.
+      const spoken = (match[2] ?? '').replace(/^mais\s+/, '');
+
+      const { amount, rest } = splitLeadingAmount(tools.numbers, spoken);
       if (amount === null || amount <= 0) return null;
 
       const item = cleanItemPhrase(rest);
@@ -272,11 +310,21 @@ const rules: readonly Rule[] = [
     // and "quanto tem de arroz" are both ordinary - so it is optional in two
     // places. Without the leading one, "tem" survives into the item phrase and
     // the search goes looking for a product called "tem arroz".
+    //
+    // The trailing list carries the PLURAL forms as well. "quantos ovos
+    // restam" is the most ordinary way to ask this and it ended at "ovos
+    // restam", because the list held "resta" but not "restam" and "sobrou" but
+    // not "sobraram".
+    //
+    // Whatever still leaks through either side is taken off the item by
+    // `stripQueryWords`, which is what makes the inverted order - "tenho
+    // quanto de acucar" - answerable instead of a search for a product called
+    // "quanto acucar".
     name: 'QUERY_QUANTITY',
     pattern:
-      /^(?:quanto|quanta|quantos|quantas|tem|tenho|ainda tem|resta|restam)\s+(?:(?:eu\s+)?(?:tenho|tem|temos|sobrou|resta|restam)\s+)?(?:de\s+)?(.+?)(?:\s+(?:eu\s+)?(?:tenho|tem|temos|sobrou|resta))?\??$/,
+      /^(?:quanto|quanta|quantos|quantas|tem|tenho|ainda tem|resta|restam)\s+(?:(?:eu\s+)?(?:tenho|tem|temos|sobrou|resta|restam)\s+)?(?:de\s+)?(.+?)(?:\s+(?:eu\s+)?(?:tenho|tem|temos|sobraram|sobram|sobrou|restaram|restam|resta))?\??$/,
     build: (match): Intent | null => {
-      const item = cleanItemPhrase(match[1] ?? '');
+      const item = stripQueryWords(cleanItemPhrase(match[1] ?? ''));
       return item === '' ? null : { kind: 'QUERY_QUANTITY', item };
     },
   },
