@@ -1,7 +1,7 @@
 # Testing
 
 ```bash
-npm test              # 402 unit tests
+npm test              # 827 unit tests, 33 files
 npm run smoke         # 18 browser checks against the production build
 npm run typecheck     # TypeScript, strict
 ```
@@ -41,6 +41,10 @@ silently diverge.
 | Reports | Four builders, CSV flattening, spreadsheet-formula guarding |
 | Contacts | CRUD, urgency ordering, accent-insensitive search, backup round-trip |
 | i18n | Completeness, placeholders, plurals, no untranslated copies |
+| Voice parsing | Spoken numbers and dates, rule order, the three phrase corpora |
+| Voice execution | Every intent over a real database, and the write spy |
+| Speech | The seam's three implementations, `processLocally`, the speaker |
+| The voice sheet | The typed path, end to end, against a real database |
 
 ### What the tests are actually for
 
@@ -55,6 +59,45 @@ back:
   malformed file.
 - Markup in an item name is stored as text, never interpreted.
 - `'; DROP TABLE items; --` as a name leaves all 194 catalog rows intact.
+
+### The phrase corpora
+
+`src/voice/grammar/*.phrases.test.ts` holds every phrase form the application
+claims to understand — 67 in Portuguese, 77 in English, 78 in Spanish. They are
+written the way a recognizer returns a sentence, lowercase and often without
+accents, rather than the way a person would type it, because that is what the
+parser actually receives.
+
+A corpus, not a sample. It is the specification of the feature: a phrase that is
+not in it is a phrase `docs/VOICE.md` does not claim.
+
+**A phrase that fails in real use becomes a row before it becomes a fix.** Every
+file says so in its header. The order matters because the alternative is a
+grammar patched to satisfy one remembered sentence, with nothing to say whether
+the patch broke the twelve rules it sits among — rule order is first-match-wins,
+so a new pattern placed a line too early silently steals from the one below it.
+Writing the row first turns "it did not understand me" into a failing test, and
+turns the fix into something that either passes the other 221 or does not.
+
+About a quarter of each corpus is phrases that must **not** parse.
+`comprei arroz` names no amount, `quanto tem` names no item, and
+`o arroz vence 31 de abril` names a date that has never existed. Each must come
+back UNKNOWN. Those rows are the ones worth having: a parser is judged by what
+it refuses, and a guess at a write is the failure this whole feature was shaped
+to avoid.
+
+### The write that must not happen
+
+`execute.writes.test.ts` spies on the SQL driver, runs every changing intent
+through `execute`, and asserts that no `INSERT`, `UPDATE` or `DELETE` reaches
+it. `VoiceSheet.test.tsx` does the same thing from the other end: it drives the
+real sheet through its typed box against a real in-memory database, and once the
+confirmation card is on screen it reads the item's quantity straight out of the
+table and asserts it is still the old one.
+
+Two tests for one property, because "nothing is written until you confirm" is
+the promise that makes voice control safe to give someone, and a promise held
+only by the shape of the code is one refactoring away from being false.
 
 ### The one that matters most
 
@@ -111,8 +154,16 @@ Stated so nobody mistakes green for complete.
 - **The desktop driver.** Never compiled — no Rust toolchain here. The SQL it
   runs is covered, since all three drivers share it; the transport is not.
   `docs/BUILD.md` lists what to check.
-- **Component rendering.** No React Testing Library suite. Screens are exercised
-  end to end by the smoke test, not unit tested.
+- **Component rendering, nearly everywhere.** `VoiceSheet.test.tsx` is the only
+  React Testing Library suite, written because the confirmation card's whole
+  purpose is a thing that must not happen and no other layer can prove it. Every
+  screen is exercised end to end by the smoke test instead, not unit tested.
+- **Real speech.** No test speaks. The three recognizers are tested against
+  stubs — that `processLocally` is set, that `start()` is never reached without
+  an on-device model, that the Android plugin is called with the right language
+  — and the voice sheet is driven through its typed box. Whether a given phone's
+  recognizer actually transcribes offline is a property of that phone, and
+  `docs/ANDROID.md` lists it among the things to check on the first install.
 - **Printing.** The print stylesheet is written and the button calls
   `window.print()`, but no test opens a print preview - browsers do not expose
   one to automation.

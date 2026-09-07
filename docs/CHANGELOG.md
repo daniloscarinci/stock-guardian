@@ -117,6 +117,20 @@ it.
   have carried them since the first release; this adds the screen.
 - **Backups with integrity checking**: format and schema versions, record counts,
   and a SHA-256 checksum.
+- **Voice control**, in all three languages. The original contains no speech
+  code of any kind, and would have had nowhere to put a spoken change: it wrote
+  straight to `localStorage` on every action, with no confirmation step for a
+  misheard sentence to be caught in. Ask the inventory a question — *"quanto
+  arroz eu tenho?"* — or state a change — *"usei 3 ovos"* — and see a card
+  describing what would happen.
+  Nothing is written until it is confirmed; `execute.ts` has no write path at
+  all, and a test spies on the driver to keep it that way. Speech is transcribed
+  on the device: Android hands the recording to the system's own recognizer, so
+  the APK still declares no microphone permission, and Chrome runs its
+  on-device model with `processLocally`, which errors rather than reaching a
+  server when no model is installed. A device with neither — an iPhone, Safari
+  anywhere — gets the typed command box, which is present on every platform and
+  is not a fallback. See `docs/VOICE.md`.
 - **Installable as an app**, with a hand-written service worker and verified cold
   offline start.
 - **Light and dark themes**, following the system by default.
@@ -153,3 +167,12 @@ machine has no Rust toolchain.
 The Android project is complete, but no APK has been produced from it. GitHub
 Actions builds and signs one when a version tag is pushed; no tag has been
 pushed, and no phone has run this build.
+
+Voice control adds four more. No wake word and no continuous listening — the
+system recognizer transcribes one utterance per press, and hands-free listening
+would need the microphone permission this design exists to avoid. No voice on
+iPhone, iPad or Safari, where no on-device speech API exists; the typed box
+works there and the interface says why the microphone is absent. No voice in the
+desktop build, which has still never been compiled. And no conversation: the
+engine answers the forms in `docs/VOICE.md` and returns UNKNOWN with examples for
+anything else, rather than guessing.

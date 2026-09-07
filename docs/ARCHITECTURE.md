@@ -26,7 +26,7 @@
                     └──────────────────────────────┘
 ```
 
-Two rules hold the whole thing together.
+Three rules hold the whole thing together.
 
 **The database is the only source of truth.** No store keeps a copy of a domain
 value that also lives in a table. Components read through `useAsyncData`, writes
@@ -38,6 +38,12 @@ test, or sitting behind a Rust process on the desktop. That is why the desktop
 driver is eighty lines: transaction semantics were written once, in
 `createDriver`, and all three drivers inherit them.
 
+**`SpeechRecognizer` is the second seam, and the same shape as the first.**
+Above it, nothing knows whether Android's system recognizer, Chrome's on-device
+model or nothing at all is listening. It was worth building for the third case:
+a device with no speech API is not a broken device here, it is the `none`
+implementation and a typed box. See *The voice path*.
+
 ---
 
 ## Directories
@@ -48,7 +54,8 @@ src/
   components/    UI primitives, status badges, charts, icons
   features/      one directory per screen (inventory, dashboard, expiration,
                  replenishment, catalog, locations, categories, contacts,
-                 reports, settings)
+                 reports, settings) and one for the voice sheet, which is a
+                 dialog rather than a route
   database/
     driver/      SqlDriver contract, shared transaction logic, oo1 adapter
     worker/      the browser driver: worker, protocol, client
@@ -57,7 +64,11 @@ src/
     seed/        system categories and the reference catalog
   repositories/  items, categories, locations, catalog, contacts, settings
   domain/        dates, expiry, stock, preparedness, replenishment, normalize
+  voice/         transcript → Intent: parser, numbers, dates, one grammar
+                 per language and a registry. Pure, zero I/O.
   services/      backup, import, export, reports, download
+    speech/      SpeechRecognizer contract and its three implementations
+    voice/       Intent → Outcome: resolve, execute (reads), commit (writes)
   i18n/          three locales and the translation function
   hooks/  types/  styles/  data/  test/
 scripts/         catalog extraction, icons, offline audit, smoke test
@@ -128,6 +139,53 @@ in a way no user could detect.
 
 ---
 
+## The voice path
+
+```
+                    ┌──────────────────────────────┐
+   features/voice/ ─│  Button, sheet, confirm card │
+                    └───────┬──────────────────┬───┘
+                            │ transcript       │ listen
+                            │                  │
+             ┌──────────────▼───┐   ┌──────────▼───────────────────┐
+   voice/  ──│ parse(grammar)   │   │ SpeechRecognizer (the seam)  │── services/
+             │ PURE, zero I/O   │   └──┬──────────┬────────────┬───┘    speech/
+             └──────────┬───────┘      │          │            │
+                        │ Intent  ┌────▼─────┐ ┌──▼───────┐ ┌──▼──────┐
+             ┌──────────▼──────┐  │ Android  │ │ Chrome   │ │ none    │
+   services/ │ resolve         │  │ system   │ │ on-device│ │ Safari, │
+     voice/ ─│ execute (READS) │  │recognizer│ │  model   │ │ Firefox,│
+             │ commit (WRITES) │  └──────────┘ └──────────┘ │ tests   │
+             └──────────┬──────┘                            └─────────┘
+                        │ calls
+                  repositories/
+```
+
+**`voice/` is pure and `services/voice/` is not, and the line is the point.**
+`parse` takes a grammar and a string and returns an `Intent` — data that holds
+the spoken phrase, never a database identifier, and that cannot act. Every rule
+in every language is therefore testable with a string and an expectation, which
+is what makes a corpus of 222 rows cheap enough to be worth keeping. Turning
+a phrase into a row needs the database, so it lives on the other side of the
+line in `resolve.ts`.
+
+**`execute` reads and `commit` writes, and only one of them is reachable
+without a press.** `execute` returns a `PendingWrite` describing what would
+happen; `commit` is called by the confirmation card's button and by nothing
+else. That is what makes "nothing is stored until you confirm" a structural
+property rather than a claim about the interface, and `execute.writes.test.ts`
+spies on the driver to hold it there.
+
+**A grammar is a file, not a branch.** One file per language plus one registry
+entry, the same rule `i18n/translate.ts` follows. `parse.ts` knows nothing about
+any particular language. Rule order inside a grammar is load-bearing — first
+match wins, so specific forms precede general ones — and `parse.test.ts` pins
+it.
+
+`docs/VOICE.md` covers what can be said and what happens to it.
+
+---
+
 ## The one duplication, and how it is kept honest
 
 Stock status and expiry bucket are expressed twice: in `domain/` for scoring and
@@ -166,8 +224,13 @@ file on the same device that answers in under a millisecond. TanStack Query and
 Zustand were both installed early and both removed once it was clear they were
 carrying nothing.
 
-Five runtime dependencies: `react`, `react-dom`, `react-router-dom`, `zod`, and
-`@sqlite.org/sqlite-wasm`.
+Six runtime dependencies: `react`, `react-dom`, `react-router-dom`, `zod`,
+`@sqlite.org/sqlite-wasm`, and `@capacitor/core`. The last one arrived with
+voice control: `services/speech/capacitor.ts` needs `registerPlugin` to reach
+the Android speech plugin, so the package is now bundled into the web build as
+well, where `Capacitor.isNativePlatform()` answers false and nothing else in it
+runs. It was already a dependency of the Android build; what changed is that
+application source imports it.
 
 ---
 

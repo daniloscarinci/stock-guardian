@@ -8,9 +8,12 @@ Open that once on any phone or computer and install it. After that it runs with
 no internet, no account and no server — nothing needs to be switched on.
 
 Track emergency supplies, food, water, medical stock, tools and equipment. The
-application runs entirely on your device. It makes no network requests, needs no
-account, and keeps working with the radio off — which is the point, because the
-situations it exists for are the ones where the internet is not there.
+application runs entirely on your device. It makes no network requests of its
+own, needs no account, and keeps working with the radio off — which is the
+point, because the situations it exists for are the ones where the internet is
+not there. There is one exception and it is a button you have to press: a speech
+pack for voice control, described under **Voice** below. Nothing of yours ever
+leaves the device.
 
 It is a rebuild of `backup/End_of_world_V11-Pro_Upgraded.html`, a single-file
 application kept in this repository untouched as the functional baseline. Every
@@ -86,6 +89,32 @@ replace.
 **Three languages.** English, Portuguese (Brazil) and Spanish, switchable at any
 time. Your choice persists — the original reset to Portuguese on every reload.
 
+**Voice.** Ask *"quanto arroz eu tenho?"* and hear the answer. Say *"usei 3
+ovos"* and a card appears saying what would change — and changes nothing until
+you press **Confirmar**. It works in all three languages.
+
+Three things about it belong here rather than in a footnote.
+
+*The application never opens the microphone.* On Android the system's own
+recognizer records and hands back text, which is why the app still asks the
+operating system for no permission at all. In Chrome the browser transcribes
+with its on-device model, and errors rather than reaching a server when that
+model is not installed.
+
+*The microphone is not the feature.* The same sheet has a box you can type into,
+on every platform, doing exactly the same thing. On an iPhone no browser offers
+a speech API that can be told to transcribe on the device, so the microphone is
+absent and the interface says why — the typed box is not a consolation prize, it
+is the feature.
+
+*One button downloads something.* **Settings → Speech recognition → Install**
+appears when the browser has a speech pack for your language, and pressing it
+fetches one. It is the only download the application ever asks for, it never
+happens on its own, and nothing of yours is uploaded in exchange.
+
+`docs/VOICE.md` lists every phrase it understands, in all three languages, and
+every one it deliberately refuses.
+
 ---
 
 ## Your data
@@ -130,7 +159,9 @@ Android also runs Stock Guardian as an installed application with its own icon,
 built from the same source and carrying every asset inside the file. It needs no
 network even on first launch, asks the operating system for no permission at all,
 and keeps Android's automatic backup switched off, so the database never reaches
-Google Drive.
+Google Drive. Voice control did not change that: the system's own recognizer
+holds the microphone, so there is no `RECORD_AUDIO` to declare, and the build
+still fails if any permission appears.
 
 `docs/ANDROID.md` explains how to produce the APK and what to check after
 installing it. Nothing else here changes: the phone still holds its own database,
@@ -160,7 +191,7 @@ import shows you what the file contains and asks before writing anything.
 | `npm run dev` | Development server with hot reload |
 | `npm run build` | Production build, then the offline audit |
 | `npm run preview` | Serve the production build locally |
-| `npm test` | The 402-test unit suite |
+| `npm test` | The 827-test unit suite |
 | `npm run smoke` | Drive the production build in a real browser (needs Edge or Chrome) |
 | `npm run typecheck` | TypeScript, strict |
 | `npm run lint` | ESLint |
@@ -197,6 +228,7 @@ to see the behaviour for yourself.
 | `docs/DATABASE.md` | Schema, every table and column |
 | `docs/MIGRATION.md` | Legacy import, field by field |
 | `docs/OFFLINE.md` | How the offline guarantee is made and enforced |
+| `docs/VOICE.md` | Voice control: every phrase, and every limit |
 | `docs/BUILD.md` | Building, hosting, and the desktop build |
 | `docs/ANDROID.md` | The Android app: building, signing, installing |
 | `docs/TESTING.md` | What is tested, and how to run it |
@@ -210,6 +242,23 @@ Stated plainly, because the alternative is an interface full of buttons that do
 nothing. Nothing in this list appears in the application as a disabled control or
 a "coming soon" panel — if it is not built, it is not shown.
 
+- **A wake word, or continuous listening.** The system recognizer transcribes
+  one utterance per tap. Hands-free listening means holding the microphone open,
+  and the microphone means the permission this whole design exists to avoid.
+- **Voice on iPhone, iPad or Safari.** Safari offers no way to require that
+  speech is transcribed on the device, so the application declines to use it at
+  all. The typed command box works, and the interface says why the microphone is
+  missing rather than showing one that fails.
+- **Voice proven in the desktop build.** The code is the same, but `src-tauri/`
+  has still never been compiled, so whether that webview offers an on-device
+  recognizer is unknown. If it does not, the typed box is what you get.
+- **An open conversation.** The engine answers the phrase forms listed in
+  `docs/VOICE.md`. Anything else comes back as "I did not understand that" with
+  examples beside it, never as a guess — and it has no memory between sentences,
+  so "and two more" refers to nothing.
+- **Voice for anything but stock.** Speech reads the inventory and changes
+  quantities, expiry dates, and creates items. Categories, locations, contacts
+  and settings are screens. Nothing can be deleted or archived by voice.
 - **Photographs.** The database stores them; there is no interface for adding
   them yet.
 - **Barcode scanning.** A barcode can be typed in and is searchable. Scanning

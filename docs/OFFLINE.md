@@ -1,9 +1,17 @@
 # Offline operation
 
-Stock Guardian makes no network requests. Not "few", not "only for updates" —
-none. This page describes how that is achieved and, more importantly, how it is
-enforced, because a promise like this erodes by accident: one webfont, one
-analytics snippet, one CDN fallback added while debugging.
+Stock Guardian makes no network requests of its own. Not "few", not "only for
+updates" — none. This page describes how that is achieved and, more importantly,
+how it is enforced, because a promise like this erodes by accident: one webfont,
+one analytics snippet, one CDN fallback added while debugging.
+
+"Of its own" is doing real work in that sentence, and exactly one thing sits
+outside it. **Settings → Speech recognition → Install** asks the browser to
+download a speech pack for voice control. That is the browser fetching on an
+explicit press rather than the page fetching on its own; it never happens
+automatically, it never appears in the Android build, and it is set out in full
+under *Speech* below. Nothing else in the application, on any platform, reaches
+the network at all.
 
 ---
 
@@ -18,6 +26,10 @@ constructs that actually fetch — `fetch()`, `importScripts()`, `new Worker()`,
 `.src =`, `sendBeacon()` and the rest. Bundled libraries carry URLs in licence
 headers and error messages, and flagging those would produce noise everyone
 learns to ignore, which is worse than no check.
+
+It carries one rule that reads `src/` instead of `dist/`, for the
+`SpeechRecognition` identifier. That exception, and what it cannot catch, is set
+out under *Speech*.
 
 **The Content-Security-Policy.** `index.html` declares `default-src 'self'`, so
 the browser itself refuses any off-origin request. `'wasm-unsafe-eval'` is
@@ -64,8 +76,106 @@ and the Android build ships no service worker at all. The audit below still runs
 over the same `dist/`, so the guarantee is enforced identically either way. That
 build goes further and asks the operating system for no permission whatsoever —
 not even `INTERNET` — which makes "it does not use the network" checkable in the
-phone's own settings, and is itself checked on every build. See
+phone's own settings, and is itself checked on every build. Voice control did
+not change that: the manifest gained a `queries` element, which is package
+visibility rather than a permission, and the workflow that enforces this is
+byte-identical to the one that shipped before voice existed. See
 `docs/ANDROID.md`.
+
+---
+
+## Speech
+
+Voice control is the one feature in this application that could have quietly
+undone everything above. The default mode of the Web Speech API streams the
+microphone to Google's servers, and the ordinary way to record on Android is to
+ask for `RECORD_AUDIO` and open the microphone yourself. Neither happens here.
+
+### Three recognizers, one seam
+
+`SpeechRecognizer` in `src/services/speech/recognizer.ts` is the second seam in
+this codebase, built the way `SqlDriver` is built. Every implementation
+transcribes on the device.
+
+**Android** hands the job to the system. `SpeechPlugin.java` fires
+`ACTION_RECOGNIZE_SPEECH` with `EXTRA_PREFER_OFFLINE`; Android's own recognizer
+records and returns text. The microphone is held by the recognizer, never by
+this application, so the APK declares no `RECORD_AUDIO` — and the workflow fails
+the build if any permission appears at all. `EXTRA_PREFER_OFFLINE` is a request
+whose value depends on the recognizer installed, which is why the interface
+calls on-device speech a capability of the device rather than a guarantee this
+application can make for it.
+
+**Chrome** uses `SpeechRecognition` with `processLocally = true`, set first and
+unconditionally, and starts only after `availableOnDevice(tag)` reports a model
+for that language. `processLocally` **fails closed**: with no local model the
+call errors rather than falling back to the network. That is the property that
+makes the API usable here at all, and it is the reason this implementation is
+allowed to exist.
+
+**Everything else** is `none.ts`, which reports unavailable. Safari exposes
+`webkitSpeechRecognition` but not the on-device controls, so there is no way to
+require local transcription and the recognizer is never constructed. That costs
+the microphone on iPhone and nothing else: the typed command box is present on
+every platform and is not a fallback.
+
+### What enforces it, in the order it holds
+
+**The Content-Security-Policy**, `connect-src 'self'`. An implementation that
+tried to ship audio to a server itself would have nowhere to send it. This is
+the structural one, and it is why the seam is safe to have.
+
+**`processLocally = true`**, inside `webspeech.ts`. The browser makes that API's
+network calls itself, out of reach of the CSP, so within that implementation
+this flag is the only thing standing between it and Google. `webspeech.test.ts`
+asserts it is set and that `start()` is never reached without an on-device
+model.
+
+**The audit rule**, and it is the weakest of the three. `audit-offline.mjs`
+fails the build if the literal identifier `SpeechRecognition` — or
+`webkitSpeechRecognition` — appears anywhere in `src/` outside
+`services/speech/webspeech.ts`. Its limits, stated rather than glossed:
+
+- It is a **text match on one spelling**. A name assembled at runtime, or read
+  out of a variable, passes it untouched.
+- It reads `src/`, not `dist/`, which is the one rule in this script that does.
+  The application bundles into a single chunk, so in the built output every
+  module is the same file and "permitted in exactly one module" cannot be
+  expressed at all. Attributing a match back to its module would mean decoding
+  the source map — the artifact this audit already declines to trust, and one a
+  build setting can switch off, taking the check silently with it.
+- Comments are stripped first, and test files are skipped on purpose. Prose
+  about the API is not a use of it, and failing a build over a sentence teaches
+  people to ignore the script.
+
+What it does catch is the second use site somebody adds in good faith, which is
+the way this promise would actually be lost.
+
+### The install button
+
+**Settings → Speech recognition → Install** appears when Chrome reports a
+downloadable speech pack for the interface language. Pressing it calls
+`installOnDevice(tag)` and the browser downloads the model.
+
+That is a byte crossing the network. It is the browser fetching on an explicit
+press rather than the page fetching on its own, which is why the audit is right
+not to flag it — and why it must never be made automatic. Nothing else in the
+voice feature touches the network, and the pack, once installed, is what makes
+transcription local afterwards.
+
+It never appears inside the APK. `install` is optional on the seam and only the
+Chrome implementation defines one, so the Android build still contains nothing
+at all that reaches the network.
+
+### Reading answers aloud
+
+`speechSynthesis` is a system service and `speak.ts` fetches nothing. But the
+Web Speech API marks some voices as not local
+(`SpeechSynthesisVoice.localService`), and `speak.ts` does not filter on that
+flag — it takes whichever voice the system offers for the language. On a desktop
+browser the sentence being read may therefore be synthesised off-device. On
+Android the system voice is on the phone. **Settings → Read answers aloud**
+switches it off, and that is the only certain answer here.
 
 ---
 

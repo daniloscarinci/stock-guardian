@@ -88,7 +88,7 @@ release agree on what version they are.
 
 ## How the Android build differs from the website
 
-The application code is identical. Four things around it are not.
+The application code is identical. Five things around it are not.
 
 **No service worker.** On the web, a service worker makes the site work offline.
 Inside the APK every asset already sits on the device, so a second cache would
@@ -140,6 +140,8 @@ on every modern phone and the microphone button would never appear. It is not a
 permission, it is not `QUERY_ALL_PACKAGES`, and the build's check confirms as
 much: the APK still asks the system for nothing.
 
+`docs/VOICE.md` covers the feature itself, including what it will not do.
+
 ---
 
 ## The signing key
@@ -164,7 +166,7 @@ cannot read fails in seconds with a clear message.
 ## What to check on the device
 
 No emulator and no phone took part in producing this project, so the first
-install is the first real test. Check six things in order, because each one
+install is the first real test. Check eight things in order, because each one
 tells you something different:
 
 1. **It opens.** A blank screen means the WebView could not start the
@@ -182,6 +184,16 @@ tells you something different:
    phone's Downloads folder for the `.json` file.
 6. **The back button behaves.** It should move back through the screens and
    leave the application from the dashboard.
+7. **The microphone appears, and works.** Tap it and say *"quanto arroz eu
+   tenho?"*. Android should open its own recognizer screen — that screen
+   belonging to the system rather than to this application is the whole design.
+   No microphone button at all means `availability` found no recognizer, which
+   is a real answer on a phone that has none. Confirm in **Settings → Apps →
+   Stock Guardian → Permissions** that this application still holds nothing.
+8. **It transcribes in airplane mode.** `EXTRA_PREFER_OFFLINE` is a request, and
+   whether the phone honours it depends on the recognizer installed. This is the
+   check that tells you what that phone actually does, and it is the one thing in
+   this list no test here can answer.
 
 ---
 
