@@ -1,19 +1,35 @@
 /**
  * An Answer as a sentence.
  *
- * Three rules, all of which follow from the sentence being SPOKEN:
+ * Four rules, all of which follow from the sentence being SPOKEN:
  *
  *   Name at most three items and count the rest. Forty names read aloud is
  *   noise, and the screen shows the full list anyway.
  *   An empty result is a sentence, never an empty list.
  *   Every number goes through `t`, so a plural is a plural in all three
  *   languages without this module knowing any of their rules.
+ *   Every date and quantity goes through the user's own format. `2026-09-12`
+ *   and `0.333333` are stored values; neither is a thing anyone says.
  */
+import { formatCalendarDate } from '../../domain/dates';
+import type { DateFormat, Language } from '../../domain/settings';
+import { LOCALE_TAGS } from '../../i18n/translate';
 import type { TranslateFn } from '../../i18n/translate';
 import type { Answer } from './execute';
 
 /** How many names a spoken sentence may carry before it stops being one. */
 const MAX_NAMES = 3;
+
+/**
+ * The display preferences a sentence needs and an `Answer` does not carry.
+ *
+ * `t` already knows the language for the purpose of choosing words. It does not
+ * know how the user writes a date or a decimal, and those are settings.
+ */
+export interface AnswerOptions {
+  readonly language: Language;
+  readonly dateFormat: DateFormat;
+}
 
 /**
  * Up to three names, with the remainder counted rather than recited.
@@ -27,10 +43,23 @@ function namesOf(t: TranslateFn, names: readonly string[]): string {
   return rest <= 0 ? shown : `${shown} ${t('voice.andMore', { count: rest })}`;
 }
 
-export function renderAnswer(t: TranslateFn, answer: Answer): string {
+/**
+ * A stored quantity as a spoken one.
+ *
+ * `adjustQuantity` rounds to six decimal places, so `String(quantity)` can read
+ * aloud as "zero point three three three three three three". The inventory
+ * screen caps the same value at three digits; this matches it, and picks up the
+ * locale's decimal separator on the way - "1,5 kg" in pt-BR, not "1.5 kg".
+ */
+function quantityOf(language: Language, quantity: number): string {
+  return new Intl.NumberFormat(LOCALE_TAGS[language], { maximumFractionDigits: 3 }).format(quantity);
+}
+
+export function renderAnswer(t: TranslateFn, answer: Answer, options: AnswerOptions): string {
   switch (answer.kind) {
     case 'QUANTITY': {
-      const { name, quantity, unit, locationName } = answer.item;
+      const { name, unit, locationName } = answer.item;
+      const quantity = quantityOf(options.language, answer.item.quantity);
       return locationName === null
         ? t('voice.quantityAnswerNoLocation', { name, quantity, unit })
         : t('voice.quantityAnswer', { name, quantity, unit, location: locationName });
@@ -40,14 +69,28 @@ export function renderAnswer(t: TranslateFn, answer: Answer): string {
       if (answer.items.length === 0) {
         // "Nothing has expired" and "nothing expires in 30 days" are different
         // reassurances, and only one of them is true of a question about the past.
+        // The empty future sentence spends its one plural on the window, which is
+        // the only number in it.
         return answer.expiredOnly
           ? t('voice.expiredNone')
-          : t('voice.expiringNone', { days: answer.withinDays });
+          : t('voice.expiringNone', { count: answer.withinDays });
       }
+
+      const count = answer.items.length;
+      const names = namesOf(t, answer.items.map((item) => item.name));
+
+      // Already-expired stock takes no window at all. Saying "3 items expire
+      // within 30 days" of food that went bad last week is not a tense error,
+      // it is a false claim that the food is still good.
+      if (answer.expiredOnly) return t('voice.expiredSome', { count, names });
+
       return t('voice.expiringSome', {
-        count: answer.items.length,
-        days: answer.withinDays,
-        names: namesOf(t, answer.items.map((item) => item.name)),
+        count,
+        names,
+        // The window needs a plural of its own - "1 dia", "30 dias" - and the
+        // sentence has already spent its single count on the items. Rendering it
+        // as a phrase first gives it one, the way `andMore` gets one.
+        window: t('voice.dayWindow', { count: answer.withinDays }),
       });
     }
 
@@ -76,13 +119,15 @@ export function renderAnswer(t: TranslateFn, answer: Answer): string {
             names: namesOf(t, answer.items.map((item) => item.name)),
           });
 
-    case 'EXPIRY_OF':
-      return answer.item.expirationDate === null
+    case 'EXPIRY_OF': {
+      // `formatCalendarDate` returns '' for null and for anything it cannot
+      // parse, which covers both cases at once: "Leite vence em ." is a worse
+      // sentence than "Leite has no expiry date", and less true.
+      const date = formatCalendarDate(answer.item.expirationDate, options.dateFormat);
+      return date === ''
         ? t('voice.expiryOfNone', { name: answer.item.name })
-        : t('voice.expiryOf', {
-            name: answer.item.name,
-            date: answer.item.expirationDate,
-          });
+        : t('voice.expiryOf', { name: answer.item.name, date });
+    }
 
     case 'SCORE':
       return t('voice.score', { score: answer.score });
