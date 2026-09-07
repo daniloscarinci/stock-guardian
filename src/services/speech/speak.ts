@@ -25,11 +25,18 @@ export function createSpeaker(enabled: () => boolean): Speaker {
       const Utterance = (globalThis as unknown as {
         SpeechSynthesisUtterance?: new (text: string) => SpeechSynthesisUtterance;
       }).SpeechSynthesisUtterance;
-      if (synth === undefined || Utterance === undefined || text === '') return;
+      if (synth === undefined || Utterance === undefined) return;
 
       // An answer that arrives while the last one is still being read would
       // otherwise queue, and the user would hear a stale sentence first.
       synth.cancel();
+
+      // Empty text is a legitimate answer meaning "nothing to say now", so the
+      // check sits AFTER the cancel, not in the guard above. Returning early on
+      // it used to skip the cancel entirely, which left the previous sentence
+      // reading on over a screen that had already moved on - precisely the
+      // stale answer the cancel exists to stop.
+      if (text === '') return;
 
       const utterance = new Utterance(text);
       utterance.lang = tag;

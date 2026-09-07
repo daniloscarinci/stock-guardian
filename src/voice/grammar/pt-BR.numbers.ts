@@ -17,10 +17,19 @@ export const ptBRNumbers: NumberWords = {
     noventa: 90, cem: 100, cento: 100, duzentos: 200, duzentas: 200,
     trezentos: 300, trezentas: 300, quatrocentos: 400, quinhentos: 500,
     seiscentos: 600, setecentos: 700, oitocentos: 800, novecentos: 900,
-    mil: 1000,
   },
-  /** Words that multiply the number before them: "duas dúzias" is 2 × 12. */
-  groups: { duzia: 12, duzias: 12, par: 2, pares: 2 },
+  /**
+   * Words that multiply the number before them: "duas dúzias" is 2 × 12, and a
+   * bare "dúzia" is 1 × 12.
+   *
+   * `mil` belongs here and NOT in `units`, however much it looks like a number
+   * word. As a unit it was added, so "dois mil" parsed as 2 + 1000 = 1002 and
+   * "dez mil" as 1010 - a wrong quantity with no error to notice, written
+   * straight into someone's stock. As a group it multiplies, which is what the
+   * word actually does: 2 × 1000. "mil" on its own still reads 1000 because a
+   * group with nothing before it multiplies 1.
+   */
+  groups: { duzia: 12, duzias: 12, par: 2, pares: 2, mil: 1000 },
   /** Standalone quantities that need no numeral. */
   literals: { meio: 0.5, meia: 0.5, metade: 0.5 },
   /** Joins tens to units: "vinte e cinco". */
