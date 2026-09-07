@@ -11,6 +11,13 @@
  * accessible name. This feature exists for people who are not looking at the
  * screen, so that is the feature rather than a courtesy - a card that appeared
  * silently and left focus in the text box would be a card nobody heard.
+ *
+ * A card is now shown only for a write that GUESSED at something. An explicit
+ * one is stored on the spot and offered back, because asking someone to confirm
+ * the sentence they just said clearly is what made this tiring on a real phone.
+ * So the card also says what it filled in: "10 becomes 11" is true and explains
+ * nothing, and the thing the reader has to check is exactly the part that was
+ * not heard.
  */
 import { useEffect, useId, useRef } from 'react';
 import { useApp } from '../../app/AppContext';
@@ -79,6 +86,47 @@ function describe(
   }
 }
 
+/**
+ * Every guess this write is made of, in words.
+ *
+ * The facts are gathered before the reasons, because an assumption names a part
+ * of the write and which part it names is knowable only from the write's kind.
+ * A reason that cannot apply to a kind - 'quantity' to an expiry date, 'item'
+ * to a creation - is never produced by `execute`, so the unused values here
+ * cost a line and buy a switch with no casts in it.
+ */
+function assumed(
+  write: PendingWrite,
+  t: TranslateFn,
+  language: Language,
+  dateFormat: DateFormat,
+): readonly string[] {
+  const name = write.kind === 'CREATE' ? write.name : write.item.name;
+  const unit = write.kind === 'CREATE' ? write.unit : write.item.unit;
+  const amount =
+    write.kind === 'ADJUST'
+      ? Math.abs(write.delta)
+      : write.kind === 'CREATE'
+        ? write.quantity
+        : 0;
+  const date = write.kind === 'EXPIRY' ? formatCalendarDate(write.after, dateFormat) : '';
+
+  return write.assumptions.map((reason) => {
+    switch (reason) {
+      case 'quantity':
+        return t('voice.assumedQuantity', { quantity: quantity(language, amount) });
+      case 'item':
+        return t('voice.assumedItem', { name });
+      case 'unit':
+        return t('voice.assumedUnit', { unit });
+      case 'date':
+        return t('voice.assumedDate', { date });
+      case 'newItem':
+        return t('voice.assumedNewItem', { name });
+    }
+  });
+}
+
 export function ConfirmCard({
   write,
   busy,
@@ -92,6 +140,7 @@ export function ConfirmCard({
 }) {
   const { t, settings } = useApp();
   const headingId = useId();
+  const guessesId = useId();
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   // The card appears in response to something said, not to something clicked,
@@ -101,6 +150,7 @@ export function ConfirmCard({
   }, []);
 
   const { name, location, before, after } = describe(write, t, settings.language, settings.dateFormat);
+  const guesses = assumed(write, t, settings.language, settings.dateFormat);
 
   // The button's name has to survive being read on its own, out of the visual
   // context that makes "Confirm" mean anything.
@@ -132,12 +182,29 @@ export function ConfirmCard({
         <span className={styles.after}>{after}</span>
       </p>
 
+      {/*
+        Named on the button as well as shown, through `aria-describedby`. Focus
+        lands on Confirm, so a description attached anywhere else is a
+        description nobody reading with their ears would ever reach.
+      */}
+      {guesses.length > 0 && (
+        <div className={styles.guesses} id={guessesId}>
+          <p className={styles.cardMeta}>{t('voice.assumedTitle')}</p>
+          <ul className={styles.guessList} role="list">
+            {guesses.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className={styles.actions}>
         <Button
           ref={confirmRef}
           variant="primary"
           disabled={busy}
           aria-label={t('voice.confirmAction', { detail })}
+          aria-describedby={guesses.length === 0 ? undefined : guessesId}
           onClick={onConfirm}
         >
           {t('voice.confirm')}

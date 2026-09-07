@@ -17,12 +17,12 @@
  *   database is the single source of truth in this application and nothing
  *   caches a value that also lives in a table.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import { parse } from '../../voice/parse';
 import { grammarFor } from '../../voice/grammar/registry';
 import { execute, type Outcome, type PendingWrite, type VoiceDeps } from '../../services/voice/execute';
-import { commit } from '../../services/voice/commit';
+import { commit, undo, type Receipt } from '../../services/voice/commit';
 import { renderAnswer, type AnswerOptions } from '../../services/voice/answer';
 import { LOCALE_TAGS } from '../../i18n/translate';
 import type { Intent } from '../../voice/intents';
@@ -34,6 +34,14 @@ export interface Exchange {
   readonly outcome: Outcome;
   /** The sentence that was spoken, or null for an outcome that is not one. */
   readonly text: string | null;
+  /**
+   * The way back from a write that was stored without being asked about, for
+   * as long as the offer stands. Null on every exchange that wrote nothing, on
+   * a write the user confirmed, and once the offer has lapsed or been taken.
+   */
+  readonly receipt: Receipt | null;
+  /** True once Undo was pressed, so the exchange states the reversal. */
+  readonly undone: boolean;
 }
 
 /** Reads a sentence aloud. Supplied by the sheet, which composes the platform. */
@@ -47,6 +55,8 @@ export interface Voice {
   readonly examples: readonly string[];
   readonly run: (transcript: string) => Promise<void>;
   readonly confirm: (index: number) => Promise<void>;
+  /** Puts back a write that was stored without asking. */
+  readonly takeBack: (index: number) => Promise<void>;
   readonly choose: (index: number, item: InventoryItemView) => Promise<void>;
   readonly create: (index: number) => Promise<void>;
   readonly dismiss: (index: number) => void;
@@ -133,11 +143,30 @@ function receiptIntent(write: PendingWrite): Intent {
     : { kind: 'QUERY_QUANTITY', item: name };
 }
 
+/**
+ * How long Undo stays on screen after a write nobody was asked about.
+ *
+ * Long enough to hear the sentence and disagree with it, short enough that the
+ * log does not become a column of stale buttons. It is an offer, not a history:
+ * what was written stays written, and the inventory screen edits it as it edits
+ * anything else.
+ */
+const UNDO_WINDOW_MS = 10_000;
+
 export function useVoice(speak: Speak): Voice {
   const { repositories, itemContext, settings, t, invalidate } = useApp();
   const [history, setHistory] = useState<readonly Exchange[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Every armed Undo window, so a sheet that goes away takes its timers with it.
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(
+    () => () => {
+      for (const timer of timers.current) clearTimeout(timer);
+    },
+    [],
+  );
 
   const grammar = useMemo(() => grammarFor(settings.language), [settings.language]);
   const tag = LOCALE_TAGS[settings.language];
@@ -183,10 +212,78 @@ export function useVoice(speak: Speak): Voice {
   );
 
   /**
-   * One turn: execute, record, speak.
+   * Where a result lands - appended for something newly said, or over the top
+   * of the exchange that raised the question.
+   */
+  const place = useCallback((entry: Exchange, index: number | null) => {
+    setHistory((past) =>
+      index === null
+        ? [...past, entry]
+        : past.map((existing, i) => (i === index ? entry : existing)),
+    );
+  }, []);
+
+  /**
+   * Offers Undo for a while, and then stops.
    *
-   * `place` decides where the result lands - appended for something newly said,
-   * or over the top of the exchange that raised the question.
+   * The timer finds its exchange by receipt identity rather than by index,
+   * because `dismiss` can remove an earlier exchange while it is running and
+   * every index after that one moves.
+   */
+  const armUndo = useCallback((receipt: Receipt) => {
+    const timer = setTimeout(() => {
+      timers.current.delete(timer);
+      setHistory((past) =>
+        past.map((entry) => (entry.receipt === receipt ? { ...entry, receipt: null } : entry)),
+      );
+    }, UNDO_WINDOW_MS);
+    timers.current.add(timer);
+  }, []);
+
+  /**
+   * A write, stored, and the sentence saying what the item now holds.
+   *
+   * That sentence is read back out of the database rather than assembled from
+   * the request, so what the user hears is a statement about what is stored -
+   * the only thing worth saying to someone who is not looking at the screen.
+   *
+   * `undoable` is false for a write the user confirmed on the card. They were
+   * shown the change and pressed the button; offering to take it back after
+   * that is asking the same question twice.
+   */
+  const store = useCallback(
+    async (said: string, write: PendingWrite, index: number | null, undoable: boolean) => {
+      const { receipt } = await commit(deps, write);
+      // Every open list re-reads; the database stays the only source of truth.
+      invalidate();
+
+      const outcome = await execute(deps, receiptIntent(write));
+      const text = sentence(outcome);
+
+      // Nothing to say means nothing was found to say it about, which is not a
+      // receipt. A confirmed write drops the exchange rather than leaving one
+      // that states nothing; an undoable one keeps it, because its button is
+      // the whole point of it.
+      if (text === null && !undoable) {
+        setHistory((past) => (index === null ? past : past.filter((_, i) => i !== index)));
+        return;
+      }
+
+      place({ said, outcome, text, receipt: undoable ? receipt : null, undone: false }, index);
+      if (undoable) armUndo(receipt);
+      if (text !== null) await speak(text, tag);
+    },
+    [armUndo, deps, invalidate, place, sentence, speak, tag],
+  );
+
+  /**
+   * One turn: execute, record, speak - and, where nothing was guessed, write.
+   *
+   * An explicit write is one the user said in full: an item named exactly, and
+   * a number actually spoken. Asking someone to confirm the sentence they have
+   * just said clearly is what made this tiring on a real phone, so it is stored
+   * at once, stated as a fact, and offered back for a few seconds. Everything
+   * else was guessed at somewhere and goes to the card.
    */
   const turn = useCallback(
     async (said: string, intent: Intent, index: number | null) => {
@@ -194,13 +291,17 @@ export function useVoice(speak: Speak): Voice {
       setError(null);
       try {
         const outcome = withExamples(await execute(deps, intent));
+
+        if (outcome.kind === 'pending' && outcome.write.certainty === 'explicit') {
+          await store(said, outcome.write, index, true);
+          return;
+        }
+
         const text = sentence(outcome);
-        const entry: Exchange = { said, outcome, text };
-        setHistory((past) =>
-          index === null
-            ? [...past, entry]
-            : past.map((existing, i) => (i === index ? entry : existing)),
-        );
+        place({ said, outcome, text, receipt: null, undone: false }, index);
+        // A card is not a fact, and `sentence` returns null for one. The card
+        // announces itself by moving focus to a button that carries the whole
+        // change; speaking it here would say a change happened that has not.
         if (text !== null) await speak(text, tag);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -208,7 +309,7 @@ export function useVoice(speak: Speak): Voice {
         setBusy(false);
       }
     },
-    [deps, sentence, speak, tag, withExamples],
+    [deps, place, sentence, speak, store, tag, withExamples],
   );
 
   const run = useCallback(
@@ -218,13 +319,7 @@ export function useVoice(speak: Speak): Voice {
     [grammar, itemContext.today, turn],
   );
 
-  /**
-   * The confirmation card's button, and the only path in this feature that writes.
-   *
-   * The receipt is read back out of the database rather than assembled from the
-   * request. What the user hears is then a statement about what is stored, which
-   * is the only thing worth saying to someone who is not looking at the screen.
-   */
+  /** The confirmation card's button: the write the user was asked about. */
   const confirm = useCallback(
     async (index: number) => {
       const entry = history[index];
@@ -234,25 +329,49 @@ export function useVoice(speak: Speak): Voice {
       setBusy(true);
       setError(null);
       try {
-        await commit(deps, write);
-        // Every open list re-reads; the database stays the only source of truth.
-        invalidate();
-
-        const outcome = await execute(deps, receiptIntent(write));
-        const text = sentence(outcome);
-        setHistory((past) =>
-          text === null
-            ? past.filter((_, i) => i !== index)
-            : past.map((existing, i) => (i === index ? { ...existing, outcome, text } : existing)),
-        );
-        if (text !== null) await speak(text, tag);
+        await store(entry.said, write, index, false);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
         setBusy(false);
       }
     },
-    [deps, history, invalidate, sentence, speak, tag],
+    [history, store],
+  );
+
+  /**
+   * The Undo button under a write nobody was asked about.
+   *
+   * The exchange is rewritten rather than removed. Someone who pressed Undo has
+   * to see that it happened, and a log still reading "Beans: 17 cans" after the
+   * beans went back to twelve is a lie the interface tells about the database.
+   */
+  const takeBack = useCallback(
+    async (index: number) => {
+      const entry = history[index];
+      if (entry === undefined || entry.receipt === null) return;
+      const { receipt } = entry;
+
+      setBusy(true);
+      setError(null);
+      try {
+        await undo(deps, receipt);
+        invalidate();
+
+        const text = t('voice.undone');
+        setHistory((past) =>
+          past.map((existing, i) =>
+            i === index ? { ...existing, text, receipt: null, undone: true } : existing,
+          ),
+        );
+        await speak(text, tag);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [deps, history, invalidate, speak, t, tag],
   );
 
   /** Picking from "Which one?" re-runs the intent against an exact name. */
@@ -283,5 +402,16 @@ export function useVoice(speak: Speak): Voice {
     setHistory((past) => past.filter((_, i) => i !== index));
   }, []);
 
-  return { history, busy, error, examples: grammar.examples, run, confirm, choose, create, dismiss };
+  return {
+    history,
+    busy,
+    error,
+    examples: grammar.examples,
+    run,
+    confirm,
+    takeBack,
+    choose,
+    create,
+    dismiss,
+  };
 }

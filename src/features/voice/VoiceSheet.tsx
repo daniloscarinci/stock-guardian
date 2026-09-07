@@ -14,17 +14,19 @@
  * The component holds no logic. `useVoice` owns the state machine and is tested
  * through this file's typed path, which needs no browser speech API.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Button } from '../../components/ui/primitives';
 import { TextField } from '../../components/ui/Field';
 import { createSpeaker } from '../../services/speech/speak';
 import { androidIsSilent } from '../../services/speech/capacitor';
+import type { SpeechFailure } from '../../services/speech/recognizer';
 import { WRITING_INTENTS } from '../../voice/intents';
 import { useVoice, type Exchange, type Voice } from './useVoice';
 import { ConfirmCard } from './ConfirmCard';
 import { ChoiceList } from './ChoiceList';
+import { MicNotice } from './MicNotice';
 import styles from './Voice.module.css';
 
 export interface VoiceSheetProps {
@@ -36,8 +38,15 @@ export interface VoiceSheetProps {
    */
   readonly heard?: string | null | undefined;
   readonly onHeardConsumed?: (() => void) | undefined;
-  /** Why the microphone is absent, or why it failed. Shown above the history. */
-  readonly notice?: string | null | undefined;
+  /**
+   * Why the microphone produced nothing, or null when it produced something.
+   *
+   * A reason rather than a sentence: what to show for one is a question about
+   * this interface, and the recognizer has no business answering it.
+   */
+  readonly failure?: SpeechFailure | null | undefined;
+  /** Clears that reason - the panel's own "type the command instead". */
+  readonly onFailureDismissed?: (() => void) | undefined;
   readonly listening?: boolean | undefined;
 }
 
@@ -46,11 +55,13 @@ export function VoiceSheet({
   onClose,
   heard = null,
   onHeardConsumed,
-  notice = null,
+  failure = null,
+  onFailureDismissed,
   listening = false,
 }: VoiceSheetProps) {
   const { t, settings } = useApp();
   const [typed, setTyped] = useState('');
+  const formRef = useRef<HTMLFormElement>(null);
 
   const speaker = useMemo(
     () => createSpeaker(() => settings.voiceSpeakAnswers),
@@ -85,6 +96,19 @@ export function VoiceSheet({
     void run(heard);
   }, [heard, onHeardConsumed, run]);
 
+  /**
+   * The failure panel's way out.
+   *
+   * The notice goes and the cursor lands where the feature still works. A phone
+   * with no speech pack has lost its microphone and nothing else, and the point
+   * of the button is to put someone in front of that fact rather than in front
+   * of an apology.
+   */
+  const typeInstead = useCallback(() => {
+    onFailureDismissed?.();
+    formRef.current?.querySelector('input')?.focus();
+  }, [onFailureDismissed]);
+
   // Nothing should still be talking over a sheet the user has closed.
   const close = useCallback(() => {
     speaker.stop();
@@ -105,11 +129,7 @@ export function VoiceSheet({
       title={t('voice.title')}
       closeLabel={t('common.close')}
     >
-      {notice !== null && notice !== '' && (
-        <Alert tone="info" role="status">
-          {notice}
-        </Alert>
-      )}
+      <MicNotice failure={failure} onTypeInstead={typeInstead} />
 
       {voice.error !== null && (
         <Alert tone="critical" role="alert">
@@ -132,6 +152,7 @@ export function VoiceSheet({
       {listening && <p role="status">{t('voice.listening')}</p>}
 
       <form
+        ref={formRef}
         className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
@@ -170,11 +191,48 @@ function VoiceExchange({
   const { t } = useApp();
   const { outcome } = entry;
 
+  /*
+   * A write that was taken back states the reversal and nothing else.
+   *
+   * The outcome underneath it is the receipt for a change that no longer
+   * stands. Rendering it would leave the log saying the beans are at seventeen
+   * after they have gone back to twelve, which is the interface lying about the
+   * database.
+   */
+  if (entry.undone) {
+    return (
+      <>
+        <p className={styles.said}>{t('voice.heard', { transcript: entry.said })}</p>
+        <p className={styles.answer}>{entry.text}</p>
+      </>
+    );
+  }
+
   return (
     <>
       <p className={styles.said}>{t('voice.heard', { transcript: entry.said })}</p>
 
       {outcome.kind === 'answer' && <p className={styles.answer}>{entry.text}</p>}
+
+      {/*
+        A write that was stored without asking, offered back for as long as the
+        window stands. Deliberately not focused: the change has already
+        happened, nothing is waiting on the user, and taking the cursor out of
+        the typed box after every sentence would be its own annoyance.
+      */}
+      {entry.receipt !== null && (
+        <div className={styles.actions}>
+          <Button
+            disabled={voice.busy}
+            aria-label={t('voice.undoAction', { detail: entry.text ?? entry.said })}
+            onClick={() => {
+              void voice.takeBack(index);
+            }}
+          >
+            {t('voice.undo')}
+          </Button>
+        </div>
+      )}
 
       {outcome.kind === 'pending' && (
         <ConfirmCard
