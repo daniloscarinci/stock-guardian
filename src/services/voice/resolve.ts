@@ -15,7 +15,19 @@ import type { Language } from '../../domain/settings';
 
 export type Resolution =
   | { readonly kind: 'one'; readonly item: InventoryItemView }
-  | { readonly kind: 'many'; readonly items: readonly InventoryItemView[] }
+  | {
+      readonly kind: 'many';
+      readonly items: readonly InventoryItemView[];
+      /**
+       * How many actually tied, before the slice down to `MAX_CHOICES`.
+       *
+       * Without it, a phrase matching forty items and a phrase matching five
+       * arrive at the caller identically, and the interface offers an arbitrary
+       * five as if they were the shortlist. `total > items.length` is the
+       * signal to ask for a clearer phrase rather than to read a list.
+       */
+      readonly total: number;
+    }
   | { readonly kind: 'none'; readonly phrase: string };
 
 /**
@@ -79,5 +91,9 @@ export async function resolveItem(
   const tied = scored.filter((entry) => entry.value === best.value);
   if (tied.length === 1) return { kind: 'one', item: best.item };
 
-  return { kind: 'many', items: tied.slice(0, MAX_CHOICES).map((entry) => entry.item) };
+  return {
+    kind: 'many',
+    items: tied.slice(0, MAX_CHOICES).map((entry) => entry.item),
+    total: tied.length,
+  };
 }

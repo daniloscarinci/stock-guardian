@@ -70,6 +70,19 @@ describe('resolveItem', () => {
     if (result.kind === 'many') expect(result.items).toHaveLength(5);
   });
 
+  it('reports how many really tied, so five of forty is not offered as the shortlist', async () => {
+    for (const name of ['Feijão Branco', 'Feijão Fradinho', 'Feijão Verde',
+      'Feijão Azuki', 'Feijão Rosinha', 'Feijão Manteiga']) {
+      await items.create({ name, quantity: 1, unit: 'kg' });
+    }
+    const result = await resolveItem(items, CONTEXT, 'pt-BR', 'feijao');
+    expect(result.kind).toBe('many');
+    if (result.kind === 'many') {
+      expect(result.items).toHaveLength(5);
+      expect(result.total).toBe(8);
+    }
+  });
+
   it('never offers an archived item', async () => {
     const preto = await items.create({ name: 'Feijão Fradinho', quantity: 3, unit: 'kg' });
     await items.archive(preto.id);
