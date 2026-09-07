@@ -26,6 +26,12 @@ npm run lint         # ESLint
 original HTML, typecheck, build, then audit `dist/` for external references. Any
 of the four can fail the build.
 
+The audit allows exactly one external host, `https://api.anthropic.com`, named
+from exactly one module, `src/services/ai/client.ts`, so that the AI assistant
+can use a key the user pastes into Settings. Every other external URL fails, and
+so does that host from any other module. `docs/OFFLINE.md` explains how the rule
+is written and what it cannot see.
+
 ---
 
 ## What a build produces
@@ -89,7 +95,8 @@ Live at **https://daniloscarinci.github.io/stock-guardian/**, published by `.git
 The workflow runs the test suite, builds with `VITE_BASE=/stock-guardian/`, and
 publishes `dist/`. Building in CI rather than committing the output means the
 published site cannot drift from the source, and `npm run build` fails on any
-external URL in the output — so the offline guarantee is checked on every deploy.
+external URL in the output but the one host the assistant needs — so what is
+left of the offline guarantee is checked on every deploy.
 
 Any other static host works the same way — Netlify, Cloudflare Pages, a plain
 nginx. Upload `dist/`. No rewrite rules needed: routing uses a hash router
@@ -107,7 +114,9 @@ any value that looks like a POSIX path, silently turning `/stock-guardian/` into
 all wrong. PowerShell and CI are unaffected.
 
 Your inventory is *not* published by doing this. The application code goes on the
-internet; your data stays in your browser.
+internet; your data stays in your browser. No API key is compiled into a build
+either — the assistant's key is pasted in on each device and stored there, so
+the same published site, and the same APK, is safe to hand to anybody.
 
 ### Over local HTTPS
 
@@ -129,6 +138,11 @@ Built by GitHub Actions, not here: the Android SDK is several gigabytes and this
 machine has none. `VITE_TARGET=android npm run build` produces a web build with
 no service worker, Capacitor wraps it, and the workflow signs the APK and
 attaches it to a release.
+
+The APK declares one permission, `android.permission.INTERNET`, for the AI
+assistant and nothing else. The workflow allows that one name and fails the
+build on any other, so the check that used to prove "no permissions" now proves
+"this one and no more". See `docs/ANDROID.md`.
 
 **No APK has been produced yet.** `docs/ANDROID.md` covers the signing key, the
 tag that triggers a build, and what to check on the first install.

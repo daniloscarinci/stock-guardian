@@ -8,9 +8,20 @@
     <meta name="description" content="Offline Preparedness &amp; Resource Management" />
 
     <!--
-      Content Security Policy. This application is entirely local: it must never
-      load or contact anything off-device. 'wasm-unsafe-eval' is required to
-      instantiate the SQLite WebAssembly module and grants nothing else.
+      Content Security Policy. Everything this application loads is local: it
+      must never fetch a script, a style, a font or an image from anywhere but
+      its own origin. 'wasm-unsafe-eval' is required to instantiate the SQLite
+      WebAssembly module and grants nothing else.
+
+      `connect-src` carries the one exception, and it names one host rather
+      than loosening the policy. The AI assistant sends a question to
+      api.anthropic.com with a key the user pastes into Settings, so that
+      origin is named below and no other is. With no key set, or the assistant
+      switched off, nothing here is used and no request is made - the default
+      behaviour is unchanged. Everything else still resolves to 'self', so a
+      webfont, an analytics beacon or a CDN fallback added while debugging is
+      still refused by the browser itself. Add nothing further here without
+      changing docs/OFFLINE.md in the same commit.
 
       `frame-ancestors` is deliberately absent: it is ignored when delivered in a
       <meta> element and can only be set as an HTTP response header. Including it
@@ -25,7 +36,7 @@
                style-src 'self' 'unsafe-inline';
                img-src 'self' data: blob:;
                font-src 'self';
-               connect-src 'self';
+               connect-src 'self' https://api.anthropic.com;
                worker-src 'self' blob:;
                object-src 'none';
                base-uri 'none';
@@ -39,8 +50,9 @@
   <body>
     <div id="root"></div>
     <noscript>
-      Stock Guardian is an offline application and requires JavaScript to run. No data
-      is ever sent anywhere; everything stays on this device.
+      Stock Guardian is an offline application and requires JavaScript to run. Your
+      inventory stays on this device; nothing is sent anywhere unless you set up the
+      AI assistant with your own API key.
     </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>

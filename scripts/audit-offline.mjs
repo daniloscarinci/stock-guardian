@@ -24,8 +24,15 @@
  *     is permitted in exactly one module and a bundle has no modules left to
  *     name. See SPEECH_ALLOWED_SOURCE below.
  *
+ * One host is allowed, and it is the only one: `https://api.anthropic.com`,
+ * reached from `src/services/ai/client.ts` and from nowhere else, so that the
+ * AI assistant can use a key the person pasted into Settings. AI_HOST below
+ * sets out how narrow that hole is and what it cannot see. Every other external
+ * URL fails the build exactly as it did before.
+ *
  * Structural enforcement lives in the Content-Security-Policy in index.html
- * (`default-src 'self'`). This is the second line.
+ * (`default-src 'self'`, and `connect-src` naming that one host). This is the
+ * second line.
  *
  * Run automatically by `npm run build`, after `vite build`.
  */
@@ -56,6 +63,60 @@ const ALLOWED_PREFIXES = [
 ];
 
 const EXTERNAL_URL = /\bhttps?:\/\/[^\s'"`)>\]}\\]+/g;
+
+/*
+ * The one host this application may talk to, and the one module that may do it.
+ *
+ * The AI assistant sends a question to Anthropic with an API key the user
+ * pastes into Settings. With no key stored, and with the assistant switched
+ * off, nothing runs and nothing is sent - that is the shipping default, and
+ * this script has nothing to say about it, because there is no request to find.
+ * The hole below exists only for the case where a person has deliberately
+ * opened it.
+ *
+ * It is cut in three places, each as small as the format allows:
+ *
+ *   - In `dist/` reference formats, the host passes only on a line that also
+ *     says `connect-src`. A policy naming a host is a restriction on requests,
+ *     not a request; an `<img src>` or an `@import` pointing at the same host
+ *     is a request, and still fails.
+ *   - In `dist/` code, the host passes in a fetch-shaped construct. This is
+ *     where the rule has to be widest, for the same reason that forced the
+ *     `SpeechRecognition` rule into `src/`: the SDK is bundled into the same
+ *     chunk as everything else, so by the time this script reads `dist/` there
+ *     are no modules left to tell apart. A URL inside `@anthropic-ai/sdk` and a
+ *     URL in application code are the same bytes in the same file.
+ *   - So "one module" is enforced where modules still exist, in `src/`. The
+ *     literal host may appear in AI_ALLOWED_SOURCE and nowhere else. That rule
+ *     is what catches the second call site somebody adds in good faith, which
+ *     is how this would actually be lost.
+ *
+ * What it cannot catch, stated rather than glossed: the SDK reaches this host
+ * by default without being told to, so a module that builds a client without
+ * naming a URL is invisible here, as is a host assembled at runtime. This is a
+ * text match, like the speech rule, and it has the same kind of limit.
+ */
+const AI_HOST = 'https://api.anthropic.com';
+const AI_ALLOWED_SOURCE = 'src/services/ai/client.ts';
+
+/*
+ * The host exactly, not a prefix of one. `https://api.anthropic.com.example.net`
+ * merely begins the same way and belongs to somebody else, so whatever follows
+ * the host must be something a hostname cannot continue with - a path, a port,
+ * a query, the `;` that ends a CSP directive, or the end of the string.
+ */
+const isAiHost = (url) =>
+  url.startsWith(AI_HOST) && !/^[\w.-]/.test(url.slice(AI_HOST.length));
+
+/** Deliberately looser than isAiHost: in `src/`, any mention of it counts. */
+const AI_HOST_IN_SOURCE = /\bapi\.anthropic\.com\b/;
+
+/** The whole line containing `index`, for judging the context of a match. */
+function lineContaining(contents, index) {
+  const start = contents.lastIndexOf('\n', index) + 1;
+  const end = contents.indexOf('\n', index);
+  return contents.slice(start, end === -1 ? contents.length : end);
+}
 
 /**
  * Constructs that cause a network request with a literal external URL.
@@ -93,16 +154,19 @@ const FETCH_PATTERNS = [
 const SPEECH_ALLOWED_SOURCE = 'src/services/speech/webspeech.ts';
 
 /*
- * This is the one rule that reads `src/` instead of `dist/`, and the choice was
- * forced. The application bundles into a single chunk, so in the built output
- * every module is the same file and "permitted in exactly one module" cannot be
- * said at all. Attributing a match back to its module would mean decoding the
- * source map - the one artifact this audit already declines to trust, and one a
- * build setting can switch off, taking the check silently with it. A
- * source-level rule that runs is worth more than a bundle-level rule that
- * cannot.
+ * These are the two rules that read `src/` instead of `dist/`, and the choice
+ * was forced both times. The application bundles into a single chunk, so in the
+ * built output every module is the same file and "permitted in exactly one
+ * module" cannot be said at all. Attributing a match back to its module would
+ * mean decoding the source map - the one artifact this audit already declines
+ * to trust, and one a build setting can switch off, taking the check silently
+ * with it. A source-level rule that runs is worth more than a bundle-level rule
+ * that cannot.
+ *
+ * `SpeechRecognition` came first; the AI host follows it for the same reason,
+ * only more sharply, because the Anthropic SDK ships inside that same chunk.
  */
-const SPEECH_SOURCE_FORMATS = new Set(['.ts', '.tsx']);
+const SOURCE_FORMATS = new Set(['.ts', '.tsx']);
 
 /*
  * The prefixed spelling is the same API and the same hazard, so it is matched
@@ -113,7 +177,8 @@ const SPEECH_API = /\b(?:webkit)?SpeechRecognition\b/;
 
 /*
  * Tests are out of scope, decided rather than left to luck. `webspeech.test.ts`
- * stubs a fake recognizer under that name, and no file matching this is built
+ * stubs a fake recognizer under that name, and a test of the AI client has to
+ * be able to name the host it asserts about. No file matching this is built
  * into `dist/` or ever runs in a browser. A second real use site has to live in
  * a module that ships, and every one of those is covered.
  */
@@ -232,7 +297,12 @@ for (const file of files) {
     scanned += 1;
     const contents = readFileSync(file, 'utf8');
     for (const match of contents.matchAll(EXTERNAL_URL)) {
-      if (!isAllowed(match[0])) offenders.push({ file: name, url: match[0], why: 'reference' });
+      const url = match[0];
+      if (isAllowed(url)) continue;
+      // The Content-Security-Policy has to name the host it permits. That is
+      // the line restricting requests, not one making any.
+      if (isAiHost(url) && lineContaining(contents, match.index).includes('connect-src')) continue;
+      offenders.push({ file: name, url, why: 'reference' });
     }
     continue;
   }
@@ -243,38 +313,51 @@ for (const file of files) {
     for (const { name: why, pattern } of FETCH_PATTERNS) {
       for (const match of code.matchAll(pattern)) {
         const url = match[1];
-        if (url !== undefined && !isAllowed(url)) offenders.push({ file: name, url, why });
+        if (url === undefined || isAllowed(url) || isAiHost(url)) continue;
+        offenders.push({ file: name, url, why });
       }
     }
   }
 }
 
 /*
- * The source-level rule, for the reason given at SPEECH_ALLOWED_SOURCE.
+ * The two source-level rules, for the reason given at SOURCE_FORMATS. One walk,
+ * because they ask the same question of the same files: is this identifier, or
+ * this host, named outside the single module allowed to name it?
  *
- * Comments are stripped first. Prose about this API - the header of the module
- * that owns it, a note in a sibling saying why it is not used there - is not a
- * use of it, and failing a build over one would teach people to ignore this
- * script, which is the failure worth avoiding above all others here.
+ * Comments are stripped first. Prose about either - the header of the module
+ * that owns it, a note in a sibling saying why it is not used there, this
+ * script's own paragraphs quoted back - is not a use of it, and failing a build
+ * over one would teach people to ignore this script, which is the failure worth
+ * avoiding above all others here.
  *
  * The offending line is reported rather than its number: stripping a block
  * comment removes its newlines too, so the numbering no longer matches the file
  * on disk, and a confidently wrong line number is worse than none.
  */
 const speechOffenders = [];
-let speechScanned = 0;
+const aiHostOffenders = [];
+let sourceScanned = 0;
 
 for (const file of walk(SRC)) {
-  if (!SPEECH_SOURCE_FORMATS.has(extname(file))) continue;
+  if (!SOURCE_FORMATS.has(extname(file))) continue;
 
   const name = relative(ROOT, file).replace(/\\/g, '/');
   if (TEST_SOURCE.test(name)) continue;
 
-  speechScanned += 1;
-  if (name === SPEECH_ALLOWED_SOURCE) continue;
+  sourceScanned += 1;
+  const lines = stripComments(readFileSync(file, 'utf8')).split('\n');
 
-  for (const line of stripComments(readFileSync(file, 'utf8')).split('\n')) {
-    if (SPEECH_API.test(line)) speechOffenders.push({ file: name, text: line.trim() });
+  if (name !== SPEECH_ALLOWED_SOURCE) {
+    for (const line of lines) {
+      if (SPEECH_API.test(line)) speechOffenders.push({ file: name, text: line.trim() });
+    }
+  }
+
+  if (name !== AI_ALLOWED_SOURCE) {
+    for (const line of lines) {
+      if (AI_HOST_IN_SOURCE.test(line)) aiHostOffenders.push({ file: name, text: line.trim() });
+    }
   }
 }
 
@@ -286,7 +369,7 @@ console.log(`audit-offline: scanned ${String(scanned)} files in dist/`);
 console.log(`  index.html:     ${hasIndex ? 'present' : 'MISSING'}`);
 console.log(`  wasm binaries:  ${String(wasm.length)} (${wasm.map((f) => relative(DIST, f)).join(', ')})`);
 console.log(`  service worker: ${serviceWorker.length > 0 ? 'present' : 'absent'}`);
-console.log(`  speech api:     ${String(speechScanned)} source files checked`);
+console.log(`  source rules:   ${String(sourceScanned)} files checked (speech api, ${AI_HOST})`);
 
 let failed = false;
 
@@ -307,8 +390,22 @@ if (offenders.length > 0) {
   console.error(`\naudit-offline: FAILED - ${String(offenders.length)} external reference(s):`);
   for (const { file, url, why } of offenders) console.error(`  [${why}] ${file}: ${url}`);
   console.error(
-    '\nThis application must run with no network. Bundle the asset locally, or add the host ' +
-      'to ALLOWED_PREFIXES if it is genuinely not a request.',
+    `\nThis application reaches ${AI_HOST} and nothing else, and only from ` +
+      `${AI_ALLOWED_SOURCE}. Bundle the asset locally, or add the host to ALLOWED_PREFIXES ` +
+      'if it is genuinely not a request.',
+  );
+  failed = true;
+}
+
+if (aiHostOffenders.length > 0) {
+  console.error(
+    `\naudit-offline: FAILED - ${AI_HOST} outside ${AI_ALLOWED_SOURCE}, ` +
+      `${String(aiHostOffenders.length)} site(s):`,
+  );
+  for (const { file, text } of aiHostOffenders) console.error(`  ${file}: ${text}`);
+  console.error(
+    '\nExactly one module talks to the network, so that there is one place to read when ' +
+      `somebody asks what this application sends. Call it through ${AI_ALLOWED_SOURCE}.`,
   );
   failed = true;
 }
@@ -329,4 +426,7 @@ if (speechOffenders.length > 0) {
 
 if (failed) process.exit(1);
 
-console.log('\naudit-offline: PASSED - nothing in the build reaches the network.');
+console.log(
+  `\naudit-offline: PASSED - nothing in the build reaches the network but ${AI_HOST}, ` +
+    `and only from ${AI_ALLOWED_SOURCE}.`,
+);

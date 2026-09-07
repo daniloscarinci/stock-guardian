@@ -203,7 +203,9 @@ The plugin does use the `SpeechRecognizer` class for one thing, and only one:
 transcribe without a network. That is a question about the recognizer rather
 than a use of the microphone, it records nothing, and it needs no permission —
 the permission belongs to `startListening`, which this application never calls.
-The build check confirms it: the APK still declares nothing.
+The build check confirms it: `RECORD_AUDIO` is one of the names that fails the
+build, and the APK declares only `INTERNET`, which belongs to the AI assistant
+rather than to voice.
 
 The plugin is Java, not Kotlin, because this Gradle build has no Kotlin plugin.
 One class is not a reason to add a language toolchain, a stdlib dependency and a
@@ -238,10 +240,11 @@ switching the interface language asks again.
 
 In the order it holds:
 
-1. **The Content-Security-Policy.** `index.html` declares `connect-src 'self'`.
-   An implementation that shipped audio to a server *itself* would have nowhere
-   to send it. This is the structural one: it constrains what the code can do
-   rather than what it may say.
+1. **The Content-Security-Policy.** `index.html` declares
+   `connect-src 'self' https://api.anthropic.com` — one host, and it is not a
+   speech service. An implementation that shipped audio to a server *itself*
+   would still have nowhere to send it. This is the structural one: it
+   constrains what the code can do rather than what it may say.
 2. **`processLocally`.** The browser makes the Web Speech API's own network
    calls, out of reach of the CSP, so inside that one implementation this flag
    is the only thing between it and a server. `webspeech.test.ts` pins it from
@@ -276,8 +279,8 @@ instead. The installed Android application still fetches nothing.
 ### Sending your audio to Google
 
 **Settings → Voice → Send your audio to Google**, stored as `voiceAllowOnline`,
-`false` by default. The first thing in this project that can put a recording of
-you onto a network.
+`false` by default. The only thing in this project that can put a recording of
+you onto a network — the AI assistant sends text, never audio.
 
 It exists because of a bug on a real phone. The plugin asked for offline-only
 recognition, the phone had no offline Portuguese model, the recognizer refused

@@ -1,13 +1,19 @@
 # Offline operation
 
-Stock Guardian makes no network requests of its own. Not "few", not "only for
-updates" — none. This page describes how that is achieved and, more importantly,
-how it is enforced, because a promise like this erodes by accident: one webfont,
-one analytics snippet, one CDN fallback added while debugging.
+Stock Guardian makes no network request of its own. Not "few", not "only for
+updates" — none. That is what it does when you change nothing, it is what ships,
+and it is still enforced. This page describes how, because a promise like this
+erodes by accident: one webfont, one analytics snippet, one CDN fallback added
+while debugging.
 
-"Of its own" is doing real work in that sentence, and two things sit outside it.
-Both belong to voice control, both are the platform acting rather than the page,
-and both are set out in full under *Speech* below.
+Three things sit outside it. Each is off until a person switches it on, each is
+set out in full below, and none of them puts your database on a network.
+
+**Asking Claude.** Paste your own Anthropic API key into Settings, switch the
+assistant on, and a question you type goes to `api.anthropic.com`. This is the
+first request in this project that the application itself makes, and *The AI
+assistant* below says precisely what is in it. With no key stored, the assistant
+does not run, opens no connection and sends nothing.
 
 **Downloading a speech pack.** **Settings → Speech recognition → Install** asks
 the browser to fetch a model for voice control. That is the browser fetching on
@@ -20,12 +26,12 @@ the Android plugin sends `EXTRA_PREFER_OFFLINE` and `webspeech.ts` sets
 `processLocally = true`, so speech is transcribed on the device or not at all.
 Switched on by a person who has read the label, it permits one thing and only
 one — a recognizer with no offline model for the language transcribing over the
-network instead of refusing. What travels is the recorded utterance. Your
-inventory, your locations, your contacts and your backups have no route off the
-device under any setting, and there is no code in this repository that would
-send them.
+network instead of refusing. What travels is the recorded utterance.
 
-Nothing else in the application, on any platform, reaches the network at all.
+Leave all three alone and nothing in the application, on any platform, reaches
+the network at all. Your database is never uploaded under any of them: not by
+speech, which sends audio, and not by the assistant, which sends only the rows
+it asked a question about.
 
 ---
 
@@ -41,16 +47,24 @@ constructs that actually fetch — `fetch()`, `importScripts()`, `new Worker()`,
 headers and error messages, and flagging those would produce noise everyone
 learns to ignore, which is worse than no check.
 
-It carries one rule that reads `src/` instead of `dist/`, for the
+It allows exactly one host, `https://api.anthropic.com`, and exactly one module
+to name it, `src/services/ai/client.ts`. Everything else external still fails
+the build, and so does that host used from any other module. *The AI assistant*
+below sets out how the rule is written and what it cannot see.
+
+It also carries a rule that reads `src/` instead of `dist/`, for the
 `SpeechRecognition` identifier. That exception, and what it cannot catch, is set
 out under *Speech*.
 
 **The Content-Security-Policy.** `index.html` declares `default-src 'self'`, so
-the browser itself refuses any off-origin request. `'wasm-unsafe-eval'` is
-present because instantiating the SQLite module needs it; it grants nothing else.
-`frame-ancestors` is deliberately absent: it is ignored in a `<meta>` element and
-would look like protection while providing none. Set it as a response header if
-you host this somewhere that can.
+the browser itself refuses any off-origin request. The single exception is
+`connect-src 'self' https://api.anthropic.com`, which lets the assistant reach
+that one host and no other: a script, a style, a font or an image from anywhere
+but this origin is still refused by the browser, whatever the code asks for.
+`'wasm-unsafe-eval'` is present because instantiating the SQLite module needs
+it; it grants nothing else. `frame-ancestors` is deliberately absent: it is
+ignored in a `<meta>` element and would look like protection while providing
+none. Set it as a response header if you host this somewhere that can.
 
 **The browser test.** `npm run smoke` loads the production build, waits for the
 service worker, cuts the network, hard-reloads, and asserts that the dashboard
@@ -86,22 +100,124 @@ write transaction is open against a single-connection database invites trouble.
 
 **On Android, the APK plays that part.** The installed application carries every
 asset inside the package, so it has nothing to fetch and no cache to keep warm,
-and the Android build ships no service worker at all. The audit below still runs
-over the same `dist/`, so the guarantee is enforced identically either way. That
-build goes further and asks the operating system for no permission whatsoever —
-not even `INTERNET` — which makes "it does not use the network" checkable in the
-phone's own settings, and is itself checked on every build. Voice control did
-not change that: the manifest gained a `queries` element, which is package
-visibility rather than a permission, and the workflow that enforces this is
-byte-identical to the one that shipped before voice existed. See
-`docs/ANDROID.md`.
+and the Android build ships no service worker at all. The first launch works
+with the radio off, the same as the thousandth. The audit above still runs over
+the same `dist/`, so the guarantee is enforced identically either way.
 
-The online opt-in does not change it either, and why is worth stating rather
-than glossing. With no `INTERNET` permission this application cannot open a
-socket even if it tried; when the setting is on, the audio leaves from Google's
-recognizer, in Google's process, under Google's permissions. That is a real
-disclosure and this page makes it — but it is not this application acquiring a
-network, and the permission check that proves so still passes untouched.
+**That APK now declares `INTERNET`, and it used to declare nothing.** The
+sentence it cost was a good one, so it is worth saying exactly what replaced it.
+A key the user pastes in is worth nothing unless the application can reach
+Anthropic with it, and Android has no permission narrower than `INTERNET`, no
+per-host form of it, and no way to hold it only while a feature is on. So it is
+declared once, in `AndroidManifest.xml`, with the reasoning beside it.
+
+The check in `.github/workflows/android.yml` was narrowed rather than deleted.
+It allows `android.permission.INTERNET` and the one permission androidx
+namespaces under this application's own id, and it fails the build on every
+other: `RECORD_AUDIO`, `CAMERA`, location, contacts, storage, and whatever a
+future dependency merges in. Run it yourself against a built APK — the command
+is in `docs/ANDROID.md` — and it prints `android.permission.INTERNET` and
+nothing else. That is a weaker sentence than "it asks for nothing", and it is
+still a sentence a machine checks on every build rather than one you have to
+believe.
+
+Voice control did not need any of this. The manifest gained a `queries` element,
+which is package visibility rather than a permission, and the microphone belongs
+to the system's recognizer, so there is still no `RECORD_AUDIO`. The online
+opt-in did not need it either: when that setting is on, the audio leaves from
+Google's recognizer, in Google's process, under Google's permissions, not from
+here. See `docs/ANDROID.md`.
+
+---
+
+## The AI assistant
+
+The one feature that sends anything of yours anywhere. The rest of this page
+exists so that this section can be short and exact.
+
+### What travels
+
+Three things, and only these three.
+
+**The question you typed**, in your words, as you wrote it.
+
+**The results of the tools Claude asked for.** Claude is handed a list of
+functions it may call — find an item, what is expiring, what is below its
+minimum, what the locations are — and it chooses. The application runs the ones
+it chose against the SQLite database on this device and returns what they
+answered. A question about rice sends the rice row. A question about what
+expires this month sends the rows that expire this month.
+
+**The answer**, coming back.
+
+Your key travels too, in the header that authenticates the request. It goes to
+Anthropic and nowhere else.
+
+### What does not
+
+**The inventory.** Not on the first question and not on the hundredth. That is a
+property of how the feature is built rather than a rule it obeys: nothing
+anywhere assembles your database into a prompt, because tool use never needed
+one. The amount that leaves is set by the question, not by how much you own, and
+a person with four hundred items sends no more than a person with four.
+
+Nor your locations, your contacts, your backups or your settings, except where a
+tool was asked a question whose answer is one of those rows.
+
+### The default, and it is the shipping default
+
+The stored key is empty in a fresh install and nothing fills it but a person
+typing into Settings. With no key there is no client, no request and no host to
+reach, and the application behaves exactly as it did before this feature
+existed. Clearing the key puts it back. Every claim on this page about an
+application that touches no network is a claim about that state, and that state
+is what you get by doing nothing.
+
+### What enforces it
+
+The same three gates as everything else, each narrowed to this one thing and
+each still failing on the rest.
+
+**The Content-Security-Policy.** `connect-src 'self' https://api.anthropic.com`.
+One host is named; every other origin is refused by the browser itself, before
+any code of ours runs. Nothing was loosened to make room for it — scripts,
+styles, fonts and images are still `'self'`.
+
+**The build audit.** `scripts/audit-offline.mjs` permits that host, and permits
+exactly one module to name it: `src/services/ai/client.ts`. The same host used
+from a second module fails the build, by name. Every other external URL fails
+as before.
+
+Where it looks is not arbitrary. In `dist/` the host passes only inside a
+`connect-src` line — a policy naming a host is not a request to it, and an
+`<img src>` pointing at the same host still fails. In bundled JavaScript it
+passes wherever it appears, because the Anthropic SDK is merged into the same
+chunk as everything else and by then no module can be told from any other. So
+"exactly one module" is checked where modules still exist, in `src/` — the same
+reasoning that put the `SpeechRecognition` rule there, only sharper.
+
+**The Android permission gate.** The APK declares `INTERNET`; the workflow
+allows that one name and fails on every other permission. Set out above under
+*How it works*, and in `docs/ANDROID.md`.
+
+### What it cannot promise
+
+Stated rather than glossed, in the manner of the rest of this page.
+
+- **What happens to a question after it arrives is Anthropic's business, not
+  this repository's.** This project can tell you exactly what it sends and can
+  prove where it may send it. It cannot make any promise about the other end,
+  and does not.
+- **The audit is a text match.** The SDK reaches that host by default without
+  being told to, so a second module that builds a client without naming a URL is
+  invisible to the source rule. The Content-Security-Policy still binds the
+  whole page to one host and the Android gate to one permission, so the shape of
+  what could go wrong is "a second place in this codebase talks to Anthropic",
+  never "this application talks to somewhere else".
+- **Your key sits at rest on the device**, in the settings table, alongside
+  everything else. Anyone who can unlock the phone can reach it, and a debug
+  build is readable over a cable. Revoking a key is done at Anthropic, not here.
+- **Questions cost money**, on the key holder's account, per question.
 
 ---
 
@@ -154,9 +270,10 @@ every platform and is not a fallback.
 
 ### What enforces it, in the order it holds
 
-**The Content-Security-Policy**, `connect-src 'self'`. An implementation that
-tried to ship audio to a server itself would have nowhere to send it. This is
-the structural one, and it is why the seam is safe to have.
+**The Content-Security-Policy**, whose `connect-src` names one host and it is
+not a speech service. An implementation that tried to ship audio to a server
+itself would still have nowhere to send it. This is the structural one, and it
+is why the seam is safe to have.
 
 **`processLocally`**, inside `webspeech.ts`. The browser makes that API's
 network calls itself, out of reach of the CSP, so within that implementation
@@ -210,14 +327,16 @@ in the Android build fetches anything.
 #### Sending your audio to Google
 
 **Settings → Voice → Send your audio to Google**, stored as `voiceAllowOnline`
-and `false` by default. This is the first thing in this project that can put a
+and `false` by default. This is the only thing in this project that can put a
 recording of you onto a network, and this page says so before anybody discovers
 it.
 
 What it sends: one recorded utterance, at the moment you press the microphone,
 to whichever recognizer the platform uses — Google, on Android and in Chrome.
 What it does not send: anything from the database. Not an item, not a location,
-not a contact, not a backup. There is no code here that could.
+not a contact, not a backup. Nothing on this path can reach the database, and
+nothing on the assistant's path can reach the microphone; they are separate
+features with separate switches, and each sends only its own kind of thing.
 
 When it sends: only when the device has no offline model for your language, and
 only while the switch is on. A phone that can transcribe locally still does.
@@ -267,8 +386,9 @@ aloud** switches it off, and that remains the only certain answer.
 ## Where your data lives
 
 A SQLite database in the browser's Origin Private File System, reached through
-the `opfs-sahpool` VFS. It never leaves the device. There is no server to send it
-to and no account to attach it to.
+the `opfs-sahpool` VFS. There is no account to attach it to, no server holding a
+copy, and nothing that uploads it — not a sync, not a backup, not the assistant,
+which sends the rows a question asked for and never the file they came from.
 
 `docs/ARCHITECTURE.md` explains why that VFS and not the more widely documented
 `opfs` one. The short version: `opfs` needs COOP/COEP response headers that a

@@ -8,15 +8,17 @@ Open that once on any phone or computer and install it. After that it runs with
 no internet, no account and no server — nothing needs to be switched on.
 
 Track emergency supplies, food, water, medical stock, tools and equipment. The
-application runs entirely on your device. It makes no network requests of its
-own, needs no account, and keeps working with the radio off — which is the
-point, because the situations it exists for are the ones where the internet is
-not there.
+application runs entirely on your device. As it arrives it makes no network
+request of its own, needs no account, and keeps working with the radio off —
+which is the point, because the situations it exists for are the ones where the
+internet is not there. That is the default, it is what you get by changing
+nothing, and the build still proves it.
 
-Two things sit outside that, both belonging to voice control, both off until you
-press something, and both described under **Voice** below: downloading a speech
-pack, and a setting that lets speech recognition send your recorded voice to
-Google. Your inventory never leaves the device by any route at all.
+Three things sit outside it, each off until you switch it on: the **AI
+assistant**, which needs an Anthropic API key you paste in yourself; downloading
+a speech pack; and a setting that lets speech recognition send your recorded
+voice to Google. Each is described below. Your database is never uploaded by any
+of them — see **The AI assistant** for exactly what a question sends.
 
 It is a rebuild of `backup/End_of_world_V11-Pro_Upgraded.html`, a single-file
 application kept in this repository untouched as the functional baseline. Every
@@ -99,14 +101,14 @@ you press **Confirmar**. It works in all three languages.
 Four things about it belong here rather than in a footnote.
 
 *The application never opens the microphone.* On Android the system's own
-recognizer records and hands back text, which is why the app still asks the
-operating system for no permission at all. In Chrome the browser transcribes
-with its on-device model, and errors rather than reaching a server when that
-model is not installed.
+recognizer records and hands back text, which is why the app declares no
+`RECORD_AUDIO` — and why the build still fails if it ever appears. In Chrome the
+browser transcribes with its on-device model, and errors rather than reaching a
+server when that model is not installed.
 
-*One switch sends something, and it is off.* **Settings → Voice → Send your
-audio to Google** is the only thing in this application that can put anything of
-yours onto the network, and it stays off until you move it. Left alone, speech
+*One switch sends your voice, and it is off.* **Settings → Voice → Send your
+audio to Google** is the only thing that can put a recording of you onto a
+network, and it stays off until you move it. Left alone, speech
 is transcribed on the device or not at all. Switched on, a phone with no offline
 pack for your language transcribes by sending what you said to Google — your
 voice, not your inventory. It exists because the alternative was worse: without
@@ -121,7 +123,7 @@ is the feature.
 
 *One button downloads something.* **Settings → Speech recognition → Install**
 appears when the browser has a speech pack for your language, and pressing it
-fetches one. It is the only download the application ever asks for, it never
+fetches one. It is the only file the application ever downloads, it never
 happens on its own, and nothing of yours is uploaded in exchange. On Android the
 packs belong to the system, so Settings prints the path through Android's own
 menus instead of a button.
@@ -129,12 +131,38 @@ menus instead of a button.
 `docs/VOICE.md` lists every phrase it understands, in all three languages, and
 every one it deliberately refuses.
 
+**The AI assistant.** Paste an Anthropic API key of your own into Settings and
+you can ask about your stock in ordinary language, rather than in the phrases
+the engine above knows. Anything it proposes changing still arrives as a card
+that changes nothing until you confirm it. With no key, the feature does not
+run: no request, no connection, nothing sent.
+
+*What a question sends, exactly.* Three things. The sentence you typed. The
+results of whichever tools Claude asked to run. The answer that comes back.
+Claude is handed a set of functions rather than your data — find an item, what
+is expiring, what is below its minimum — and it picks the ones it needs; the
+application runs those against the database on this device and returns only what
+they answered. Asking about rice sends the rice row. **The inventory is never
+uploaded**, on the first question or the thousandth, and a pantry of four
+hundred items sends no more than a pantry of four.
+
+*It is your key and your bill.* The key is stored on the device like any other
+setting, nothing is compiled into the build, and every question is charged to
+the account that key belongs to.
+
+*Offline is the fallback, not a casualty.* With no key, no network, or the
+assistant switched off, the typed command engine still answers the phrases it
+knows — exactly, instantly and free. `docs/OFFLINE.md` sets out what travels,
+what does not, and what enforces which.
+
 ---
 
 ## Your data
 
 Everything lives in a SQLite database on your device, in the browser's Origin
-Private File System. No copy is sent anywhere. There is no server to send it to.
+Private File System. No copy of it is sent anywhere: there is no account, no
+sync and no server holding one. The AI assistant, if you give it a key, sends
+the rows a question asked about — never the database.
 
 Two things are worth knowing:
 
@@ -171,14 +199,18 @@ device.
 
 Android also runs Stock Guardian as an installed application with its own icon,
 built from the same source and carrying every asset inside the file. It needs no
-network even on first launch, asks the operating system for no permission at all,
-and keeps Android's automatic backup switched off, so the database never reaches
-Google Drive. Voice control did not change that: the system's own recognizer
-holds the microphone, so there is no `RECORD_AUDIO` to declare, and the build
-still fails if any permission appears. Nor did the online setting above — when
-it is on, the audio travels from Google's recognizer rather than from this
-application, which is why the APK still holds no `INTERNET` permission and still
-opens no socket of its own.
+network even on first launch, and it keeps Android's automatic backup switched
+off, so the database never reaches Google Drive.
+
+It asks the operating system for one permission: `android.permission.INTERNET`,
+and only so that the AI assistant can reach Anthropic with your key. That is a
+change. The APK used to ask for nothing at all, which was the better sentence,
+and Android offers no narrower way to make one request. So the build's check was
+narrowed rather than dropped: it allows that one name and fails on every other —
+`RECORD_AUDIO`, camera, location, contacts, storage — and you can run it
+yourself against a built APK. Voice control still needs no microphone
+permission, because the system's own recognizer holds the microphone. Leave the
+key blank and the application opens no connection at all.
 
 `docs/ANDROID.md` explains how to produce the APK and what to check after
 installing it. Nothing else here changes: the phone still holds its own database,
@@ -269,10 +301,14 @@ a "coming soon" panel — if it is not built, it is not shown.
 - **Voice proven in the desktop build.** The code is the same, but `src-tauri/`
   has still never been compiled, so whether that webview offers an on-device
   recognizer is unknown. If it does not, the typed box is what you get.
-- **An open conversation.** The engine answers the phrase forms listed in
-  `docs/VOICE.md`. Anything else comes back as "I did not understand that" with
-  examples beside it, never as a guess — and it has no memory between sentences,
-  so "and two more" refers to nothing.
+- **An open conversation without a key.** The offline engine answers the phrase
+  forms listed in `docs/VOICE.md`. Anything else comes back as "I did not
+  understand that" with examples beside it, never as a guess — and it has no
+  memory between sentences, so "and two more" refers to nothing. Ordinary
+  language is what the AI assistant is for, and it needs your own API key.
+- **Memory between sessions, for the assistant.** Each question starts fresh.
+  What you can see in the history is for you to read, not something the model
+  is given back.
 - **Voice for anything but stock.** Speech reads the inventory and changes
   quantities, expiry dates, and creates items. Categories, locations, contacts
   and settings are screens. Nothing can be deleted or archived by voice.
@@ -296,6 +332,9 @@ a "coming soon" panel — if it is not built, it is not shown.
 
 ## Licence and privacy
 
-Your inventory is yours. The application collects nothing, sends nothing, and
-contains no analytics, no telemetry and no third-party code that runs at
-runtime. The build fails if any external URL appears in the output.
+Your inventory is yours. The application collects nothing about you, contains no
+analytics and no telemetry, and reports to nobody. It sends nothing at all until
+you give the AI assistant a key of your own, and then it sends only your
+question, the rows Claude asked a tool for, and nothing else — the database is
+never uploaded. One host is reachable, `api.anthropic.com`, from one module, and
+the build fails if any other external URL appears in the output.
