@@ -62,6 +62,12 @@
         README into something anyone can check in Settings, App info,
         Permissions, without taking my word for it.
 
+        Voice control does not change this. Speech arrives through the system's
+        own recognizer (ACTION_RECOGNIZE_SPEECH, see SpeechPlugin), which holds
+        the microphone itself, so this application needs no RECORD_AUDIO.
+        Do not add it: the feature works without it, and the check below fails
+        on it.
+
         The merged manifest does carry one entry, added by androidx:
         DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION, namespaced under this
         application's own id. It is a permission this application defines to
@@ -72,4 +78,27 @@
         https://localhost through WebViewAssetLoader, which reads the APK's
         assets and never opens a socket.
     -->
+
+    <!--
+        Not a permission, and the only reason it is here.
+
+        From Android 11 an application sees no other application it has not
+        named, so SpeechPlugin.availability - which asks the package manager
+        whether anything answers ACTION_RECOGNIZE_SPEECH - would report an empty
+        list on every modern phone and the microphone button would never appear.
+        Naming the intent restores the answer for that one query.
+
+        This grants nothing and asks the system for nothing. It is not
+        QUERY_ALL_PACKAGES, which is a permission and is not here; it makes
+        visible only the applications that themselves declare they can do speech
+        recognition. The check below still finds no permission at all.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
 </manifest>

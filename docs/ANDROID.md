@@ -126,6 +126,20 @@ it writes to the application's own external files directory instead, because the
 public Downloads folder would need a storage permission there and this
 application has none.
 
+**Voice control needs no microphone permission.** `SpeechPlugin` starts the
+system's own recognizer with `ACTION_RECOGNIZE_SPEECH`. Android opens the
+recognizer's screen, records there, and hands back the text; the microphone is
+held by the recognizer, never by this application, so there is no `RECORD_AUDIO`
+to declare. That is why this route was chosen over the `SpeechRecognizer` API
+and over the community Capacitor plugin, both of which require the permission.
+
+The one thing the manifest gained is a `queries` element naming the speech
+intents. From Android 11 an application cannot see another it has not named, and
+without it the check for "is there a recognizer on this phone" would answer no
+on every modern phone and the microphone button would never appear. It is not a
+permission, it is not `QUERY_ALL_PACKAGES`, and the build's check confirms as
+much: the APK still asks the system for nothing.
+
 ---
 
 ## The signing key
