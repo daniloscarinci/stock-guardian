@@ -14,7 +14,20 @@ import type { ItemContext, ItemsRepository } from '../../repositories/items.repo
 import type { Language } from '../../domain/settings';
 
 export type Resolution =
-  | { readonly kind: 'one'; readonly item: InventoryItemView }
+  | {
+      readonly kind: 'one';
+      readonly item: InventoryItemView;
+      /**
+       * True only for the top tier: the whole folded name, matched whole.
+       *
+       * Everything else here is a good guess and nothing more - a prefix, a
+       * bag of tokens found somewhere in the name, a word in the notes. The
+       * caller cannot tell them apart from the item alone, and the difference
+       * decides whether a write may be stored on the spot or has to be shown
+       * to the user first.
+       */
+      readonly exact: boolean;
+    }
   | {
       readonly kind: 'many';
       readonly items: readonly InventoryItemView[];
@@ -40,9 +53,12 @@ export type Resolution =
  * "nothing found" for an item the user can see under exactly the name they
  * said. They rank last instead, where any name match beats them outright.
  */
+/** The top tier: the spoken phrase IS the item's name, folded. */
+const EXACT = 100;
+
 function score(phrase: string, item: InventoryItemView): number {
   const name = foldText(item.name);
-  if (name === phrase) return 100;
+  if (name === phrase) return EXACT;
   if (name.startsWith(phrase)) return 60;
 
   const tokens = phrase.split(' ').filter((token) => token !== '');
@@ -89,7 +105,7 @@ export async function resolveItem(
   if (best === undefined) return { kind: 'none', phrase };
 
   const tied = scored.filter((entry) => entry.value === best.value);
-  if (tied.length === 1) return { kind: 'one', item: best.item };
+  if (tied.length === 1) return { kind: 'one', item: best.item, exact: best.value === EXACT };
 
   return {
     kind: 'many',

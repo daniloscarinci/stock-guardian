@@ -126,7 +126,7 @@ describe('en phrases: changing', () => {
   it('adds with a spoken number', () => {
     expect(say('add five cans of beans')).toEqual({
       kind: 'ADJUST_QUANTITY', item: 'beans', amount: 5,
-      direction: 'up', transaction: 'add', unit: 'cans',
+      direction: 'up', transaction: 'add', unit: 'cans', amountAssumed: false,
     });
   });
 
@@ -213,15 +213,58 @@ describe('en phrases: changing', () => {
     });
   });
 
+  /**
+   * A write with no number is read as one, and says so.
+   *
+   * These rows used to sit under "what must NOT parse": nothing in "i bought
+   * rice" says one, and guessing writes a number the user never said. None of
+   * that reasoning was wrong, but on a real phone it turned the most ordinary
+   * sentence anyone says into a transcript on the screen and no change at all.
+   *
+   * The number is now assumed AND FLAGGED. `amountAssumed` is what carries the
+   * old caution: a flagged amount reaches the confirmation card, never the
+   * database, so the guess is offered rather than stored behind the user's back.
+   */
+  const assumedOne: ReadonlyArray<readonly [string, string, 'up' | 'down']> = [
+    ['i bought rice', 'rice', 'up'],
+    ['i used eggs', 'eggs', 'down'],
+    ['add beans', 'beans', 'up'],
+    ['remove rice', 'rice', 'down'],
+    ['add some rice', 'rice', 'up'],
+    ['i bought cans of beans', 'beans', 'up'],
+  ];
+  for (const [phrase, item, direction] of assumedOne) {
+    it(`"${phrase}" means one ${item}, marked as assumed`, () => {
+      expect(say(phrase)).toMatchObject({
+        kind: 'ADJUST_QUANTITY', item, amount: 1, direction, amountAssumed: true,
+      });
+    });
+  }
+
+  it('does not mark an amount that was spoken', () => {
+    expect(say('i used 3 eggs')).toMatchObject({ amount: 3, amountAssumed: false });
+  });
+
   it('sets an expiry date with a bare day', () => {
     expect(say('the milk expires on the 12th')).toEqual({
-      kind: 'SET_EXPIRY', item: 'milk', expiresOn: '2026-09-12',
+      kind: 'SET_EXPIRY', item: 'milk', expiresOn: '2026-09-12', dateAssumed: false,
     });
   });
 
-  it('sets an expiry date with a month', () => {
+  /**
+   * A month with no day, and a period rather than a day, are dates this
+   * application chose. "in march" is stored as the 31st because a deadline has
+   * to be some day; the speaker never said the 31st, so it is flagged.
+   */
+  it('sets an expiry date with a month, and marks the day as its own', () => {
     expect(say('the milk expires in march')).toMatchObject({
-      kind: 'SET_EXPIRY', item: 'milk', expiresOn: '2027-03-31',
+      kind: 'SET_EXPIRY', item: 'milk', expiresOn: '2027-03-31', dateAssumed: true,
+    });
+  });
+
+  it('marks a relative period as a date it chose', () => {
+    expect(say('the milk expires next week')).toMatchObject({
+      kind: 'SET_EXPIRY', item: 'milk', expiresOn: '2026-09-14', dateAssumed: true,
     });
   });
 
@@ -244,7 +287,7 @@ describe('en phrases: changing', () => {
 
   it('sets an expiry date a number of days out', () => {
     expect(say('the bread expires in 10 days')).toMatchObject({
-      kind: 'SET_EXPIRY', item: 'bread', expiresOn: '2026-09-17',
+      kind: 'SET_EXPIRY', item: 'bread', expiresOn: '2026-09-17', dateAssumed: true,
     });
   });
 
@@ -257,7 +300,7 @@ describe('en phrases: changing', () => {
 
 describe('en phrases: what must NOT parse', () => {
   const rejected = ['', '   ', 'rice', 'black beans', 'and', 'aaa bbb ccc',
-    'thank you', 'take of rice', 'add cans of'];
+    'thank you'];
   for (const phrase of rejected) {
     it(`"${phrase}" is UNKNOWN rather than a guess`, () => {
       expect(say(phrase).kind).toBe('UNKNOWN');
@@ -276,18 +319,21 @@ describe('en phrases: what must NOT parse', () => {
   }
 
   /**
-   * A write with no number stays UNKNOWN.
+   * The other half of "a missing number means one".
    *
-   * "i bought rice" is a real sentence and the temptation is to read it as +1.
-   * Nothing in it says one. Guessing writes a number the user never said into
-   * an emergency food inventory and, worse, tells them it worked. UNKNOWN puts
-   * the transcript back on the screen, where a person can see it and say the
-   * amount.
+   * "i bought rice" is now read as +1 and flagged, but these two are not short
+   * sentences - they are clipped ones, and what is missing from each is more
+   * than the number.
+   *
+   *   "take of rice" opens with a partitive. "of" belonged to a measure the
+   *   recognizer dropped - "take [two kilos] of rice" - so the phrase is
+   *   evidence that something was said and lost, not that nothing was said.
+   *   "add cans of" has no item left once the unit and the filler come off,
+   *   and an adjustment with no item is not an adjustment.
    */
-  const amountless = ['i bought rice', 'i used eggs', 'add beans',
-    'remove rice', 'add some rice', 'i bought cans of beans'];
-  for (const phrase of amountless) {
-    it(`"${phrase}" names no amount, so it is UNKNOWN`, () => {
+  const clipped = ['take of rice', 'add cans of'];
+  for (const phrase of clipped) {
+    it(`"${phrase}" is a fragment, so it stays UNKNOWN`, () => {
       expect(say(phrase).kind).toBe('UNKNOWN');
     });
   }
@@ -296,6 +342,10 @@ describe('en phrases: what must NOT parse', () => {
    * "less" and "fewer" are deliberately not tolerated where "more" is. "add
    * fewer 2 eggs" has no settled meaning, and the verb says add, so any
    * reading is a guess at a write.
+   *
+   * The assumed one cannot rescue it either, and must not: a numeral WAS
+   * spoken here. Reading this as one egg would not fill a gap, it would
+   * overrule the two the user said.
    */
   it('"add fewer 2 eggs" is UNKNOWN, because only "more" is a filler', () => {
     expect(say('add fewer 2 eggs').kind).toBe('UNKNOWN');

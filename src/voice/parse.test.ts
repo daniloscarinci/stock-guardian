@@ -104,6 +104,7 @@ describe('parse', () => {
       kind: 'SET_EXPIRY',
       item: 'leite',
       expiresOn: '2026-09-12',
+      dateAssumed: false,
     });
   });
 

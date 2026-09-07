@@ -84,45 +84,71 @@ function nextOccurrence(today: CalendarDate, month: number, day: number): Calend
   return null;
 }
 
-export function parseSpokenDate(
+
+/**
+ * A date the parser worked out, and whether it had to choose one.
+ *
+ * `assumed` is false only when the phrase named the day itself. It is true
+ * where the speaker gave a period and this file picked a day out of it: a bare
+ * month means that month's last day, "semana que vem" means seven days on,
+ * "daqui a 30 dias" means whatever the arithmetic lands on. The date is the
+ * same either way; what changes is whether it is safe to store without asking.
+ */
+export interface SpokenDate {
+  readonly date: CalendarDate;
+  readonly assumed: boolean;
+}
+
+const stated = (date: CalendarDate): SpokenDate => ({ date, assumed: false });
+const derived = (date: CalendarDate): SpokenDate => ({ date, assumed: true });
+
+export function readSpokenDate(
   words: DateWords,
   numbers: NumberWords,
   text: string,
   today: CalendarDate,
-): CalendarDate | null {
+): SpokenDate | null {
   const value = text.trim();
   if (value === '') return null;
 
-  if (words.today.includes(value)) return today;
-  if (words.tomorrow.includes(value)) return addCalendarDays(today, 1);
-  if (words.dayAfterTomorrow.includes(value)) return addCalendarDays(today, 2);
-  if (words.nextWeek.includes(value)) return addCalendarDays(today, 7);
+  // "hoje" and "amanha" name one day and only one, so nothing is chosen for
+  // the speaker. "semana que vem" and "mes que vem" name a period, and the day
+  // inside it is this file's choice - seven days on, the same day next month.
+  if (words.today.includes(value)) return stated(today);
+  if (words.tomorrow.includes(value)) return stated(addCalendarDays(today, 1));
+  if (words.dayAfterTomorrow.includes(value)) return stated(addCalendarDays(today, 2));
+  if (words.nextWeek.includes(value)) return derived(addCalendarDays(today, 7));
 
   if (words.nextMonth.includes(value)) {
     const now = parts(today);
     const month = now.month === 12 ? 1 : now.month + 1;
     const year = now.month === 12 ? now.year + 1 : now.year;
-    return iso(year, month, Math.min(now.day, lastDayOfMonth(year, month)));
+    return derived(iso(year, month, Math.min(now.day, lastDayOfMonth(year, month))));
   }
 
   // ISO and slashed forms first: they are unambiguous and cheap to reject.
-  if (isValidCalendarDate(value)) return value;
+  if (isValidCalendarDate(value)) return stated(value);
 
   const slashed = value.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
   if (slashed !== null) {
     const day = Number(slashed[1]);
     const month = Number(slashed[2]);
     const rawYear = slashed[3];
-    if (rawYear === undefined) return nextOccurrence(today, month, day);
+    if (rawYear === undefined) {
+      const occurrence = nextOccurrence(today, month, day);
+      return occurrence === null ? null : stated(occurrence);
+    }
     const year = rawYear.length === 2 ? 2000 + Number(rawYear) : Number(rawYear);
     const candidate = iso(year, month, day);
-    return isValidCalendarDate(candidate) ? candidate : null;
+    return isValidCalendarDate(candidate) ? stated(candidate) : null;
   }
 
   const inDays = value.match(words.inDaysPattern);
   if (inDays?.[1] !== undefined) {
     const count = parseNumber(numbers, inDays[1]);
-    if (count !== null) return addCalendarDays(today, Math.round(count));
+    // "daqui a 30 dias" is a period, not a day. The speaker counted roughly and
+    // this file lands on one exact date; that date is worth confirming.
+    if (count !== null) return derived(addCalendarDays(today, Math.round(count)));
   }
 
   const dayMonth = value.match(words.dayMonthPattern);
@@ -145,7 +171,7 @@ export function parseSpokenDate(
       && day <= 31
     ) {
       const occurrence = nextOccurrence(today, month, day);
-      if (occurrence !== null) return occurrence;
+      if (occurrence !== null) return stated(occurrence);
     }
   }
 
@@ -162,7 +188,9 @@ export function parseSpokenDate(
         const month = ((now.month - 1 + step) % 12) + 1;
         const year = now.year + Math.floor((now.month - 1 + step) / 12);
         const candidate = iso(year, month, day);
-        if (candidate >= today && isValidCalendarDate(candidate)) return candidate;
+        // The DAY was stated. The month is this file's, but it is the only
+        // month that can hold the day the speaker named.
+        if (candidate >= today && isValidCalendarDate(candidate)) return stated(candidate);
       }
     }
   }
@@ -173,9 +201,21 @@ export function parseSpokenDate(
     if (month !== undefined) {
       const now = parts(today);
       const year = month >= now.month ? now.year : now.year + 1;
-      return iso(year, month, lastDayOfMonth(year, month));
+      // "vence em marco" names a deadline and no day at all. The last of the
+      // month is the safest reading of it, and still a reading.
+      return derived(iso(year, month, lastDayOfMonth(year, month)));
     }
   }
 
   return null;
+}
+
+/** The date alone, for the callers that do not care how it was arrived at. */
+export function parseSpokenDate(
+  words: DateWords,
+  numbers: NumberWords,
+  text: string,
+  today: CalendarDate,
+): CalendarDate | null {
+  return readSpokenDate(words, numbers, text, today)?.date ?? null;
 }

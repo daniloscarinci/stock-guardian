@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSpokenDate } from './dates';
+import { parseSpokenDate, readSpokenDate } from './dates';
 import { ptBRDates } from './grammar/pt-BR.dates';
 import { ptBRNumbers } from './grammar/pt-BR.numbers';
 
@@ -128,4 +128,43 @@ describe('parseSpokenDate: a fractional day', () => {
       expect(parseSpokenDate(ptBRDates, ptBRNumbers, input, TODAY)).toBe(expected);
     });
   }
+});
+
+/**
+ * Which dates the parser was told and which it worked out.
+ *
+ * The date is the same either way, and that is exactly the problem this flag
+ * exists for: "vence em marco" and "vence 31 de marco" both come back as the
+ * 31st, and only one of them was said by the user. The layers above use it to
+ * decide whether the date may be stored on the spot or has to be shown first.
+ */
+describe('readSpokenDate: stated or derived', () => {
+  const cases: ReadonlyArray<readonly [string, boolean]> = [
+    // A day the speaker named, however it was named.
+    ['dia 12', false],
+    ['12 de setembro', false],
+    ['12/09', false],
+    ['12/09/2026', false],
+    ['2026-09-12', false],
+    ['dia 31', false],            // the month is the only one that has a 31st
+    // One day and only one, so nothing was chosen for anybody.
+    ['hoje', false],
+    ['amanha', false],
+    ['depois de amanha', false],
+    // A period. The day inside it is this application's choice.
+    ['em marco', true],           // the last of the month, which nobody said
+    ['semana que vem', true],
+    ['mes que vem', true],
+    ['daqui a 30 dias', true],
+  ];
+
+  for (const [input, assumed] of cases) {
+    it(`reads "${input}" as ${assumed ? 'derived' : 'stated'}`, () => {
+      expect(readSpokenDate(ptBRDates, ptBRNumbers, input, TODAY)?.assumed).toBe(assumed);
+    });
+  }
+
+  it('reports nothing for a phrase that holds no date', () => {
+    expect(readSpokenDate(ptBRDates, ptBRNumbers, 'feijao preto', TODAY)).toBeNull();
+  });
 });

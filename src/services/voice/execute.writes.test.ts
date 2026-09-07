@@ -49,9 +49,9 @@ describe('execute: writes stay pending', () => {
     const batch = vi.spyOn(db, 'batch');
 
     await execute(deps, { kind: 'ADJUST_QUANTITY', item: 'feijao preto', amount: 5,
-      direction: 'up', transaction: 'add', unit: null });
+      direction: 'up', transaction: 'add', unit: null, amountAssumed: false });
     await execute(deps, { kind: 'SET_QUANTITY', item: 'feijao preto', amount: 3, unit: null });
-    await execute(deps, { kind: 'SET_EXPIRY', item: 'feijao preto', expiresOn: '2027-01-01' });
+    await execute(deps, { kind: 'SET_EXPIRY', item: 'feijao preto', expiresOn: '2027-01-01', dateAssumed: false });
     await execute(deps, { kind: 'CREATE_ITEM', name: 'quinoa', amount: 2, unit: 'kg',
       location: null, expiresOn: null });
 
@@ -76,7 +76,7 @@ describe('execute: writes stay pending', () => {
     const transaction = vi.spyOn(db, 'transaction');
 
     const adjust = await pending(deps, { kind: 'ADJUST_QUANTITY', item: 'feijao preto',
-      amount: 5, direction: 'up', transaction: 'add', unit: null });
+      amount: 5, direction: 'up', transaction: 'add', unit: null, amountAssumed: false });
     const create = await pending(deps, { kind: 'CREATE_ITEM', name: 'quinoa', amount: 2,
       unit: 'kg', location: null, expiresOn: null });
 
@@ -92,9 +92,30 @@ describe('execute: writes stay pending', () => {
       .not.toHaveLength(0);
   });
 
+  /*
+   * The certainty on a `PendingWrite` changes who decides to call `commit`,
+   * and nothing else. An explicit write is one the caller may store without
+   * asking - which is a statement about the caller, not a licence for this
+   * module to take the shortcut itself.
+   */
+  it('writes nothing even when the write is certain enough to need no confirmation', async () => {
+    const exec = vi.spyOn(db, 'exec');
+    const transaction = vi.spyOn(db, 'transaction');
+
+    const write = await pending(deps, { kind: 'ADJUST_QUANTITY', item: 'feijao preto',
+      amount: 5, direction: 'up', transaction: 'purchase', unit: null,
+      amountAssumed: false });
+
+    expect(write).toMatchObject({ certainty: 'explicit', assumptions: [] });
+    expect(transaction).not.toHaveBeenCalled();
+    expect(exec.mock.calls.filter(([sql]) => /^\s*(?:insert|update|delete)/i.test(String(sql))))
+      .toHaveLength(0);
+    expect((await deps.items.getById(feijaoId))?.quantity).toBe(4);
+  });
+
   it('describes an adjustment without performing it', async () => {
     const write = await pending(deps, { kind: 'ADJUST_QUANTITY', item: 'feijao preto',
-      amount: 5, direction: 'up', transaction: 'purchase', unit: null });
+      amount: 5, direction: 'up', transaction: 'purchase', unit: null, amountAssumed: false });
 
     expect(write).toMatchObject({ kind: 'ADJUST', delta: 5, after: 9, transaction: 'purchase' });
     expect((await deps.items.getById(feijaoId))?.quantity).toBe(4);
@@ -102,7 +123,7 @@ describe('execute: writes stay pending', () => {
 
   it('takes a removal to zero rather than below it, as the write would', async () => {
     const write = await pending(deps, { kind: 'ADJUST_QUANTITY', item: 'feijao preto',
-      amount: 9, direction: 'down', transaction: 'consume', unit: null });
+      amount: 9, direction: 'down', transaction: 'consume', unit: null, amountAssumed: false });
 
     expect(write).toMatchObject({ kind: 'ADJUST', delta: -9, after: 0 });
   });
@@ -116,7 +137,7 @@ describe('execute: writes stay pending', () => {
 
   it('describes a new expiry date and the one it replaces', async () => {
     const write = await pending(deps, { kind: 'SET_EXPIRY', item: 'feijao preto',
-      expiresOn: '2027-01-01' });
+      expiresOn: '2027-01-01', dateAssumed: false });
 
     expect(write).toMatchObject({ kind: 'EXPIRY', before: null, after: '2027-01-01' });
     expect((await deps.items.getById(feijaoId))?.expirationDate).toBeNull();
@@ -170,6 +191,8 @@ describe('execute: writes stay pending', () => {
       delta: 0,
       after: 4,
       transaction: 'correction',
+      certainty: 'explicit',
+      assumptions: [],
     });
 
     expect(result.quantity).toBe(4);
@@ -204,7 +227,7 @@ describe('commit', () => {
 
   it('performs the adjustment that was only described, and says why', async () => {
     const pendingWrite = await write(deps, { kind: 'ADJUST_QUANTITY', item: 'feijao preto',
-      amount: 6, direction: 'up', transaction: 'purchase', unit: null });
+      amount: 6, direction: 'up', transaction: 'purchase', unit: null, amountAssumed: false });
 
     const saved = await commit(deps, pendingWrite);
     expect(saved.quantity).toBe(10);
@@ -235,7 +258,7 @@ describe('commit', () => {
 
   it('sets an expiry date', async () => {
     const pendingWrite = await write(deps, { kind: 'SET_EXPIRY', item: 'feijao preto',
-      expiresOn: '2027-01-01' });
+      expiresOn: '2027-01-01', dateAssumed: false });
 
     const saved = await commit(deps, pendingWrite);
     expect(saved.expirationDate).toBe('2027-01-01');

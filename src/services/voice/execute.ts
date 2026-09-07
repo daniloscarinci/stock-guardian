@@ -36,8 +36,37 @@ export type Answer =
   | { readonly kind: 'SCORE'; readonly score: number }
   | { readonly kind: 'HELP'; readonly examples: readonly string[] };
 
+/**
+ * Why a write is a guess. Translation-key suffixes, and nothing more.
+ *
+ * Each one names something the application supplied that the user did not say,
+ * so the confirmation card can show what it filled in rather than presenting
+ * the whole write as if every part of it had been spoken.
+ */
+export type AssumptionReason =
+  | 'quantity'   // no number was spoken
+  | 'item'       // matched by something looser than an exact name
+  | 'unit'       // the spoken unit differed from the stored one
+  | 'date'       // the date was derived rather than stated
+  | 'newItem';   // the item does not exist yet
+
+/**
+ * How much of a write was heard, and how much was filled in.
+ *
+ * `explicit` is the narrow case: an exact item and an amount the user actually
+ * said. It is what lets the caller store the change at once and offer Undo,
+ * instead of asking someone to confirm a sentence they just spoke clearly.
+ * Everything else is `assumed` and belongs on the confirmation card.
+ */
+interface Certainty {
+  /** 'explicit' when nothing was inferred; the caller may write it without asking. */
+  readonly certainty: 'explicit' | 'assumed';
+  /** Why it is assumed. Translation-key suffixes, empty when explicit. */
+  readonly assumptions: readonly AssumptionReason[];
+}
+
 export type PendingWrite =
-  | {
+  | (Certainty & {
       readonly kind: 'ADJUST';
       readonly item: InventoryItemView;
       /** Signed. Negative for a removal, so `commit` needs no direction flag. */
@@ -45,8 +74,8 @@ export type PendingWrite =
       /** What the quantity becomes, clamped at zero as `adjustQuantity` clamps. */
       readonly after: number;
       readonly transaction: StockTransactionType;
-    }
-  | {
+    })
+  | (Certainty & {
       readonly kind: 'CREATE';
       readonly name: string;
       readonly quantity: number;
@@ -54,13 +83,13 @@ export type PendingWrite =
       readonly locationId: string | null;
       readonly locationName: string | null;
       readonly expirationDate: string | null;
-    }
-  | {
+    })
+  | (Certainty & {
       readonly kind: 'EXPIRY';
       readonly item: InventoryItemView;
       readonly before: string | null;
       readonly after: string;
-    };
+    });
 
 export type Outcome =
   | { readonly kind: 'answer'; readonly answer: Answer }
@@ -82,14 +111,19 @@ const FALLBACK_WINDOW_DAYS = 30;
  * a plain `InventoryItemView`, which keeps the eleven branches below readable.
  */
 type Found =
-  | { readonly ok: true; readonly item: InventoryItemView }
+  | {
+      readonly ok: true;
+      readonly item: InventoryItemView;
+      /** Whether the phrase WAS the name, rather than merely finding it. */
+      readonly exact: boolean;
+    }
   | { readonly ok: false; readonly outcome: Outcome };
 
 async function one(deps: VoiceDeps, phrase: string, intent: Intent): Promise<Found> {
   const resolution = await resolveItem(deps.items, deps.context, deps.language, phrase);
   switch (resolution.kind) {
     case 'one':
-      return { ok: true, item: resolution.item };
+      return { ok: true, item: resolution.item, exact: resolution.exact };
     case 'many':
       return {
         ok: false,
@@ -231,18 +265,34 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
       const found = await one(deps, intent.item, intent);
       if (!found.ok) return found.outcome;
       const delta = intent.direction === 'up' ? intent.amount : -intent.amount;
-      return pendingAdjust(found.item, delta, intent.transaction);
+      return pendingAdjust(
+        found.item,
+        delta,
+        intent.transaction,
+        guesses(found.exact, intent.amountAssumed, intent.unit, found.item.unit),
+      );
     }
 
+    // The amount is always spoken here - the rule that builds this intent
+    // refuses a phrase without a number - so only the item and the unit can be
+    // guesses.
     case 'SET_QUANTITY': {
       const found = await one(deps, intent.item, intent);
       if (!found.ok) return found.outcome;
-      return pendingAdjust(found.item, intent.amount - found.item.quantity, 'correction');
+      return pendingAdjust(
+        found.item,
+        intent.amount - found.item.quantity,
+        'correction',
+        guesses(found.exact, false, intent.unit, found.item.unit),
+      );
     }
 
     case 'SET_EXPIRY': {
       const found = await one(deps, intent.item, intent);
       if (!found.ok) return found.outcome;
+      const assumptions: AssumptionReason[] = [];
+      if (!found.exact) assumptions.push('item');
+      if (intent.dateAssumed) assumptions.push('date');
       return {
         kind: 'pending',
         write: {
@@ -250,6 +300,7 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
           item: found.item,
           before: found.item.expirationDate,
           after: intent.expiresOn,
+          ...certaintyOf(assumptions),
         },
       };
     }
@@ -270,6 +321,9 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
         locationName = location.name;
       }
 
+      // A creation is never a nudge. It puts a row in the inventory that was
+      // not there before, under a name taken from a transcript, and there is
+      // nothing to compare that name against - so it is always confirmed.
       return {
         kind: 'pending',
         write: {
@@ -280,6 +334,7 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
           locationId,
           locationName,
           expirationDate: intent.expiresOn,
+          ...certaintyOf(['newItem']),
         },
       };
     }
@@ -307,6 +362,7 @@ function pendingAdjust(
   item: InventoryItemView,
   delta: number,
   transaction: StockTransactionType,
+  assumptions: readonly AssumptionReason[],
 ): Outcome {
   if (delta === 0) return { kind: 'answer', answer: { kind: 'QUANTITY', item } };
   return {
@@ -317,6 +373,54 @@ function pendingAdjust(
       delta,
       after: Math.max(0, item.quantity + delta),
       transaction,
+      ...certaintyOf(assumptions),
     },
   };
+}
+
+/** A list of guesses, turned into the pair every `PendingWrite` carries. */
+function certaintyOf(assumptions: readonly AssumptionReason[]): Certainty {
+  return {
+    certainty: assumptions.length === 0 ? 'explicit' : 'assumed',
+    assumptions,
+  };
+}
+
+/**
+ * Everything a quantity change had to guess at.
+ *
+ * The order is fixed rather than incidental, so a card lists the same reasons
+ * in the same order every time.
+ */
+function guesses(
+  exact: boolean,
+  amountAssumed: boolean,
+  spokenUnit: string | null,
+  storedUnit: string,
+): readonly AssumptionReason[] {
+  const assumptions: AssumptionReason[] = [];
+  if (amountAssumed) assumptions.push('quantity');
+  if (!exact) assumptions.push('item');
+  if (unitDiffers(spokenUnit, storedUnit)) assumptions.push('unit');
+  return assumptions;
+}
+
+/**
+ * Whether the unit the speaker counted in is not the unit the row is kept in.
+ *
+ * "comprei duas latas de arroz" against rice stored in kilos adds two KILOS,
+ * because the quantity is one number and the unit is a label on it. The number
+ * is not wrong so much as unanswerable, which is exactly what the confirmation
+ * card is for - so this counts as a guess even though the rule above says an
+ * explicit write needs only an exact item and a spoken amount.
+ *
+ * The comparison is deliberately crude: folded, and with one trailing "s"
+ * taken off each side so "latas" still matches a row kept in "lata". Anything
+ * it cannot settle - "quilos" against "kg" - it reports as a difference, which
+ * asks rather than assumes.
+ */
+function unitDiffers(spoken: string | null, stored: string): boolean {
+  if (spoken === null) return false;
+  const singular = (unit: string): string => foldText(unit).replace(/s$/, '');
+  return singular(spoken) !== singular(stored);
 }

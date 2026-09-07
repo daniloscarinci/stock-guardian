@@ -149,4 +149,56 @@ describe('resolveItem', () => {
     expect(both.kind).toBe('one');
     if (both.kind === 'one') expect(both.item.name).toBe('Água Mineral');
   });
+
+  /**
+   * HOW it matched, not only what it matched.
+   *
+   * Every row below comes back as one item and the caller cannot tell them
+   * apart from the item alone, which is the whole reason the flag exists: a
+   * write is stored without asking only when the user said the name, and
+   * "arroz" finding "Arroz Branco" is a good guess rather than the name.
+   */
+  describe('exactness', () => {
+    it('is exact when the phrase is the whole name, accents folded away', async () => {
+      const result = await resolveItem(items, CONTEXT, 'pt-BR', 'feijao preto');
+      expect(result).toMatchObject({ kind: 'one', exact: true });
+    });
+
+    it('is not exact for a prefix of a longer name', async () => {
+      const result = await resolveItem(items, CONTEXT, 'pt-BR', 'arroz');
+      expect(result).toMatchObject({ kind: 'one', exact: false });
+      if (result.kind === 'one') expect(result.item.name).toBe('Arroz Branco');
+    });
+
+    it('is not exact when the phrase is scattered through the name', async () => {
+      const result = await resolveItem(items, CONTEXT, 'pt-BR', 'preto feijao');
+      expect(result).toMatchObject({ kind: 'one', exact: false });
+      if (result.kind === 'one') expect(result.item.name).toBe('Feijão Preto');
+    });
+
+    it('is not exact when only the notes matched', async () => {
+      await items.create({
+        name: 'Macarrão', quantity: 2, unit: 'pacotes', notes: 'formato espaguete',
+      });
+      const result = await resolveItem(items, CONTEXT, 'pt-BR', 'espaguete');
+      expect(result).toMatchObject({ kind: 'one', exact: false });
+    });
+
+    /**
+     * A translated name is not on `InventoryItemView`, so it can only score at
+     * the floor - the row matched somewhere the scorer cannot see. Right about
+     * the item, uncertain about the match, and that is what it reports.
+     */
+    it('is not exact for the translated name a backup import gave an item', async () => {
+      const rice = await items.create({ name: 'Rice', quantity: 3, unit: 'kg' });
+      await db.exec(
+        `INSERT INTO item_names (item_id, lang, name, name_norm)
+         VALUES (:id, 'pt-BR', 'Arroz Integral', 'arroz integral')`,
+        { id: rice.id },
+      );
+      const result = await resolveItem(items, CONTEXT, 'pt-BR', 'arroz integral');
+      expect(result).toMatchObject({ kind: 'one', exact: false });
+      if (result.kind === 'one') expect(result.item.name).toBe('Rice');
+    });
+  });
 });

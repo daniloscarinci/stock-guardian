@@ -11,9 +11,19 @@ import type { Intent } from '../intents';
 import { ptBRNumbers } from './pt-BR.numbers';
 import { ptBRDates } from './pt-BR.dates';
 import { parseNumber, type NumberWords } from '../numbers';
-import { parseSpokenDate } from '../dates';
+import { readSpokenDate, type SpokenDate } from '../dates';
 
 const FILLERS = ['o', 'a', 'os', 'as', 'um', 'uma', 'de', 'do', 'da', 'dos', 'das', 'no', 'na'];
+
+/**
+ * Prepositions that hang a measure off the item: "tira [dois quilos] DE arroz".
+ *
+ * They matter only where no number was spoken. A phrase that opens with one is
+ * not a short sentence, it is a clipped one - the words the preposition
+ * belonged to are missing - so "tira de arroz" stays UNKNOWN where "tira
+ * arroz" is read as one. Everywhere else "de" is an ordinary filler.
+ */
+const PARTITIVES = ['de', 'do', 'da', 'dos', 'das'];
 
 const UNITS = [
   'lata', 'latas', 'pacote', 'pacotes', 'caixa', 'caixas', 'garrafa', 'garrafas',
@@ -97,6 +107,30 @@ function splitLeadingAmount(
 }
 
 /**
+ * Whether "comprei arroz" may be read as one bag of rice.
+ *
+ * A write with no number used to stay UNKNOWN. On a real phone that turned the
+ * most ordinary sentence anyone says into a transcript on the screen and
+ * nothing else, so the number is now assumed - and, being assumed, it is
+ * confirmed before it is stored rather than written straight.
+ *
+ * Two shapes are still refused, because in both of them a number was said and
+ * this file failed to read it. Assuming one there would not fill a gap, it
+ * would overrule the speaker.
+ *
+ *   A leading partitive: "tira DE arroz" is "tira [dois quilos] de arroz" with
+ *   the measure clipped off by the recognizer.
+ *   A numeral anywhere else in the phrase: "poe menos 2 ovos" says two, and no
+ *   reading of "menos" here is better than a guess.
+ */
+function canAssumeOne(numbers: NumberWords, phrase: string): boolean {
+  const tokens = phrase.split(' ').filter((token) => token !== '');
+  const first = tokens[0];
+  if (first === undefined || PARTITIVES.includes(first)) return false;
+  return tokens.every((token) => parseNumber(numbers, token) === null);
+}
+
+/**
  * A spoken date, tried as said and then again without a leading preposition.
  *
  * Both attempts are needed, because the preposition is load-bearing for some
@@ -107,14 +141,18 @@ function splitLeadingAmount(
  * Trying the phrase whole first means the forms that carry meaning in their
  * preposition win, and the rest get a second chance.
  */
-function parseDatePhrase(tools: RuleTools, context: SlotContext, spoken: string): string | null {
+function parseDatePhrase(
+  tools: RuleTools,
+  context: SlotContext,
+  spoken: string,
+): SpokenDate | null {
   const text = spoken.trim();
-  const asSpoken = parseSpokenDate(tools.dates, tools.numbers, text, context.today);
+  const asSpoken = readSpokenDate(tools.dates, tools.numbers, text, context.today);
   if (asSpoken !== null) return asSpoken;
 
   const stripped = text.replace(/^(?:em|ate|para|no|na)\s+/, '');
   if (stripped === text) return null;
-  return parseSpokenDate(tools.dates, tools.numbers, stripped, context.today);
+  return readSpokenDate(tools.dates, tools.numbers, stripped, context.today);
 }
 
 /** Verbs that add stock, mapped to why they added it. */
@@ -154,8 +192,13 @@ const rules: readonly Rule[] = [
 
       const expiry = rest.match(/\s+(?:que\s+)?(?:vence|validade|valido ate)\s+(.+)$/);
       if (expiry?.[1] !== undefined && expiry.index !== undefined) {
-        expiresOn = parseDatePhrase(tools, context, expiry[1]);
-        if (expiresOn !== null) rest = rest.slice(0, expiry.index).trim();
+        const date = parseDatePhrase(tools, context, expiry[1]);
+        // A creation is confirmed whatever the date turned out to be, so how
+        // the day was arrived at changes nothing here.
+        if (date !== null) {
+          expiresOn = date.date;
+          rest = rest.slice(0, expiry.index).trim();
+        }
       }
 
       const place = rest.match(/\s+(?:na|no|em)\s+(.+)$/);
@@ -229,9 +272,9 @@ const rules: readonly Rule[] = [
     pattern: /^(?:o |a )?(.+?)\s+(?:vence|expira|tem validade)\s+(.+)$/,
     build: (match, tools, context): Intent | null => {
       const item = cleanItemPhrase(match[1] ?? '');
-      const expiresOn = parseDatePhrase(tools, context, match[2] ?? '');
-      if (item === '' || expiresOn === null) return null;
-      return { kind: 'SET_EXPIRY', item, expiresOn };
+      const date = parseDatePhrase(tools, context, match[2] ?? '');
+      if (item === '' || date === null) return null;
+      return { kind: 'SET_EXPIRY', item, expiresOn: date.date, dateAssumed: date.assumed };
     },
   },
 
@@ -286,9 +329,17 @@ const rules: readonly Rule[] = [
       // every reading of it is a guess at a write. It stays UNKNOWN.
       const spoken = (match[2] ?? '').replace(/^mais\s+/, '');
 
-      const { amount, rest } = splitLeadingAmount(tools.numbers, spoken);
-      if (amount === null || amount <= 0) return null;
+      const leading = splitLeadingAmount(tools.numbers, spoken);
+      // A missing number means one - see `canAssumeOne`, which says when it may
+      // not. A spoken zero is not missing: "tira zero de arroz" changes nothing
+      // and is declined here as it always was.
+      const amountAssumed = leading.amount === null;
+      if (amountAssumed && !canAssumeOne(tools.numbers, spoken)) return null;
 
+      const amount = leading.amount ?? 1;
+      if (amount <= 0) return null;
+
+      const rest = amountAssumed ? spoken : leading.rest;
       const item = cleanItemPhrase(rest);
       if (item === '') return null;
 
@@ -299,6 +350,7 @@ const rules: readonly Rule[] = [
         direction: add !== undefined ? 'up' : 'down',
         transaction: add ?? remove ?? 'add',
         unit: findUnit(rest),
+        amountAssumed,
       };
     },
   },

@@ -52,6 +52,15 @@ export interface AdjustQuantity {
   /** Why, taken from the verb: comprei is a purchase, usei is consumption. */
   readonly transaction: StockTransactionType;
   readonly unit: string | null;
+  /**
+   * True when no number was spoken and 1 was assumed.
+   *
+   * "comprei arroz" is a whole sentence and one bag is what it almost always
+   * means, so the grammar reads it rather than refusing it. The flag is how
+   * the layers above tell that number apart from one the user actually said:
+   * an assumed amount is confirmed before it is stored, never written straight.
+   */
+  readonly amountAssumed: boolean;
 }
 
 export interface SetQuantity {
@@ -74,6 +83,14 @@ export interface SetExpiry {
   readonly kind: 'SET_EXPIRY';
   readonly item: string;
   readonly expiresOn: string;
+  /**
+   * True when the phrase named a period rather than a day.
+   *
+   * "dia 12", "12/09" and "12 de setembro" state the date. "em marco",
+   * "semana que vem" and "daqui a 30 dias" leave the day to the parser, and a
+   * day nobody said is worth showing before it is stored.
+   */
+  readonly dateAssumed: boolean;
 }
 
 export interface Help {
