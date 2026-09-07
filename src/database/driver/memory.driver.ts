@@ -9,6 +9,7 @@
  * behavior are bit-for-bit identical to what ships. Tests exercise production
  * SQL, not an approximation of it.
  */
+import { join } from 'node:path';
 import type { Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import { createOo1Core, type Oo1Core } from './oo1-core';
 import { createDriver } from './create-driver';
@@ -20,6 +21,18 @@ let sqlite3Promise: Promise<Sqlite3Static> | undefined;
 /** The WASM module is expensive to instantiate; share one per process. */
 function getSqlite3(): Promise<Sqlite3Static> {
   sqlite3Promise ??= initSqlite({
+    /*
+     * Stated rather than left to the glue's own guess.
+     *
+     * Emscripten resolves the binary against the script's own URL. In a test
+     * file that asks for a DOM - the interface tests do - that URL is the
+     * runner's `http://localhost:3000/...`, and the loader then tries to read
+     * an http URL off the filesystem and aborts. The package's location under
+     * the project root is a fact this driver can simply state, and in a plain
+     * Node test it resolves to exactly the file the guess would have found.
+     */
+    locateFile: (file) =>
+      join(process.cwd(), 'node_modules', '@sqlite.org', 'sqlite-wasm', 'dist', file),
     print: () => undefined,
     printErr: () => undefined,
   });

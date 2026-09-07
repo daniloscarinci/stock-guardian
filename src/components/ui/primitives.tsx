@@ -5,7 +5,7 @@
  * original application used `<span onclick>` for its clickable catalog entries,
  * which cannot be focused or activated from a keyboard at all.
  */
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
 import { cx } from './cx';
 import styles from './primitives.module.css';
 
@@ -18,6 +18,14 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly size?: 'medium' | 'small' | undefined;
   readonly iconOnly?: boolean | undefined;
   readonly fullWidth?: boolean | undefined;
+  /**
+   * Declared because `ButtonHTMLAttributes` does not carry it, and something has
+   * to be able to move focus onto a button - the voice confirmation card takes
+   * focus on mount so the person not looking at the screen lands on Confirm. In
+   * React 19 `ref` is an ordinary prop, so it reaches the element in `...rest`
+   * with no forwardRef wrapper.
+   */
+  readonly ref?: Ref<HTMLButtonElement> | undefined;
 }
 
 export function Button({

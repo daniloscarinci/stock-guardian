@@ -134,6 +134,23 @@ export const MenuIcon = (props: IconProps) =>
     props,
   );
 
+/**
+ * A microphone: capsule, stand, and the arc of the pickup pattern.
+ *
+ * Drawn here for the same reason as the rest - an icon font would be a network
+ * request, and this application is not allowed to make one.
+ */
+export const MicIcon = (props: IconProps) =>
+  svg(
+    <>
+      <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <path d="M12 18v3" />
+      <path d="M9 21h6" />
+    </>,
+    props,
+  );
+
 /* ---- Navigation ----------------------------------------------------------- */
 
 export const DashboardIcon = (props: IconProps) =>
