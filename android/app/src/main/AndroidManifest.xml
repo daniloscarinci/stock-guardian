@@ -23,6 +23,9 @@
             already covered: Settings has an explicit backup export that writes
             a file the user chooses to keep, and an import that reads it back.
             A backup you performed is worth more than one you assumed.
+
+            The AI assistant does not soften this. A question may travel; the
+            database still has no route to Google Drive or anywhere else.
         -->
 
         <activity
@@ -52,32 +55,56 @@
     </application>
 
     <!--
-        Permissions requested from the system: none.
+        Permissions requested from the system: one, and this comment used to
+        say none.
 
-        Capacitor's template requests android.permission.INTERNET. This
-        application makes no network requests - the build is audited for that on
-        every deploy, and the page's Content-Security-Policy is default-src
-        'self' - and every asset it needs is inside the APK. Deleting the
-        permission costs nothing and turns "it works offline" from a claim in a
-        README into something anyone can check in Settings, App info,
-        Permissions, without taking my word for it.
+        That sentence was true until the AI assistant. A person pastes their
+        own Anthropic key into Settings and asks a question; answering it means
+        reaching https://api.anthropic.com, and on Android nothing reaches
+        anything without INTERNET. The WebView's request fails before it
+        resolves a name. There is no per-host form of the permission, no way to
+        hold it only while a feature is switched on, and no way to hand a
+        release build a key it can use without one. So it is declared, once,
+        below.
 
-        Voice control does not change this. Speech arrives through the system's
-        own recognizer (ACTION_RECOGNIZE_SPEECH, see SpeechPlugin), which holds
-        the microphone itself, so this application needs no RECORD_AUDIO.
-        Do not add it: the feature works without it, and the check below fails
-        on it.
+        What used to be proved by its absence is now proved in three narrower
+        places, each of which still fails closed:
 
-        The merged manifest does carry one entry, added by androidx:
+          - index.html allows exactly one host, and connect-src refuses the
+            rest at the browser.
+          - scripts/audit-offline.mjs allows that host in exactly one module,
+            src/services/ai/client.ts, and fails the build on any other
+            external URL anywhere.
+          - With no key stored, and with the assistant switched off, nothing
+            runs and nothing is sent. That is the shipping default.
+
+        Voice control still needs no RECORD_AUDIO. Speech arrives through the
+        system's own recognizer (ACTION_RECOGNIZE_SPEECH, see SpeechPlugin),
+        which holds the microphone itself. Do not add it: the feature works
+        without it, and the check in .github/workflows/android.yml fails on it.
+
+        That check was narrowed rather than deleted. It allows exactly
+        android.permission.INTERNET and still fails the build on every other
+        permission outside this application's own namespace: RECORD_AUDIO,
+        CAMERA, location, contacts, storage, anything a later dependency drags
+        in. It used to prove "this application asks the system for nothing". It
+        now proves "this application asks for the network and nothing else",
+        which is a weaker sentence and still worth checking on every build,
+        because the way this promise would actually be lost is one library
+        quietly merging one more permission.
+
+        The merged manifest also carries one entry added by androidx:
         DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION, namespaced under this
         application's own id. It is a permission this application defines to
         keep other applications away from its broadcast receivers, not one it
         asks anybody for. The workflow allows that name and fails on any other.
 
-        The WebView still loads: Capacitor serves the application from
-        https://localhost through WebViewAssetLoader, which reads the APK's
-        assets and never opens a socket.
+        None of this changes how the application is loaded. Capacitor serves it
+        from https://localhost through WebViewAssetLoader, which reads the
+        APK's own assets and never opens a socket. Every asset is still inside
+        the package, and the first launch still works with the radio off.
     -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
         Not a permission, and the only reason it is here.
@@ -91,7 +118,7 @@
         This grants nothing and asks the system for nothing. It is not
         QUERY_ALL_PACKAGES, which is a permission and is not here; it makes
         visible only the applications that themselves declare they can do speech
-        recognition. The check below still finds no permission at all.
+        recognition. The check in the workflow still finds nothing but INTERNET.
     -->
     <queries>
         <intent>

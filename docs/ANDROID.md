@@ -78,11 +78,15 @@ command rather than changing the machine's default:
 JAVA_HOME=/path/to/jdk-21 ./gradlew assembleDebug
 ```
 
-Then run the same check the workflow runs, which should print nothing:
+Then run the same check the workflow runs. It should print
+`android.permission.INTERNET`, on one line, and nothing else:
 
 ```bash
 aapt2 dump permissions android/app/build/outputs/apk/debug/app-debug.apk   | grep '^uses-permission:' | cut -d"'" -f2 | grep -v '^app.stockguardian.android.'
 ```
+
+Any second line is a failure. The workflow allows that one name and rejects
+every other, and the section below says why there is one at all.
 
 ---
 
@@ -125,19 +129,36 @@ because a service worker updates on its own schedule. `VITE_TARGET=android`
 therefore drops it from the build. The APK is the offline mechanism on Android;
 the service worker is the offline mechanism on the web.
 
-**It asks the system for nothing.** Capacitor's template requests `INTERNET`.
-This build does not, because the application makes no network requests and needs
-none. Open **Settings → Apps → Stock Guardian → Permissions** and see for
-yourself. The build fails if any system permission ever appears in the APK, so
-it stays a promise you can check rather than one you have to believe.
+**It asks the system for one permission, and it used to ask for none.** That
+change is worth explaining rather than noticing.
 
-One entry does appear in the manifest, and it is not a permission the
-application asks for. androidx declares
+The application declares `android.permission.INTERNET`, and only because the AI
+assistant reaches `api.anthropic.com` with a key the user pastes into Settings.
+Android offers nothing narrower: no per-host permission, no way to hold one only
+while a feature is switched on, and no way for a WebView to make that one
+request without it. Leave the key blank and nothing uses it — the application
+still opens no connection, and the first launch still works with the radio off,
+because every asset is inside the package.
+
+The check that used to prove the APK asked for nothing was narrowed rather than
+deleted. It allows `android.permission.INTERNET`, allows names in this
+application's own namespace, and fails the build on every other permission:
+`RECORD_AUDIO`, `CAMERA`, location, contacts, storage, and whatever a future
+library brings with it. Open **Settings → Apps → Stock Guardian → Permissions**
+and you should find that one entry. "It asks for the network and nothing else"
+is a weaker sentence than the one it replaced, and it is still checked by a
+machine on every build rather than asserted here.
+
+The namespaced entry is not a permission the application asks anyone for.
+androidx declares
 `app.stockguardian.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` — a
 permission belonging to this application, which exists so that other
 applications cannot reach its broadcast receivers. It grants no capability, asks
-the system for nothing, and never appears in front of a user. The build's check
-allows that one name and rejects everything else.
+the system for nothing, and never appears in front of a user.
+
+What the assistant sends, and what it never sends, is set out in
+`docs/OFFLINE.md`. The short version: the question, the rows Claude asked a tool
+for, and the answer — never the inventory.
 
 **No automatic backup.** `allowBackup` is off. Android's automatic backup would
 copy the application's private storage — the whole database — to the user's
@@ -166,22 +187,23 @@ The plugin does call one method on the `SpeechRecognizer` class:
 transcribe with no network, so that a phone missing the pack is told so instead
 of watching the recognizer screen flash past. It records nothing and needs no
 permission — the permission belongs to `startListening`, which is never called
-here — and the check below is what proves it rather than this paragraph.
+here — and the check above is what proves it rather than this paragraph.
+`RECORD_AUDIO` is still one of the names that fails the build.
 
 **Nor does the online opt-in.** **Settings → Voice → Send your audio to Google**
 is off by default; switched on, `SpeechPlugin` omits `EXTRA_PREFER_OFFLINE` and
-the system recognizer may transcribe over the network. The audio then leaves
-from Google's process under Google's permissions, not from this application,
-which still declares no `INTERNET` and still opens no socket. The permission
-check below is unchanged and still passes. `docs/OFFLINE.md` states the
-disclosure in full.
+the system recognizer may transcribe over the network. The audio leaves from
+Google's process under Google's permissions, not from this application, and that
+was true before `INTERNET` was declared and is true after: nothing in the voice
+path opens a connection from here. `docs/OFFLINE.md` states the disclosure in
+full.
 
-The one thing the manifest gained is a `queries` element naming the speech
-intents. From Android 11 an application cannot see another it has not named, and
-without it the check for "is there a recognizer on this phone" would answer no
-on every modern phone and the microphone button would never appear. It is not a
-permission, it is not `QUERY_ALL_PACKAGES`, and the build's check confirms as
-much: the APK still asks the system for nothing.
+The one thing the manifest gained for voice is a `queries` element naming the
+speech intents. From Android 11 an application cannot see another it has not
+named, and without it the check for "is there a recognizer on this phone" would
+answer no on every modern phone and the microphone button would never appear. It
+is not a permission, it is not `QUERY_ALL_PACKAGES`, and the build's check
+confirms as much: it is not one of the names that appear.
 
 `docs/VOICE.md` covers the feature itself, including what it will not do.
 
@@ -213,16 +235,17 @@ install is the first real test. Check eight things in order, because each one
 tells you something different:
 
 1. **It opens.** A blank screen means the WebView could not start the
-   application — the interesting case, and the one most likely to involve the
-   missing `INTERNET` permission.
+   application. It will not be the network: every asset is inside the APK and
+   Capacitor serves them from `https://localhost` without opening a socket.
+   Look at the WebView version first.
 2. **The database opens.** Add an item. "This page cannot store data" means OPFS
    is unavailable, which means the WebView is older than Chrome 108. Update
    **Android System WebView** from the Play Store; it updates independently of
    the Android version, so an old phone is not necessarily an obstacle.
 3. **Data survives.** Force-close the application from the recents screen,
    reopen it, and confirm the item is still there.
-4. **It works with the radio off.** Turn on airplane mode and use it. Nothing
-   should change.
+4. **It works with the radio off.** Turn on airplane mode and use it. With no
+   API key stored — which is how it arrives — nothing should change at all.
 5. **Exports arrive.** Choose **Settings → Backup → Export**, then look in the
    phone's Downloads folder for the `.json` file.
 6. **The back button behaves.** It should move back through the screens and
@@ -232,7 +255,9 @@ tells you something different:
    belonging to the system rather than to this application is the whole design.
    No microphone button at all means `availability` found no recognizer, which
    is a real answer on a phone that has none. Confirm in **Settings → Apps →
-   Stock Guardian → Permissions** that this application still holds nothing.
+   Stock Guardian → Permissions** that the microphone is not among what this
+   application holds — the one permission it declares is the network, and voice
+   control does not use it.
 8. **A failure says what it was.** The one thing the microphone must never do is
    nothing. If the recognizer screen closes without a transcript you should see
    a sentence — most often that this phone has no offline pack for the language,
@@ -262,10 +287,13 @@ npm run generate:android-icons
 ```
 
 `cap add` restores Capacitor's template, complete with the stock Android Studio
-artwork, an `INTERNET` permission and automatic backup switched on.
-`generate:android-icons` replaces the artwork and deletes what it supersedes.
-The manifest, `MainActivity.java` and `app/build.gradle` carry the rest of those
-decisions and would have to come back from git.
+artwork and automatic backup switched on. `generate:android-icons` replaces the
+artwork and deletes what it supersedes. The manifest, `MainActivity.java` and
+`app/build.gradle` carry the rest of those decisions and would have to come back
+from git — including the `queries` element, `allowBackup="false"`, and the long
+comment explaining why `INTERNET` is the only permission here. The template's
+own `INTERNET` line happens to be the one thing it gets right now, which is a
+poor reason to trust the rest of it.
 
 ---
 

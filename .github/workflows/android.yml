@@ -67,7 +67,9 @@ jobs:
       # VITE_TARGET=android drops the service worker: the APK carries every
       # asset already, so a second cache in front of them buys nothing and can
       # serve the previous version's files after an update. The build's offline
-      # audit still runs, and still fails on any external URL.
+      # audit still runs. It now permits one host - api.anthropic.com, reached
+      # only from src/services/ai/client.ts - and still fails on every other
+      # external URL.
       - name: Build the web application
         env:
           VITE_TARGET: android
@@ -120,18 +122,34 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           ls -lh "$name"
 
-      # Proof, in the build log, that the manifest's central promise is still
-      # true of the artifact that came out. aapt2 is part of build-tools.
+      # Proof, in the build log, of exactly what the artifact that came out
+      # asks the operating system for. aapt2 is part of build-tools.
       #
-      # The test is not "zero permissions". androidx declares one belonging to
-      # the application itself - DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION - so
-      # that other applications cannot reach its broadcast receivers. It is
-      # namespaced under the application id, grants no capability, asks the
-      # system for nothing, and is never shown to a user.
+      # This step used to demand zero permissions, and that was the better
+      # check. The AI assistant ended it: a key the user pastes in themselves
+      # is useless unless the application can reach api.anthropic.com, and
+      # Android has no narrower permission than INTERNET and no way to hold it
+      # only while a feature is switched on. So the gate is narrowed, not
+      # deleted. It allows exactly one foreign name and fails on every other.
       #
-      # Anything outside that namespace is a real capability asked of the
-      # operating system, INTERNET above all, and must never appear here.
-      - name: Check the APK asks the system for nothing
+      # Two names pass, for different reasons.
+      #
+      # android.permission.INTERNET is a real capability asked of the system,
+      # and the one the assistant cannot work without. Naming it here means a
+      # second capability has to be a deliberate edit to this file, rather than
+      # something a dependency merges in and nobody notices.
+      #
+      # Anything under app.stockguardian.android. is not asked of anyone: it
+      # belongs to this application. androidx declares
+      # DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION so that other applications
+      # cannot reach its broadcast receivers. It grants no capability and is
+      # never shown to a user.
+      #
+      # Everything else still fails the build: RECORD_AUDIO - which voice
+      # control does not need, because the system's recognizer holds the
+      # microphone - CAMERA, location, contacts, storage, and whatever the next
+      # library arrives with.
+      - name: Check the APK asks for INTERNET and nothing else
         env:
           APK: ${{ steps.apk.outputs.name }}
         run: |
@@ -139,15 +157,24 @@ jobs:
           "$AAPT2" dump permissions "$APK" | tee permissions.txt
 
           # cut on the quote: `uses-permission: name='android.permission.FOO'`
-          foreign=$(grep '^uses-permission:' permissions.txt | cut -d"'" -f2 | grep -v '^app.stockguardian.android.' || true)
+          unexpected=$(grep '^uses-permission:' permissions.txt | cut -d"'" -f2 \
+            | grep -v '^app\.stockguardian\.android\.' \
+            | grep -vx 'android\.permission\.INTERNET' || true)
 
-          if [ -n "$foreign" ]; then
+          if [ -n "$unexpected" ]; then
             echo "The APK asks the operating system for:"
-            echo "$foreign"
-            echo "It is meant to ask for nothing at all. See docs/ANDROID.md."
+            echo "$unexpected"
+            echo "Only android.permission.INTERNET is allowed here, and only because"
+            echo "the AI assistant cannot reach api.anthropic.com without it."
+            echo "Nothing else belongs in this APK. See docs/ANDROID.md."
             exit 1
           fi
-          echo "The APK asks the operating system for no permission at all."
+
+          if grep -q "name='android.permission.INTERNET'" permissions.txt; then
+            echo "The APK asks the operating system for INTERNET, and nothing else."
+          else
+            echo "The APK asks the operating system for no permission at all."
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -170,8 +197,11 @@ jobs:
           is the expected prompt for an application that does not come from the
           Play Store, and it is asked once.
 
-          This build requests no Android permissions and makes no network
-          requests. Everything it needs is inside the file.
+          This build asks Android for one permission, INTERNET, and only so that
+          the AI assistant can reach api.anthropic.com with a key you paste in
+          yourself. Leave the key blank and nothing is ever sent: the app runs
+          with the radio off, exactly as before. Everything it needs to run is
+          inside the file.
           NOTES
 
           gh release create "$GITHUB_REF_NAME" "$APK"             --title "Stock Guardian $GITHUB_REF_NAME"             --notes-file release-notes.md           || gh release upload "$GITHUB_REF_NAME" "$APK" --clobber

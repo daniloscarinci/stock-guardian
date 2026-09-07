@@ -100,7 +100,8 @@ it.
   destroying it.
 - **An Android application.** The same build, wrapped by Capacitor and installed
   as an APK. It ships no service worker (the APK is already the offline
-  mechanism), asks the operating system for no permission at all, and switches
+  mechanism), asks the operating system for one permission — `INTERNET`, for the
+  AI assistant, with the build failing on any other — and switches
   off Android's automatic backup so the database never reaches Google Drive. The native shell
   writes exports to the phone's Downloads folder, because Android's WebView
   will not download a blob URL by itself and every export button would otherwise
