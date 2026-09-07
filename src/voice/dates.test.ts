@@ -33,3 +33,68 @@ describe('parseSpokenDate (pt-BR)', () => {
     });
   }
 });
+
+/**
+ * A spoken month must survive the words spoken in front of it.
+ *
+ * The day-month pattern used to open with a lazy `.+?`, which swallowed the
+ * words before the day - "dia", "vence", "em" - and left `parseNumber` a token
+ * stream it had to reject. The branch then failed and the phrase fell through
+ * to the day-only branch, which has no idea a month was ever mentioned.
+ *
+ * Every case here needs a `today` outside September, because with the suite's
+ * usual TODAY the wrong answer and the right one happen to coincide. That
+ * coincidence is the whole reason this went unnoticed.
+ */
+describe('parseSpokenDate: the month is never dropped', () => {
+  const JANUARY = '2026-01-15';
+
+  const cases: ReadonlyArray<readonly [string, string | null]> = [
+    ['dia 12 de setembro', '2026-09-12'],
+    ['vence 12 de setembro', '2026-09-12'],
+    ['em 10 de outubro', '2026-10-10'],
+    ['no dia 3 de abril', '2026-04-03'],
+    // A numeral is not one token, so trimming the words in front of the day
+    // must not trim the front of the numeral itself.
+    ['vinte e cinco de dezembro', '2026-12-25'],
+    // The date is still found when an earlier "de" belongs to the item.
+    ['o pacote de arroz vence 12 de setembro', '2026-09-12'],
+  ];
+
+  for (const [input, expected] of cases) {
+    it(`reads "${input}" as ${String(expected)}`, () => {
+      expect(parseSpokenDate(ptBRDates, ptBRNumbers, input, JANUARY)).toBe(expected);
+    });
+  }
+});
+
+/**
+ * A date that does not exist is refused, not invented.
+ *
+ * Three branches built a date out of components and returned it without asking
+ * whether that day exists in that month, so "29 de fevereiro" produced
+ * 2027-02-29 and "12/13" produced a thirteenth month. Both are strings that
+ * `calendarDaysBetween` throws on, written into an expiry field.
+ *
+ * The distinction the rows below draw: a day that exists but not yet ("dia 31"
+ * in a 30-day month, the 29th of February) rolls forward to the next month or
+ * year that really has it, which is what "the next time that day comes round"
+ * already promised. A day that exists in no year at all is null, and the
+ * phrase stays UNKNOWN so the user can see what was heard and correct it.
+ */
+describe('parseSpokenDate: an impossible date', () => {
+  const cases: ReadonlyArray<readonly [string, string, string | null]> = [
+    ['31 de abril', TODAY, null],              // April has never had 31 days
+    ['12/13', TODAY, null],                    // there is no thirteenth month
+    ['30 de fevereiro', TODAY, null],          // no February ever has one
+    ['29 de fevereiro', TODAY, '2028-02-29'],  // the next February that does
+    ['dia 31', '2026-09-29', '2026-10-31'],    // September has no 31st
+    ['dia 30', '2027-02-10', '2027-03-30'],    // nor February a 30th
+  ];
+
+  for (const [input, today, expected] of cases) {
+    it(`reads "${input}" on ${today} as ${String(expected)}`, () => {
+      expect(parseSpokenDate(ptBRDates, ptBRNumbers, input, today)).toBe(expected);
+    });
+  }
+});
