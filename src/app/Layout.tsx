@@ -26,6 +26,7 @@ import {
   type IconComponent,
 } from '../components/ui/icons';
 import { cx } from '../components/ui/cx';
+import { VoiceButton } from '../features/voice/VoiceButton';
 import styles from './Layout.module.css';
 
 interface NavEntry {
@@ -155,6 +156,13 @@ export function Layout({ attentionCount }: { readonly attentionCount: number }) 
           <span className={styles.headerSpacer} />
 
           <div className={styles.headerActions}>
+            {/*
+              First among the header controls, so the fastest way into the
+              application is also the first thing a keyboard reaches. Renders
+              nothing at all when voice is switched off.
+            */}
+            <VoiceButton />
+
             <label className="sr-only" htmlFor="language-select">
               {t('settings.language')}
             </label>
