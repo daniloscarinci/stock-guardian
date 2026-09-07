@@ -487,11 +487,19 @@ export const en = {
     notUnderstood: 'I did not understand that.',
     examplesTitle: 'Try one of these',
     unavailable: 'This device cannot transcribe speech on its own, so the microphone opens straight to the typed box.',
-    installable:
-      'A speech pack for this language can be installed. Installing downloads it — the one time anything here uses the network.',
+    installable: 'No speech pack for this language is installed on this device yet.',
+    installDownloads: 'Installing downloads the pack. Nothing of yours is sent in exchange.',
     install: 'Install',
+    installHow: 'How to install',
+    installSteps:
+      'On Android: Settings → System → Languages & input → Voice input → Google → Offline speech recognition, then download this language.',
     nothingHeard: 'I did not hear anything. Try again, or type the command.',
     listenFailed: 'The microphone could not be used. Typing works.',
+    noOfflineModel:
+      'This device has no offline speech pack for this language, so the recognizer had nothing to listen with. Nothing was recorded and nothing was sent.',
+    networkFailed: 'The recognizer went looking for the internet and did not find it.',
+    busy: 'Something else is using the microphone. Close it and try again.',
+    typeCommandInstead: 'Type the command instead',
     quantityAnswer: '{name}: {quantity} {unit}, in {location}.',
     quantityAnswerNoLocation: '{name}: {quantity} {unit}.',
     expiringNone_one: 'Nothing expires in the next day.',

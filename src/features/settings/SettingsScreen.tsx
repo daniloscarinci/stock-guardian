@@ -313,7 +313,17 @@ export function SettingsScreen() {
         </dl>
 
         {speech.data?.availability === 'installable' &&
-          speech.data.recognizer.install !== undefined && (
+          (speech.data.recognizer.install === undefined ? (
+            /*
+              Android installs speech packs through its own settings and offers
+              no API for it, so the honest thing to show is the path rather than
+              a button that cannot work. This is the same wording the voice
+              sheet shows after a listen that found no model.
+            */
+            <Alert tone="warning" title={t('voice.installHow')}>
+              {t('voice.installSteps')}
+            </Alert>
+          ) : (
             <div className={screens.pageActions} style={{ marginTop: 'var(--space-4)' }}>
               <Button
                 variant="primary"
@@ -324,8 +334,9 @@ export function SettingsScreen() {
               >
                 {installing ? t('common.loading') : t('voice.install')}
               </Button>
+              <span className={screens.pageSubtitle}>{t('voice.installDownloads')}</span>
             </div>
-          )}
+          ))}
       </Card>
 
       <section>

@@ -489,11 +489,19 @@ export const es: LocaleTree = {
     examplesTitle: 'Prueba uno de estos',
     unavailable:
       'Este dispositivo no puede transcribir voz por sí solo, así que el micrófono abre directamente el cuadro de texto.',
-    installable:
-      'Se puede instalar un paquete de voz para este idioma. Instalarlo lo descarga: es la única vez que algo de aquí usa la red.',
+    installable: 'En este dispositivo no hay instalado ningún paquete de voz para este idioma.',
+    installDownloads: 'Instalarlo descarga el paquete. No se envía nada tuyo a cambio.',
     install: 'Instalar',
+    installHow: 'Cómo instalarlo',
+    installSteps:
+      'En Android: Ajustes → Sistema → Idiomas e introducción → Entrada por voz → Google → Reconocimiento de voz sin conexión, y descarga este idioma.',
     nothingHeard: 'No escuché nada. Inténtalo otra vez o escribe el comando.',
     listenFailed: 'No se pudo usar el micrófono. Escribir funciona.',
+    noOfflineModel:
+      'Este dispositivo no tiene el paquete de voz sin conexión de este idioma, así que el reconocedor no tenía con qué escuchar. No se grabó nada y no se envió nada.',
+    networkFailed: 'El reconocedor fue a buscar internet y no la encontró.',
+    busy: 'Otra aplicación está usando el micrófono. Ciérrala e inténtalo otra vez.',
+    typeCommandInstead: 'Escribir el comando',
     quantityAnswer: '{name}: {quantity} {unit}, en {location}.',
     quantityAnswerNoLocation: '{name}: {quantity} {unit}.',
     expiringNone_one: 'Nada vence en el próximo día.',

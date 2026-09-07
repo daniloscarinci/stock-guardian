@@ -1,4 +1,5 @@
 import type { SpeechRecognizer } from './recognizer';
+import { SpeechFailureError } from './failure';
 
 /**
  * Safari, Firefox, and every test.
@@ -9,6 +10,9 @@ import type { SpeechRecognizer } from './recognizer';
 export const noneRecognizer: SpeechRecognizer = {
   availability: async () => 'unavailable',
   listen: async () => {
-    throw new Error('Speech recognition is unavailable on this device.');
+    throw new SpeechFailureError(
+      'no-recognizer',
+      'Speech recognition is unavailable on this device.',
+    );
   },
 };

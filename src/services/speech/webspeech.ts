@@ -12,6 +12,7 @@
  * conditionally, and never start a recognizer without it.
  */
 import type { SpeechAvailability, SpeechRecognizer } from './recognizer';
+import { SpeechFailureError, type SpeechFailure } from './failure';
 
 interface OnDeviceCapable {
   new (): SpeechRecognitionLike;
@@ -31,6 +32,18 @@ interface SpeechRecognitionLike {
   onend: (() => void) | null;
 }
 
+/** The Web Speech API's own error names, mapped onto the seam's vocabulary. */
+const WEB_ERRORS: Readonly<Record<string, SpeechFailure>> = {
+  'no-speech': 'no-match',
+  aborted: 'cancelled',
+  'audio-capture': 'failed',
+  network: 'network',
+  'not-allowed': 'failed',
+  'service-not-allowed': 'failed',
+  'language-not-supported': 'no-offline-model',
+  'bad-grammar': 'failed',
+};
+
 function api(): OnDeviceCapable | undefined {
   const scope = globalThis as unknown as Record<string, unknown>;
   return (scope.SpeechRecognition ?? scope.webkitSpeechRecognition) as
@@ -42,6 +55,11 @@ function transcriptOf(event: unknown): string {
   const results = (event as { results?: ArrayLike<ArrayLike<{ transcript?: string }>> }).results;
   const first = results?.[0]?.[0]?.transcript;
   return typeof first === 'string' ? first : '';
+}
+
+function reasonOf(event: unknown): SpeechFailure {
+  const name = (event as { error?: unknown }).error;
+  return typeof name === 'string' ? (WEB_ERRORS[name] ?? 'failed') : 'failed';
 }
 
 export function createWebSpeechRecognizer(): SpeechRecognizer {
@@ -69,12 +87,14 @@ export function createWebSpeechRecognizer(): SpeechRecognizer {
 
     async listen(tag: string): Promise<string> {
       const Recognition = api();
-      if (Recognition === undefined) throw new Error('Speech recognition is unavailable.');
+      if (Recognition === undefined) {
+        throw new SpeechFailureError('no-recognizer', 'Speech recognition is unavailable.');
+      }
 
       // Checked before construction, so a device without the language never
       // reaches `start()` and therefore never reaches a server.
       if ((await availability(tag)) !== 'ready') {
-        throw new Error(`No on-device speech model for ${tag}.`);
+        throw new SpeechFailureError('no-offline-model', `No on-device speech model for ${tag}.`);
       }
 
       return new Promise<string>((resolve, reject) => {
@@ -92,18 +112,31 @@ export function createWebSpeechRecognizer(): SpeechRecognizer {
         recognition.onresult = (event) => {
           settled = true;
           const text = transcriptOf(event);
-          if (text === '') reject(new Error('Nothing was heard.'));
+          if (text === '') reject(new SpeechFailureError('no-match', 'Nothing was heard.'));
           else resolve(text);
         };
-        recognition.onerror = () => {
+        recognition.onerror = (event) => {
           settled = true;
-          reject(new Error('Speech recognition failed.'));
+          reject(new SpeechFailureError(reasonOf(event), 'Speech recognition failed.'));
         };
         recognition.onend = () => {
-          if (!settled) reject(new Error('Nothing was heard.'));
+          if (!settled) reject(new SpeechFailureError('no-match', 'Nothing was heard.'));
         };
 
-        recognition.start();
+        try {
+          recognition.start();
+        } catch (cause) {
+          // `start()` on a recognizer that is already running throws, and that
+          // is the one failure the API reports this way rather than through
+          // `onerror`.
+          settled = true;
+          reject(
+            new SpeechFailureError(
+              'busy',
+              cause instanceof Error ? cause.message : 'The recognizer is already listening.',
+            ),
+          );
+        }
       });
     },
   };

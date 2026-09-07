@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { speechFailureReason } from './failure';
 
 /*
  * The plugin proxy is created when the module loads, so the mock has to exist
@@ -10,7 +11,7 @@ const capacitor = vi.hoisted(() => ({
   native: false,
   platform: 'web',
   listen: vi.fn(async () => ({ transcript: 'dez latas' })),
-  availability: vi.fn(async () => ({ state: 'ready' })),
+  availability: vi.fn(async () => ({ state: 'ready', onDevice: 'installed' })),
   isSilent: vi.fn(async () => ({ silent: true })),
 }));
 
@@ -72,6 +73,18 @@ describe('on Android', () => {
     expect(capacitor.listen).toHaveBeenCalledWith({ lang: 'pt-BR' });
   });
 
+  it('asks about the language when checking availability', async () => {
+    onAndroid();
+    await expect(createCapacitorRecognizer().availability('es')).resolves.toBe('ready');
+    expect(capacitor.availability).toHaveBeenCalledWith({ lang: 'es' });
+  });
+
+  it('reports the language as installable when the phone has no model for it', async () => {
+    onAndroid();
+    capacitor.availability.mockResolvedValueOnce({ state: 'installable', onDevice: 'missing' });
+    await expect(createCapacitorRecognizer().availability('pt-BR')).resolves.toBe('installable');
+  });
+
   it('rejects rather than resolving with a blank transcript', async () => {
     onAndroid();
     capacitor.listen.mockResolvedValueOnce({ transcript: '   ' });
@@ -81,6 +94,37 @@ describe('on Android', () => {
   it('reads the ringer switch', async () => {
     onAndroid();
     await expect(androidIsSilent()).resolves.toBe(true);
+  });
+
+  /*
+   * The bug this file exists to prevent coming back. Every unsuccessful outcome
+   * used to arrive as "cancelled", and the interface answers a cancellation
+   * with silence, so a phone with no Portuguese model had a microphone that did
+   * nothing at all and never said why.
+   */
+  it.each([
+    ['no-offline-model', 'no-offline-model'],
+    ['no-recognizer', 'no-recognizer'],
+    ['network', 'network'],
+    ['no-match', 'no-match'],
+    ['cancelled', 'cancelled'],
+    ['failed', 'failed'],
+  ])('carries the plugin code %s through as a reason', async (code, expected) => {
+    onAndroid();
+    capacitor.listen.mockRejectedValueOnce(new Error(code));
+    const failure = await createCapacitorRecognizer()
+      .listen('pt-BR')
+      .catch((cause: unknown) => speechFailureReason(cause));
+    expect(failure).toBe(expected);
+  });
+
+  it('calls an unrecognised rejection a failure rather than a cancellation', async () => {
+    onAndroid();
+    capacitor.listen.mockRejectedValueOnce(new Error('something nobody predicted'));
+    const failure = await createCapacitorRecognizer()
+      .listen('pt-BR')
+      .catch((cause: unknown) => speechFailureReason(cause));
+    expect(failure).toBe('failed');
   });
 
   /*

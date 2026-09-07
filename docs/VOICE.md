@@ -185,12 +185,19 @@ in the same way nothing above `SqlDriver` knows which database is answering.
 `ACTION_RECOGNIZE_SPEECH` with `EXTRA_PREFER_OFFLINE`. Android opens the
 recognizer's own screen, records there, and hands back text. The microphone
 belongs to the recognizer and never to this application, so there is no
-`RECORD_AUDIO` to declare — which is why this route was chosen over the
-`SpeechRecognizer` API and over the community Capacitor plugin, both of which
-need the permission. `EXTRA_PREFER_OFFLINE` is a request, and what it is worth
-depends on the recognizer installed on the phone. The interface says on-device
-speech is a capability of the device, not a guarantee this application can make
-on the device's behalf.
+`RECORD_AUDIO` to declare — which is why this route was chosen over
+`SpeechRecognizer.startListening` and over the community Capacitor plugin, both
+of which need the permission. `EXTRA_PREFER_OFFLINE` is a request, and what it
+is worth depends on the recognizer installed on the phone. The interface says
+on-device speech is a capability of the device, not a guarantee this application
+can make on the device's behalf.
+
+The plugin does use the `SpeechRecognizer` class for one thing, and only one:
+`checkRecognitionSupport`, which asks the system which languages it can
+transcribe without a network. That is a question about the recognizer rather
+than a use of the microphone, it records nothing, and it needs no permission —
+the permission belongs to `startListening`, which this application never calls.
+The build check confirms it: the APK still declares nothing.
 
 The plugin is Java, not Kotlin, because this Gradle build has no Kotlin plugin.
 One class is not a reason to add a language toolchain, a stdlib dependency and a
@@ -252,6 +259,61 @@ only the Chrome implementation defines one; on Android the system recognizer
 manages its own languages. So the installed Android application still has
 nothing in it that reaches the network, which is what keeps that promise in
 `docs/ANDROID.md` true.
+
+### When the microphone does not work, it says so
+
+`SpeechPlugin` rejects with a stable code rather than a sentence, because it
+cannot know which of three languages the reader uses.
+`speechFailureReason(cause)` in `src/services/speech/failure.ts` maps every
+rejection onto one of seven, and the interface branches on that:
+
+| Code | What happened | What the interface shows |
+|---|---|---|
+| `cancelled` | You pressed back. | Nothing at all. |
+| `no-offline-model` | No speech pack for this language. | The panel: how to install, or type instead. |
+| `no-recognizer` | Nothing on this device transcribes. | `voice.unavailable`, and the typed box. |
+| `network` | It went looking for the internet and did not find it. | `voice.networkFailed` |
+| `no-match` | It listened and made nothing of it. | `voice.nothingHeard` |
+| `busy` | Something else holds the recognizer. | `voice.busy` |
+| `failed` | Everything else, including reasons a platform declines to name. | `voice.listenFailed` |
+
+Before this, the plugin answered every unsuccessful outcome with "cancelled",
+and the interface answers a cancellation with silence — on purpose, because a
+banner after a deliberate "never mind" teaches people to ignore banners. Two
+reasonable decisions met and produced a microphone that failed without a word on
+any phone with no offline Portuguese model. Now exactly one code is answered
+with silence, and an unrecognised failure maps to `failed` rather than to
+`cancelled`: the same bug, inverted.
+
+**What the Intent flow actually tells you**, since the honest answer is "less
+than you would like". The result Intent carries no error extra; the whole of the
+diagnosis is the activity result code. `RecognizerIntent` documents five besides
+`RESULT_OK` and `RESULT_CANCELED` — `RESULT_NO_MATCH`, `RESULT_CLIENT_ERROR`,
+`RESULT_SERVER_ERROR`, `RESULT_NETWORK_ERROR`, `RESULT_AUDIO_ERROR` — and all
+five are mapped, but a recognizer may answer `RESULT_CANCELED` for any of them,
+and Google's commonly does. `SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE` and
+`ERROR_LANGUAGE_NOT_SUPPORTED`, the two constants that name this exact problem,
+are delivered through `RecognitionListener` — the API that needs `RECORD_AUDIO`,
+and therefore not the one recording here. They never reach an Intent result.
+
+So a missing offline model is established two other ways:
+
+1. **Before the dialog opens**, by `checkRecognitionSupport`. Android 13 and
+   later. If the installed on-device language list is non-empty and this
+   language is not in it, the plugin rejects with `no-offline-model` without
+   launching anything. It concludes "missing" only from a list with something in
+   it: a recognizer reporting nothing installed has not answered the question,
+   and treating that as "no model" would take the microphone away from phones
+   where offline speech works. The same check makes **Settings → Speech
+   recognition** say *installable* rather than *ready* on a phone missing the
+   pack.
+2. **Below Android 13, or when that check cannot answer**, by how fast
+   `RESULT_CANCELED` comes back. Under a second is a refusal, not a person: the
+   recognizer's screen takes a moment to appear, and a deliberate back press
+   lands well beyond that. **This one is a heuristic**, and it is applied only
+   while the question is genuinely open — never when the pre-flight check
+   answered. Being wrong costs a dismissible panel after a very fast
+   cancellation. Being silent cost a user a microphone that appeared broken.
 
 ### Reading answers aloud
 

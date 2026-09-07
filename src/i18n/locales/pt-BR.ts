@@ -487,11 +487,19 @@ export const ptBR: LocaleTree = {
     notUnderstood: 'Não entendi.',
     examplesTitle: 'Tente um destes',
     unavailable: 'Este aparelho não transcreve voz por conta própria, então o microfone abre direto na caixa de texto.',
-    installable:
-      'Um pacote de voz para este idioma pode ser instalado. Instalar faz o download dele: é a única vez que algo aqui usa a rede.',
+    installable: 'Nenhum pacote de voz para este idioma está instalado neste aparelho.',
+    installDownloads: 'Instalar faz o download do pacote. Nada seu é enviado em troca.',
     install: 'Instalar',
+    installHow: 'Como instalar',
+    installSteps:
+      'No Android: Configurações → Sistema → Idiomas e entrada → Entrada por voz → Google → Reconhecimento de voz off-line, e baixe este idioma.',
     nothingHeard: 'Não ouvi nada. Tente de novo ou digite o comando.',
     listenFailed: 'Não foi possível usar o microfone. Digitar funciona.',
+    noOfflineModel:
+      'Este aparelho não tem o pacote de voz off-line deste idioma, então o reconhecedor não tinha com o que ouvir. Nada foi gravado e nada foi enviado.',
+    networkFailed: 'O reconhecedor foi procurar a internet e não encontrou.',
+    busy: 'Outro aplicativo está usando o microfone. Feche-o e tente de novo.',
+    typeCommandInstead: 'Digitar o comando',
     quantityAnswer: '{name}: {quantity} {unit}, em {location}.',
     quantityAnswerNoLocation: '{name}: {quantity} {unit}.',
     expiringNone_one: 'Nada vence no próximo dia.',

@@ -158,8 +158,15 @@ application has none.
 system's own recognizer with `ACTION_RECOGNIZE_SPEECH`. Android opens the
 recognizer's screen, records there, and hands back the text; the microphone is
 held by the recognizer, never by this application, so there is no `RECORD_AUDIO`
-to declare. That is why this route was chosen over the `SpeechRecognizer` API
+to declare. That is why this route was chosen over `SpeechRecognizer.startListening`
 and over the community Capacitor plugin, both of which require the permission.
+
+The plugin does call one method on the `SpeechRecognizer` class:
+`checkRecognitionSupport`, which asks the system which languages it can
+transcribe with no network, so that a phone missing the pack is told so instead
+of watching the recognizer screen flash past. It records nothing and needs no
+permission — the permission belongs to `startListening`, which is never called
+here — and the check below is what proves it rather than this paragraph.
 
 The one thing the manifest gained is a `queries` element naming the speech
 intents. From Android 11 an application cannot see another it has not named, and
@@ -218,10 +225,18 @@ tells you something different:
    No microphone button at all means `availability` found no recognizer, which
    is a real answer on a phone that has none. Confirm in **Settings → Apps →
    Stock Guardian → Permissions** that this application still holds nothing.
-8. **It transcribes in airplane mode.** `EXTRA_PREFER_OFFLINE` is a request, and
+8. **A failure says what it was.** The one thing the microphone must never do is
+   nothing. If the recognizer screen closes without a transcript you should see
+   a sentence — most often that this phone has no offline pack for the language,
+   with the path to install one and a way to type the command instead. Silence
+   is only ever correct after you pressed back yourself. **Settings → Speech
+   recognition** should agree, reporting the language as installable rather than
+   ready on a phone that is missing it.
+9. **It transcribes in airplane mode.** `EXTRA_PREFER_OFFLINE` is a request, and
    whether the phone honours it depends on the recognizer installed. This is the
    check that tells you what that phone actually does, and it is the one thing in
-   this list no test here can answer.
+   this list no test here can answer. If it cannot, the panel from step 8 is what
+   you should be looking at.
 
 ---
 

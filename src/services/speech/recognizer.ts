@@ -5,8 +5,8 @@
  * on-device model or nothing at all is listening - the same separation
  * `SqlDriver` gives the database.
  *
- * Every implementation transcribes ON THE DEVICE. What actually holds that
- * true, in the order it holds:
+ * BY DEFAULT, EVERY IMPLEMENTATION TRANSCRIBES ON THE DEVICE. What actually
+ * holds that true, in the order it holds:
  *
  *   - The page's Content-Security-Policy, `connect-src 'self'` in index.html.
  *     An implementation that shipped audio to a server itself would have
@@ -35,13 +35,23 @@ export interface SpeechRecognizer {
   readonly availability: (tag?: string) => Promise<SpeechAvailability>;
   /** Offer the platform's own language-pack install, where one exists. */
   readonly install?: (tag: string) => Promise<boolean>;
-  /** One utterance. Rejects rather than resolving empty. */
+  /**
+   * One utterance. Rejects rather than resolving empty, and rejects with a
+   * `SpeechFailureError` so the caller can tell a cancellation from a failure.
+   */
   readonly listen: (tag: string) => Promise<string>;
 }
 
 import { noneRecognizer } from './none';
 import { createWebSpeechRecognizer } from './webspeech';
 import { createCapacitorRecognizer, isNativeAndroid } from './capacitor';
+
+export {
+  SPEECH_FAILURES,
+  SpeechFailureError,
+  speechFailureReason,
+  type SpeechFailure,
+} from './failure';
 
 /**
  * The recognizer for this device.

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWebSpeechRecognizer } from './webspeech';
+import { speechFailureReason } from './failure';
 
 class FakeRecognition {
   static instances: FakeRecognition[] = [];
@@ -84,5 +85,47 @@ describe('webspeech recognizer', () => {
 
     await expect(recognizer.listen('pt-BR')).rejects.toThrow(/on-device/i);
     expect(FakeRecognition.instances.every((i) => !i.started)).toBe(true);
+  });
+
+  describe('failures carry a reason', () => {
+    it('names the missing model, so the interface can explain it', async () => {
+      onDevice('unavailable');
+      const recognizer = createWebSpeechRecognizer();
+      const failure = await recognizer
+        .listen('pt-BR')
+        .catch((cause: unknown) => speechFailureReason(cause));
+      expect(failure).toBe('no-offline-model');
+    });
+
+    it.each([
+      ['no-speech', 'no-match'],
+      ['aborted', 'cancelled'],
+      ['network', 'network'],
+      ['language-not-supported', 'no-offline-model'],
+      ['not-allowed', 'failed'],
+    ])('reports %s as %s', async (error, expected) => {
+      onDevice('available');
+      const recognizer = createWebSpeechRecognizer();
+      const failure = recognizer
+        .listen('pt-BR')
+        .catch((cause: unknown) => speechFailureReason(cause));
+
+      await vi.waitFor(() => expect(FakeRecognition.instances[0]).toBeDefined());
+      FakeRecognition.instances[0]?.onerror?.({ error });
+      expect(await failure).toBe(expected);
+    });
+
+    it('reports a recognizer that is already listening as busy', async () => {
+      onDevice('available');
+      vi.spyOn(FakeRecognition.prototype, 'start').mockImplementation(() => {
+        throw new Error('recognition already started');
+      });
+      const recognizer = createWebSpeechRecognizer();
+      const failure = await recognizer
+        .listen('pt-BR')
+        .catch((cause: unknown) => speechFailureReason(cause));
+      expect(failure).toBe('busy');
+      vi.restoreAllMocks();
+    });
   });
 });
