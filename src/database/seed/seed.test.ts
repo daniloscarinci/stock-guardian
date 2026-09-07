@@ -97,6 +97,16 @@ describe('seeding', () => {
       expect(invalidKeys).toEqual([]);
       expect(settings).toEqual(DEFAULT_SETTINGS);
     });
+
+    it('defaults voice on, and speaking on', () => {
+      expect(DEFAULT_SETTINGS.voiceEnabled).toBe(true);
+      expect(DEFAULT_SETTINGS.voiceSpeakAnswers).toBe(true);
+    });
+
+    it('keeps the application startable when a voice setting is corrupt', () => {
+      const { settings } = parseSettings([{ key: 'voiceEnabled', value: '"nonsense"' }]);
+      expect(settings.voiceEnabled).toBe(true);
+    });
   });
 
   describe('search normalization', () => {

@@ -57,6 +57,16 @@ export const settingsSchema = z.object({
   /** Whether the browser has been asked for persistent storage. */
   storagePersistenceRequested: z.boolean().default(false),
 
+  /** Shows or hides the microphone. The typed box stays either way. */
+  voiceEnabled: z.boolean().default(true),
+
+  /**
+   * Reads answers aloud through the system voice. On Android this also yields
+   * to the ringer switch; a browser cannot see that state, so there this is the
+   * only control.
+   */
+  voiceSpeakAnswers: z.boolean().default(true),
+
   /**
    * Items the user has taken off the replenishment list.
    *
