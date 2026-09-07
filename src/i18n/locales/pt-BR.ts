@@ -547,6 +547,48 @@ export const ptBR: LocaleTree = {
     dayWindow_other: '{count} dias',
   },
 
+  ai: {
+    title: 'Perguntar ao Claude',
+    subtitle: 'Perguntas em linguagem comum, respondidas com o estoque deste aparelho.',
+    ask: 'Pergunte sobre o seu estoque',
+    send: 'Perguntar',
+    thinking: 'Lendo o seu estoque…',
+
+    settingEnabled: 'Perguntar ao Claude',
+    settingEnabledHelp:
+      'Um segundo jeito de ser entendido, para as perguntas que os doze comandos digitados não alcançam. Exige a sua própria chave de API, custa dinheiro por pergunta e é a única parte deste aplicativo que usa a internet. Desligado, nada aqui muda.',
+    apiKey: 'Chave de API da Anthropic',
+    apiKeyHelp:
+      'Sua, colada aqui, guardada neste banco de dados em texto puro. Um celular desbloqueado consegue lê-la, e uma versão de depuração pode ser lida por cabo. Nada vem embutido no aplicativo, então a cópia que você entregar a alguém não leva chave nenhuma.',
+    apiKeyPlaceholder: 'sk-ant-…',
+    getKey: 'A chave vem de console.anthropic.com, em API keys.',
+    cost:
+      'Algo entre 2 e 5 centavos de dólar por pergunta, na sua chave e cobrado de você. Não há cota nem plano gratuito. Os comandos digitados continuam de graça.',
+    model: 'Modelo',
+    whatIsSent:
+      'O que sai deste aparelho: a sua pergunta, o que o Claude pediu para ler e a resposta. Nunca o seu inventário.',
+
+    noKey:
+      'Nenhuma chave de API está definida, então nada foi enviado. Adicione uma nos Ajustes, ou continue com os comandos digitados.',
+    disabled: 'O assistente está desligado. Os Ajustes ligam.',
+    offline:
+      'Não foi possível alcançar o Claude. Seu estoque continua todo aqui, e os comandos digitados continuam funcionando.',
+    authFailed: 'Essa chave de API foi recusada. Confira nos Ajustes.',
+    rateLimited: 'Perguntas demais em pouco tempo. Espere um instante e pergunte de novo.',
+    failed: 'A pergunta não pôde ser respondida. Nada no seu estoque mudou.',
+    refused: 'O Claude preferiu não responder essa.',
+    tooManySteps:
+      'O Claude ainda estava trabalhando depois de {tries} tentativas e foi interrompido. Pergunte algo mais específico.',
+
+    proposals_one: 'O Claude propõe {count} mudança. Nada é salvo até você confirmar.',
+    proposals_other:
+      'O Claude propõe {count} mudanças. Nada é salvo até você confirmar cada uma.',
+    proposedNothing: 'O Claude não mudou nada. Ele não pode: toda mudança espera por você.',
+
+    fromClaude: 'Respondido pelo Claude',
+    fromParser: 'Respondido neste aparelho',
+  },
+
   languages: {
     en: 'English',
     'pt-BR': 'Português',

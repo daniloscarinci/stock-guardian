@@ -547,6 +547,46 @@ export const en = {
     dayWindow_other: '{count} days',
   },
 
+  ai: {
+    title: 'Ask Claude',
+    subtitle: 'Questions in ordinary language, answered from the stock on this phone.',
+    ask: 'Ask about your stock',
+    send: 'Ask',
+    thinking: 'Reading your stock…',
+
+    settingEnabled: 'Ask Claude',
+    settingEnabledHelp:
+      'A second way of being understood, for the questions the twelve typed commands cannot hold. It needs your own API key, it costs money per question, and it is the only part of this application that uses the internet. Off, nothing here changes.',
+    apiKey: 'Anthropic API key',
+    apiKeyHelp:
+      "Yours, pasted here, kept in this database in plain text. An unlocked phone can read it, and a debug build can be read over a cable. Nothing is built into the app, so the copy you hand to someone else carries nobody's key.",
+    apiKeyPlaceholder: 'sk-ant-…',
+    getKey: 'A key comes from console.anthropic.com, under API keys.',
+    model: 'Model',
+    cost:
+      'Roughly 2 to 5 cents a question, on your key and billed to you. There is no allowance and no free tier. The typed commands stay free.',
+    whatIsSent:
+      'What leaves this device: your question, whatever Claude asked to read, and the answer. Never your inventory.',
+
+    noKey: 'No API key is set, so nothing was sent. Add one in Settings, or keep to the typed commands.',
+    disabled: 'The assistant is switched off. Settings turns it on.',
+    offline:
+      'Claude could not be reached. Your stock is all still here, and the typed commands still work.',
+    authFailed: 'That API key was refused. Check it in Settings.',
+    rateLimited: 'Too many questions too quickly. Wait a moment and ask again.',
+    failed: 'The question could not be answered. Nothing in your stock changed.',
+    refused: 'Claude declined to answer that one.',
+    tooManySteps:
+      'Claude was still working after {tries} tries and was stopped. Ask something narrower.',
+
+    proposals_one: 'Claude proposes {count} change. Nothing is saved until you confirm it.',
+    proposals_other: 'Claude proposes {count} changes. Nothing is saved until you confirm each one.',
+    proposedNothing: 'Claude changed nothing. It cannot: every change waits for you.',
+
+    fromClaude: 'Answered by Claude',
+    fromParser: 'Answered on this device',
+  },
+
   languages: {
     en: 'English',
     'pt-BR': 'Português',

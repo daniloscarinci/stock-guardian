@@ -86,6 +86,40 @@ export const settingsSchema = z.object({
   voiceAllowOnline: z.boolean().default(false),
 
   /**
+   * Whether Claude may be asked anything at all.
+   *
+   * Off, and off is the whole application as it was: the typed box still runs
+   * the twelve parser rules, offline and free, and no request is made. Turning
+   * it on is not enough on its own - there also has to be a key - so the two
+   * together are the only way anything is sent.
+   */
+  aiEnabled: z.boolean().default(false),
+
+  /**
+   * A SECRET, AT REST, IN A DATABASE ON A PHONE.
+   *
+   * It is the user's own key, pasted in by them, and it is stored exactly like
+   * `dateFormat` - one row in the `settings` table, in plain text, because a
+   * client-side application has nowhere better to put it. There is no server
+   * here to hold it and no keystore this build reaches, so encrypting it would
+   * mean storing the decryption key beside it and calling that security.
+   *
+   * What follows, and what Settings says rather than implies:
+   *
+   *   - A debug build is `debuggable`. Anyone with the phone and a cable can
+   *     read the app's private storage, and that now includes this.
+   *   - A release build is not, but an unlocked phone still is.
+   *   - The bill is the key holder's, per question, invisibly.
+   *
+   * Nothing is compiled into the build, which is the property worth keeping:
+   * the same APK handed to anyone carries no credential of anyone's.
+   */
+  anthropicApiKey: z.string().default(''),
+
+  /** The model asked. Settings shows it, because it is what the questions cost. */
+  aiModel: z.string().default('claude-opus-5'),
+
+  /**
    * Items the user has taken off the replenishment list.
    *
    * Dismissal is a decision ("I know, and I am not restocking it"), so it has to
