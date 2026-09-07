@@ -56,6 +56,34 @@ downloadable artifact and creates no release.
 When a signing secret is missing the build stops immediately and says which one.
 Signing an APK with the wrong key is worse than not building one.
 
+### Building one locally instead
+
+Not needed to ship, and it produces a **debug-signed** APK, which is a different
+identity from the release key — Android will not install one over the other. Its
+use is checking the permission gate against a real package without minting a
+version:
+
+```bash
+VITE_TARGET=android npm run build
+npx cap sync android
+cd android && ./gradlew assembleDebug
+```
+
+**This needs JDK 21.** Capacitor 8 compiles with `sourceCompatibility 21`, and an
+older JDK fails with `invalid source release: 21` after a minute of apparently
+healthy output. If `java -version` reports 17, point Gradle at 21 for the one
+command rather than changing the machine's default:
+
+```bash
+JAVA_HOME=/path/to/jdk-21 ./gradlew assembleDebug
+```
+
+Then run the same check the workflow runs, which should print nothing:
+
+```bash
+aapt2 dump permissions android/app/build/outputs/apk/debug/app-debug.apk   | grep '^uses-permission:' | cut -d"'" -f2 | grep -v '^app.stockguardian.android.'
+```
+
 ---
 
 ## Installing it
