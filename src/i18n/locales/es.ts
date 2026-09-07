@@ -488,7 +488,7 @@ export const es: LocaleTree = {
     notUnderstood: 'No te entendí.',
     examplesTitle: 'Prueba uno de estos',
     unavailable:
-      'Este dispositivo no puede transcribir voz sin conexión, así que el micrófono está oculto. Escribir funciona.',
+      'Este dispositivo no puede transcribir voz por sí solo, así que el micrófono abre directamente el cuadro de texto.',
     installable: 'Se puede instalar un paquete de voz para este idioma en este dispositivo.',
     install: 'Instalar',
     nothingHeard: 'No escuché nada. Inténtalo otra vez o escribe el comando.',

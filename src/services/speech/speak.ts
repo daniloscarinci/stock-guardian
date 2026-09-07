@@ -40,8 +40,26 @@ export function createSpeaker(enabled: () => boolean): Speaker {
 
       const utterance = new Utterance(text);
       utterance.lang = tag;
-      const voice = synth.getVoices().find((candidate) => candidate.lang === tag);
-      if (voice !== undefined) utterance.voice = voice;
+
+      // A LOCAL voice, or none named at all.
+      //
+      // `speechSynthesis` offers server-synthesised voices alongside on-device
+      // ones, and on a desktop browser the remote voice is often both first in
+      // the list and the better-sounding one. Picking it would send the answer -
+      // which names what is in someone's pantry - to a synthesis service, in an
+      // application whose whole claim is that it makes no network request of its
+      // own. `localService` is how the platform distinguishes them.
+      //
+      // When no local voice matches, no voice is named and `lang` alone is left
+      // to the platform. That can still resolve to a remote voice, which is why
+      // docs/OFFLINE.md states this as a best effort rather than a guarantee -
+      // the API offers no way to refuse.
+      const voices = synth.getVoices();
+      const local = voices.find(
+        (candidate) => candidate.lang === tag && candidate.localService,
+      );
+      if (local !== undefined) utterance.voice = local;
+
       synth.speak(utterance);
     },
 

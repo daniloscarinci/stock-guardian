@@ -486,7 +486,7 @@ export const ptBR: LocaleTree = {
     createInstead: 'Quer criar?',
     notUnderstood: 'Não entendi.',
     examplesTitle: 'Tente um destes',
-    unavailable: 'Este aparelho não transcreve voz sem internet, então o microfone está oculto. Digitar funciona.',
+    unavailable: 'Este aparelho não transcreve voz por conta própria, então o microfone abre direto na caixa de texto.',
     installable: 'Um pacote de voz para este idioma pode ser instalado neste aparelho.',
     install: 'Instalar',
     nothingHeard: 'Não ouvi nada. Tente de novo ou digite o comando.',

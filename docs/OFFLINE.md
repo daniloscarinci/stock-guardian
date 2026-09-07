@@ -170,12 +170,20 @@ at all that reaches the network.
 ### Reading answers aloud
 
 `speechSynthesis` is a system service and `speak.ts` fetches nothing. But the
-Web Speech API marks some voices as not local
-(`SpeechSynthesisVoice.localService`), and `speak.ts` does not filter on that
-flag — it takes whichever voice the system offers for the language. On a desktop
-browser the sentence being read may therefore be synthesised off-device. On
-Android the system voice is on the phone. **Settings → Read answers aloud**
-switches it off, and that is the only certain answer here.
+Web Speech API offers server-synthesised voices alongside on-device ones, and on
+a desktop browser the remote voice is often both first in the list and the
+better-sounding one. Choosing it would send the sentence — which names what is
+in your pantry — to a synthesis service.
+
+`speak.ts` therefore names a voice only when `SpeechSynthesisVoice.localService`
+is true for the requested language, and otherwise names none at all, leaving
+`lang` to the platform. Three tests pin it, including one asserting that a
+remote voice listed ahead of a local one is still not chosen.
+
+This is a best effort, not a guarantee: with no local voice installed, the
+platform may still resolve `lang` to a remote one, and the API offers no way to
+refuse. On Android the system voice is on the phone. **Settings → Read answers
+aloud** switches it off, and that remains the only certain answer.
 
 ---
 

@@ -486,7 +486,7 @@ export const en = {
     createInstead: 'Create it?',
     notUnderstood: 'I did not understand that.',
     examplesTitle: 'Try one of these',
-    unavailable: 'This device cannot transcribe speech offline, so the microphone is hidden. Typing works.',
+    unavailable: 'This device cannot transcribe speech on its own, so the microphone opens straight to the typed box.',
     installable: 'A speech pack for this language can be installed on this device.',
     install: 'Install',
     nothingHeard: 'I did not hear anything. Try again, or type the command.',

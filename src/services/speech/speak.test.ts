@@ -78,4 +78,55 @@ describe('createSpeaker', () => {
     vi.stubGlobal('speechSynthesis', undefined);
     expect(() => createSpeaker(() => true).stop()).not.toThrow();
   });
+
+  // The answer names what is in someone's pantry. A server-synthesised voice
+  // would send it to a synthesis service, in an application whose claim is that
+  // it makes no network request of its own - so a remote voice is never named,
+  // even when the platform lists it first and it sounds better.
+  describe('voice selection', () => {
+    const remote = { lang: 'pt-BR', localService: false, name: 'Remote' };
+    const local = { lang: 'pt-BR', localService: true, name: 'Local' };
+
+    function speakWith(voices: readonly unknown[]) {
+      const speak = vi.fn();
+      vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn(), getVoices: () => voices });
+      vi.stubGlobal(
+        'SpeechSynthesisUtterance',
+        class {
+          lang = '';
+          voice: unknown = undefined;
+          constructor(public text: string) {}
+        },
+      );
+      return speak;
+    }
+
+    it('never picks a remote voice, even when it is listed first', async () => {
+      const speak = speakWith([remote, local]);
+      await createSpeaker(() => true).say('doze latas', 'pt-BR');
+
+      const utterance = speak.mock.calls[0]?.[0] as { voice?: { name: string } };
+      expect(utterance.voice?.name).toBe('Local');
+    });
+
+    it('names no voice at all rather than falling back to a remote one', async () => {
+      const speak = speakWith([remote]);
+      await createSpeaker(() => true).say('doze latas', 'pt-BR');
+
+      // `lang` alone is left to the platform. That can still resolve to a remote
+      // voice - the API offers no way to refuse - which is why the docs call
+      // this a best effort rather than a guarantee.
+      const utterance = speak.mock.calls[0]?.[0] as { voice?: unknown; lang: string };
+      expect(utterance.voice).toBeUndefined();
+      expect(utterance.lang).toBe('pt-BR');
+    });
+
+    it('ignores a local voice in another language', async () => {
+      const speak = speakWith([{ lang: 'en-US', localService: true, name: 'English' }]);
+      await createSpeaker(() => true).say('doze latas', 'pt-BR');
+
+      const utterance = speak.mock.calls[0]?.[0] as { voice?: unknown };
+      expect(utterance.voice).toBeUndefined();
+    });
+  });
 });

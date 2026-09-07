@@ -247,13 +247,15 @@ nothing in it that reaches the network, which is what keeps that promise in
 ### Reading answers aloud
 
 The **Read answers aloud** setting uses `speechSynthesis`, a system service
-rather than a network request — nothing in `speak.ts` fetches. But the voice
-chosen is whichever one the system offers for the language, and the Web Speech
-API marks some voices as not local (`SpeechSynthesisVoice.localService`).
-`speak.ts` does not filter on that flag, so on a desktop browser the sentence
-being read may be synthesised somewhere other than the device. On Android the
-system voice is on the phone. The setting can be switched off, and switching it
-off is the only thing here that is certain.
+rather than a network request — nothing in `speak.ts` fetches. The Web Speech
+API does offer server-synthesised voices alongside on-device ones, so `speak.ts`
+names a voice only when `SpeechSynthesisVoice.localService` is true for the
+language, and names none at all otherwise.
+
+That is a best effort rather than a guarantee. With no local voice installed for
+your language, the platform may still resolve to a remote one, and the API gives
+no way to refuse. On Android the system voice is on the phone. Switching the
+setting off is the only thing here that is certain.
 
 On Android the phone's silent switch wins over the setting: `SpeechPlugin`
 reads the ringer mode, which a WebView cannot see on its own.
