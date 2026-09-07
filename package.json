@@ -25,6 +25,7 @@
     "generate:android-key": "node scripts/generate-android-key.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
     "@capacitor/android": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@sqlite.org/sqlite-wasm": "3.53.0-build1",
