@@ -11,9 +11,12 @@ Track emergency supplies, food, water, medical stock, tools and equipment. The
 application runs entirely on your device. It makes no network requests of its
 own, needs no account, and keeps working with the radio off — which is the
 point, because the situations it exists for are the ones where the internet is
-not there. There is one exception and it is a button you have to press: a speech
-pack for voice control, described under **Voice** below. Nothing of yours ever
-leaves the device.
+not there.
+
+Two things sit outside that, both belonging to voice control, both off until you
+press something, and both described under **Voice** below: downloading a speech
+pack, and a setting that lets speech recognition send your recorded voice to
+Google. Your inventory never leaves the device by any route at all.
 
 It is a rebuild of `backup/End_of_world_V11-Pro_Upgraded.html`, a single-file
 application kept in this repository untouched as the functional baseline. Every
@@ -93,13 +96,22 @@ time. Your choice persists — the original reset to Portuguese on every reload.
 ovos"* and a card appears saying what would change — and changes nothing until
 you press **Confirmar**. It works in all three languages.
 
-Three things about it belong here rather than in a footnote.
+Four things about it belong here rather than in a footnote.
 
 *The application never opens the microphone.* On Android the system's own
 recognizer records and hands back text, which is why the app still asks the
 operating system for no permission at all. In Chrome the browser transcribes
 with its on-device model, and errors rather than reaching a server when that
 model is not installed.
+
+*One switch sends something, and it is off.* **Settings → Voice → Send your
+audio to Google** is the only thing in this application that can put anything of
+yours onto the network, and it stays off until you move it. Left alone, speech
+is transcribed on the device or not at all. Switched on, a phone with no offline
+pack for your language transcribes by sending what you said to Google — your
+voice, not your inventory. It exists because the alternative was worse: without
+it, a phone missing its Portuguese pack had a microphone that did nothing and
+said nothing. Nothing switches it on for you, and no failure offers to.
 
 *The microphone is not the feature.* The same sheet has a box you can type into,
 on every platform, doing exactly the same thing. On an iPhone no browser offers
@@ -110,7 +122,9 @@ is the feature.
 *One button downloads something.* **Settings → Speech recognition → Install**
 appears when the browser has a speech pack for your language, and pressing it
 fetches one. It is the only download the application ever asks for, it never
-happens on its own, and nothing of yours is uploaded in exchange.
+happens on its own, and nothing of yours is uploaded in exchange. On Android the
+packs belong to the system, so Settings prints the path through Android's own
+menus instead of a button.
 
 `docs/VOICE.md` lists every phrase it understands, in all three languages, and
 every one it deliberately refuses.
@@ -161,7 +175,10 @@ network even on first launch, asks the operating system for no permission at all
 and keeps Android's automatic backup switched off, so the database never reaches
 Google Drive. Voice control did not change that: the system's own recognizer
 holds the microphone, so there is no `RECORD_AUDIO` to declare, and the build
-still fails if any permission appears.
+still fails if any permission appears. Nor did the online setting above — when
+it is on, the audio travels from Google's recognizer rather than from this
+application, which is why the APK still holds no `INTERNET` permission and still
+opens no socket of its own.
 
 `docs/ANDROID.md` explains how to produce the APK and what to check after
 installing it. Nothing else here changes: the phone still holds its own database,

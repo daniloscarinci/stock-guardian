@@ -160,10 +160,13 @@ Stated so nobody mistakes green for complete.
   screen is exercised end to end by the smoke test instead, not unit tested.
 - **Real speech.** No test speaks. The three recognizers are tested against
   stubs — that `processLocally` is set, that `start()` is never reached without
-  an on-device model, that the Android plugin is called with the right language
-  — and the voice sheet is driven through its typed box. Whether a given phone's
-  recognizer actually transcribes offline is a property of that phone, and
-  `docs/ANDROID.md` lists it among the things to check on the first install.
+  an on-device model unless the user has opted in, that both sides of that
+  opt-in behave, that the Android plugin is called with the right language and
+  with `allowOnline: false` when nobody asked for otherwise, and that every
+  rejection carries a reason the interface can act on — and the voice sheet is
+  driven through its typed box. Whether a given phone's recognizer actually
+  transcribes offline is a property of that phone, and `docs/ANDROID.md` lists
+  it among the things to check on the first install.
 - **Printing.** The print stylesheet is written and the button calls
   `window.print()`, but no test opens a print preview - browsers do not expose
   one to automation.

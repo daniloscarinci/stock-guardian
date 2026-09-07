@@ -70,7 +70,7 @@ describe('on Android', () => {
   it('passes the language tag to the system recognizer', async () => {
     onAndroid();
     await expect(createCapacitorRecognizer().listen('pt-BR')).resolves.toBe('dez latas');
-    expect(capacitor.listen).toHaveBeenCalledWith({ lang: 'pt-BR' });
+    expect(capacitor.listen).toHaveBeenCalledWith({ lang: 'pt-BR', allowOnline: false });
   });
 
   it('asks about the language when checking availability', async () => {
@@ -125,6 +125,26 @@ describe('on Android', () => {
       .listen('pt-BR')
       .catch((cause: unknown) => speechFailureReason(cause));
     expect(failure).toBe('failed');
+  });
+
+  describe('the online opt-in', () => {
+    it('does not send it when the caller says nothing', async () => {
+      onAndroid();
+      await createCapacitorRecognizer().listen('pt-BR');
+      expect(capacitor.listen).toHaveBeenCalledWith({ lang: 'pt-BR', allowOnline: false });
+    });
+
+    it('does not send it when the caller passes other options', async () => {
+      onAndroid();
+      await createCapacitorRecognizer().listen('pt-BR', {});
+      expect(capacitor.listen).toHaveBeenCalledWith({ lang: 'pt-BR', allowOnline: false });
+    });
+
+    it('sends it only when the user has switched it on', async () => {
+      onAndroid();
+      await createCapacitorRecognizer().listen('pt-BR', { allowOnline: true });
+      expect(capacitor.listen).toHaveBeenCalledWith({ lang: 'pt-BR', allowOnline: true });
+    });
   });
 
   /*

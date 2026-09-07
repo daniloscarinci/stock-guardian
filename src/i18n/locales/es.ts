@@ -502,6 +502,8 @@ export const es: LocaleTree = {
     networkFailed: 'El reconocedor fue a buscar internet y no la encontró.',
     busy: 'Otra aplicación está usando el micrófono. Ciérrala e inténtalo otra vez.',
     typeCommandInstead: 'Escribir el comando',
+    allowOnlineHint:
+      'O deja que el reconocedor envíe tu audio a Google, en Ajustes → Voz. Sigue desactivado hasta que lo actives.',
     quantityAnswer: '{name}: {quantity} {unit}, en {location}.',
     quantityAnswerNoLocation: '{name}: {quantity} {unit}.',
     expiringNone_one: 'Nada vence en el próximo día.',
@@ -527,6 +529,9 @@ export const es: LocaleTree = {
       'Muestra el micrófono en la cabecera. El cuadro de texto solo se abre desde ahí, así que si lo desactivas desaparecen los dos.',
     settingSpeak: 'Leer las respuestas en voz alta',
     settingSpeakHelp: 'Usa la voz del sistema. En Android manda el interruptor de silencio del teléfono.',
+    settingAllowOnline: 'Tu audio se envía a Google',
+    settingAllowOnlineHelp:
+      'Desactivado, y el único ajuste de aquí que envía algo fuera de este dispositivo. Mientras esté desactivado, lo que dices nunca sale del teléfono. Activado, el reconocedor puede enviar tu voz grabada a Google cuando este dispositivo no tenga el paquete sin conexión de tu idioma.',
     availability: 'Reconocimiento de voz',
     ready:
       'Listo en este dispositivo. Chrome transcribe aquí o no transcribe; en Android se le pide al reconocedor del sistema, y no todos atienden la petición.',

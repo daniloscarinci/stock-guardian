@@ -39,9 +39,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * no RECORD_AUDIO. The workflow at .github/workflows/android.yml fails the build
  * if any permission appears, so this property is checked rather than trusted.
  *
- * EXTRA_PREFER_OFFLINE asks the recognizer to stay on the device. What the
- * request is worth depends on the installed recognizer, which is why the
- * interface says on-device speech is a device capability rather than a
+ * EXTRA_PREFER_OFFLINE asks the recognizer to stay on the device. It is sent
+ * unless the user has switched on the opt-in described in docs/VOICE.md, and
+ * what the request is worth depends on the installed recognizer - which is why
+ * the interface says on-device speech is a device capability rather than a
  * guarantee this application can make on the device's behalf.
  *
  * WHY THIS FILE REJECTS WITH CODES RATHER THAN SENTENCES
@@ -83,8 +84,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *      not to speak cannot open the dialog, read it and press back inside
  *      REFUSAL_MILLIS. This one is a heuristic, marked as such here and in
  *      docs/VOICE.md, and it is applied ONLY while the question is genuinely
- *      open - never when the pre-flight check answered - because being wrong
- *      the other way means a banner after a deliberate cancellation.
+ *      open - never when the pre-flight check answered - because being wrong the
+ *      other way means a banner after a deliberate cancellation.
  *
  * Java rather than Kotlin because this Gradle build has no Kotlin plugin. One
  * class is not a reason to add a language toolchain, a stdlib dependency and a
@@ -149,14 +150,24 @@ public class SpeechPlugin extends Plugin {
      * these anyway.
      */
     private volatile long startedAt = 0L;
+    private volatile boolean askedForOffline = true;
     private volatile OnDevice onDeviceAtStart = OnDevice.UNKNOWN;
 
     @PluginMethod
     public void listen(PluginCall call) {
         String tag = call.getString("lang", DEFAULT_LANGUAGE);
+        // Absent means offline-only. The opt-in has to be sent to be in effect.
+        boolean allowOnline = Boolean.TRUE.equals(call.getBoolean("allowOnline", false));
 
         if (!hasRecognizer()) {
             call.reject(CODE_NO_RECOGNIZER);
+            return;
+        }
+
+        if (allowOnline) {
+            // The user has said the audio may leave. There is nothing to
+            // pre-flight: a missing offline model is no longer a reason not to try.
+            start(call, tag, true, OnDevice.UNKNOWN);
             return;
         }
 
@@ -167,20 +178,23 @@ public class SpeechPlugin extends Plugin {
                 call.reject(CODE_NO_OFFLINE_MODEL);
                 return;
             }
-            start(call, tag, state);
+            start(call, tag, false, state);
         });
     }
 
-    private void start(PluginCall call, String tag, OnDevice state) {
+    private void start(PluginCall call, String tag, boolean allowOnline, OnDevice state) {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(
             RecognizerIntent.EXTRA_LANGUAGE_MODEL,
             RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
         );
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, tag);
-        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        if (!allowOnline) {
+            intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        }
         intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
 
+        askedForOffline = !allowOnline;
         onDeviceAtStart = state;
         startedAt = SystemClock.elapsedRealtime();
 
@@ -230,13 +244,13 @@ public class SpeechPlugin extends Plugin {
         }
 
         /*
-         * The heuristic, and the only guess in this file. Nothing could
-         * establish whether the language is on the phone, and the screen came
-         * back faster than a person could dismiss it - which is a recognizer
-         * refusing, not somebody changing their mind.
+         * The heuristic, and the only guess in this file. Offline was asked for,
+         * nothing could establish whether the language is on the phone, and the
+         * screen came back faster than a person could dismiss it - which is a
+         * recognizer refusing, not somebody changing their mind.
          */
         boolean refusedInstantly =
-            onDeviceAtStart == OnDevice.UNKNOWN && elapsedMillis < REFUSAL_MILLIS;
+            askedForOffline && onDeviceAtStart == OnDevice.UNKNOWN && elapsedMillis < REFUSAL_MILLIS;
         return refusedInstantly ? CODE_NO_OFFLINE_MODEL : CODE_CANCELLED;
     }
 

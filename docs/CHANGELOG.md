@@ -130,7 +130,14 @@ it.
   on-device model with `processLocally`, which errors rather than reaching a
   server when no model is installed. A device with neither — an iPhone, Safari
   anywhere — gets the typed command box, which is present on every platform and
-  is not a fallback. See `docs/VOICE.md`.
+  is not a fallback.
+  A failure now says what it was, because it used to say nothing: the Android
+  plugin rejects with a code rather than calling every outcome "cancelled", and
+  the sheet answers silence only for a cancellation you made. The one case that
+  cannot be fixed on the device — no offline pack for your language — offers the
+  install path, the typed box, and **Settings → Voice → Send your audio to
+  Google**, which is off unless you switch it on and is the only thing here that
+  can put a recording of you onto a network. See `docs/VOICE.md`.
 - **Installable as an app**, with a hand-written service worker and verified cold
   offline start.
 - **Light and dark themes**, following the system by default.

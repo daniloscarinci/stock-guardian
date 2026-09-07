@@ -5,13 +5,27 @@ updates" — none. This page describes how that is achieved and, more importantl
 how it is enforced, because a promise like this erodes by accident: one webfont,
 one analytics snippet, one CDN fallback added while debugging.
 
-"Of its own" is doing real work in that sentence, and exactly one thing sits
-outside it. **Settings → Speech recognition → Install** asks the browser to
-download a speech pack for voice control. That is the browser fetching on an
-explicit press rather than the page fetching on its own; it never happens
-automatically, it never appears in the Android build, and it is set out in full
-under *Speech* below. Nothing else in the application, on any platform, reaches
-the network at all.
+"Of its own" is doing real work in that sentence, and two things sit outside it.
+Both belong to voice control, both are the platform acting rather than the page,
+and both are set out in full under *Speech* below.
+
+**Downloading a speech pack.** **Settings → Speech recognition → Install** asks
+the browser to fetch a model for voice control. That is the browser fetching on
+an explicit press; it never happens automatically and it never appears in the
+Android build.
+
+**Sending your voice to Google.** **Settings → Voice → Send your audio to
+Google** is off, and while it is off nothing about the paragraphs below changes:
+the Android plugin sends `EXTRA_PREFER_OFFLINE` and `webspeech.ts` sets
+`processLocally = true`, so speech is transcribed on the device or not at all.
+Switched on by a person who has read the label, it permits one thing and only
+one — a recognizer with no offline model for the language transcribing over the
+network instead of refusing. What travels is the recorded utterance. Your
+inventory, your locations, your contacts and your backups have no route off the
+device under any setting, and there is no code in this repository that would
+send them.
+
+Nothing else in the application, on any platform, reaches the network at all.
 
 ---
 
@@ -82,6 +96,13 @@ visibility rather than a permission, and the workflow that enforces this is
 byte-identical to the one that shipped before voice existed. See
 `docs/ANDROID.md`.
 
+The online opt-in does not change it either, and why is worth stating rather
+than glossing. With no `INTERNET` permission this application cannot open a
+socket even if it tried; when the setting is on, the audio leaves from Google's
+recognizer, in Google's process, under Google's permissions. That is a real
+disclosure and this page makes it — but it is not this application acquiring a
+network, and the permission check that proves so still passes untouched.
+
 ---
 
 ## Speech
@@ -95,7 +116,10 @@ ask for `RECORD_AUDIO` and open the microphone yourself. Neither happens here.
 
 `SpeechRecognizer` in `src/services/speech/recognizer.ts` is the second seam in
 this codebase, built the way `SqlDriver` is built. Every implementation
-transcribes on the device.
+transcribes on the device, unless the person holding it has said otherwise in
+**Settings → Voice → Send your audio to Google** — which is off, and which
+nothing but a deliberate press can move. Everything below describes the default,
+and then says exactly what the opt-in changes.
 
 **Android** hands the job to the system. `SpeechPlugin.java` fires
 `ACTION_RECOGNIZE_SPEECH` with `EXTRA_PREFER_OFFLINE`; Android's own recognizer
@@ -104,14 +128,23 @@ this application, so the APK declares no `RECORD_AUDIO` — and the workflow fai
 the build if any permission appears at all. `EXTRA_PREFER_OFFLINE` is a request
 whose value depends on the recognizer installed, which is why the interface
 calls on-device speech a capability of the device rather than a guarantee this
-application can make for it.
+application can make for it. The extra is omitted — and only then — when the
+opt-in has been switched on and the web layer passes `allowOnline: true`.
 
-**Chrome** uses `SpeechRecognition` with `processLocally = true`, set first and
-unconditionally, and starts only after `availableOnDevice(tag)` reports a model
-for that language. `processLocally` **fails closed**: with no local model the
-call errors rather than falling back to the network. That is the property that
-makes the API usable here at all, and it is the reason this implementation is
-allowed to exist.
+**Chrome** uses `SpeechRecognition` with `processLocally`, set first and on
+every path, and starts only after `availableOnDevice(tag)` reports a model for
+that language. `processLocally` **fails closed**: with no local model the call
+errors rather than falling back to the network. That is the property that makes
+the API usable here at all, and it is the reason this implementation is allowed
+to exist.
+
+It is `true` unless BOTH of two things hold: there is no on-device model for the
+language, and the user has switched the opt-in on. A device that can transcribe
+locally still does, opt-in or not — sending audio away when the phone could have
+done the job itself would be a bug rather than a preference. And a browser that
+cannot be asked about locality at all, such as Safari, is still refused: the
+opt-in changes which mode a qualifying browser may use, never which browsers
+qualify.
 
 **Everything else** is `none.ts`, which reports unavailable. Safari exposes
 `webkitSpeechRecognition` but not the on-device controls, so there is no way to
@@ -125,11 +158,14 @@ every platform and is not a fallback.
 tried to ship audio to a server itself would have nowhere to send it. This is
 the structural one, and it is why the seam is safe to have.
 
-**`processLocally = true`**, inside `webspeech.ts`. The browser makes that API's
+**`processLocally`**, inside `webspeech.ts`. The browser makes that API's
 network calls itself, out of reach of the CSP, so within that implementation
 this flag is the only thing standing between it and Google. `webspeech.test.ts`
-asserts it is set and that `start()` is never reached without an on-device
-model.
+asserts that it is set and that `start()` is never reached without an on-device
+model — with no options, with an options object that omits the opt-in, and with
+`allowOnline: false`. A further test asserts the other side: that
+`allowOnline: true` is the single way past it. The guarantee did not get weaker,
+it acquired one door, and there are tests on both sides of it.
 
 **The audit rule**, and it is the weakest of the three. `audit-offline.mjs`
 fails the build if the literal identifier `SpeechRecognition` — or
@@ -151,24 +187,62 @@ fails the build if the literal identifier `SpeechRecognition` — or
 What it does catch is the second use site somebody adds in good faith, which is
 the way this promise would actually be lost.
 
-### The install button
+### The two places a byte crosses the network
+
+#### The install button
 
 **Settings → Speech recognition → Install** appears when Chrome reports a
 downloadable speech pack for the interface language. Pressing it calls
-`installOnDevice(tag)` and the browser downloads the model. The line above the
-button says so — that installing downloads the pack, and that it is the one time
-anything in the feature uses the network — because this page is not where the
-decision is made.
+`installOnDevice(tag)` and the browser downloads the model. The line beside the
+button says so — that installing downloads the pack, and that nothing of yours
+travels the other way — because this page is not where the decision is made.
 
 That is a byte crossing the network. It is the browser fetching on an explicit
 press rather than the page fetching on its own, which is why the audit is right
-not to flag it — and why it must never be made automatic. Nothing else in the
-voice feature touches the network, and the pack, once installed, is what makes
-transcription local afterwards.
+not to flag it — and why it must never be made automatic. The pack, once
+installed, is what makes transcription local afterwards.
 
-It never appears inside the APK. `install` is optional on the seam and only the
-Chrome implementation defines one, so the Android build still contains nothing
-at all that reaches the network.
+The button never appears inside the APK. `install` is optional on the seam and
+only the Chrome implementation defines one; Android speech packs belong to the
+system, so Settings prints the path through Android own menus instead. Nothing
+in the Android build fetches anything.
+
+#### Sending your audio to Google
+
+**Settings → Voice → Send your audio to Google**, stored as `voiceAllowOnline`
+and `false` by default. This is the first thing in this project that can put a
+recording of you onto a network, and this page says so before anybody discovers
+it.
+
+What it sends: one recorded utterance, at the moment you press the microphone,
+to whichever recognizer the platform uses — Google, on Android and in Chrome.
+What it does not send: anything from the database. Not an item, not a location,
+not a contact, not a backup. There is no code here that could.
+
+When it sends: only when the device has no offline model for your language, and
+only while the switch is on. A phone that can transcribe locally still does.
+
+What holds it shut, because a default is not an argument:
+
+- `settingsSchema` defaults it to `false`, and a corrupt stored value falls back
+  to `false` rather than to the permissive side. Both are tested.
+- `SpeechOptions.allowOnline` is absent-means-no across the whole seam, so a
+  caller that forgets the argument gets the private behaviour.
+- `SpeechPlugin.listen` reads `call.getBoolean("allowOnline", false)`, so a
+  bridge call that omits it sends `EXTRA_PREFER_OFFLINE` exactly as before.
+- Nothing switches it on but a person. Not a failure, not a retry, not a
+  first-run prompt. The panel shown after a listen that found no offline model
+  names the setting and explains what it does; the user goes and moves it.
+
+The label is deliberately not the word "online". It names Google, because "allow
+online recognition" describes a mechanism and "send your audio to Google"
+describes what happens to you. In Portuguese it reads *Seu áudio vai para o
+Google*.
+
+The offline audit is unmoved by any of this, and that was checked rather than
+assumed: the opt-in adds no `fetch`, no URL and no second use of
+`SpeechRecognition`. It changes the value of one property inside the one module
+already permitted to have it.
 
 ### Reading answers aloud
 

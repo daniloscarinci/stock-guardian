@@ -11,14 +11,14 @@
  * nothing else about it.
  */
 import { registerPlugin, Capacitor } from '@capacitor/core';
-import type { SpeechAvailability, SpeechRecognizer } from './recognizer';
+import type { SpeechAvailability, SpeechOptions, SpeechRecognizer } from './recognizer';
 import { SpeechFailureError, speechFailureReason } from './failure';
 
 /** What the plugin established about a model for the language it was asked about. */
 type OnDeviceState = 'installed' | 'missing' | 'unknown';
 
 interface SpeechPlugin {
-  listen: (options: { lang: string }) => Promise<{ transcript: string }>;
+  listen: (options: { lang: string; allowOnline: boolean }) => Promise<{ transcript: string }>;
   availability: (options: { lang: string }) => Promise<{
     state: SpeechAvailability;
     onDevice?: OnDeviceState;
@@ -48,10 +48,14 @@ export function createCapacitorRecognizer(): SpeechRecognizer {
         .catch(() => 'unavailable');
     },
 
-    async listen(tag: string): Promise<string> {
+    async listen(tag: string, options?: SpeechOptions): Promise<string> {
+      // Sent explicitly rather than left out, so the plugin's default and this
+      // one cannot drift apart. Both are false.
+      const allowOnline = options?.allowOnline === true;
+
       let transcript: string;
       try {
-        ({ transcript } = await Speech.listen({ lang: tag }));
+        ({ transcript } = await Speech.listen({ lang: tag, allowOnline }));
       } catch (cause) {
         throw new SpeechFailureError(
           speechFailureReason(cause),

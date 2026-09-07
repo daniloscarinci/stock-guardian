@@ -500,6 +500,8 @@ export const en = {
     networkFailed: 'The recognizer went looking for the internet and did not find it.',
     busy: 'Something else is using the microphone. Close it and try again.',
     typeCommandInstead: 'Type the command instead',
+    allowOnlineHint:
+      'Or let the recognizer send your audio to Google, in Settings → Voice. It stays off until you switch it on.',
     quantityAnswer: '{name}: {quantity} {unit}, in {location}.',
     quantityAnswerNoLocation: '{name}: {quantity} {unit}.',
     expiringNone_one: 'Nothing expires in the next day.',
@@ -525,6 +527,9 @@ export const en = {
       'Shows the microphone in the header. The typed command box opens only from it, so switching this off removes both.',
     settingSpeak: 'Read answers aloud',
     settingSpeakHelp: "Uses the system voice. On Android the phone's silent switch wins over this.",
+    settingAllowOnline: 'Send your audio to Google',
+    settingAllowOnlineHelp:
+      'Off, and the only setting here that sends anything off this device. While it is off, what you say never leaves the phone. Switched on, the recognizer may send your recorded speech to Google when this device has no offline pack for your language.',
     availability: 'Speech recognition',
     ready:
       'Ready on this device. Chrome transcribes here or not at all; Android asks its recognizer to, and not every recognizer honours the request.',

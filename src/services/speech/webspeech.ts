@@ -1,17 +1,33 @@
 /**
- * Chrome, transcribing on the device and nowhere else.
+ * Chrome, transcribing on the device unless a person has said otherwise.
  *
  * THIS IS THE ONLY MODULE PERMITTED TO CONSTRUCT `SpeechRecognition`.
  * `scripts/audit-offline.mjs` fails the build if the identifier appears
  * anywhere else, because the default mode of this API streams audio to
- * Google's servers and would make the application's central claim false.
+ * Google's servers.
  *
- * `processLocally = true` is what prevents that. It fails CLOSED: with no local
- * model the call errors rather than quietly falling back to the network, which
- * is the property that makes this API usable here at all. Never set it
- * conditionally, and never start a recognizer without it.
+ * `processLocally` is what governs that, and it fails CLOSED: with no local
+ * model the call errors rather than quietly falling back to the network. It is
+ * assigned first, on every path, and it is `true` unless BOTH of these hold:
+ *
+ *   - there is no on-device model for the language, and
+ *   - `options.allowOnline` is true, which carries the `voiceAllowOnline`
+ *     setting - off by default, switched on only by a person reading a label
+ *     that names Google.
+ *
+ * So the opt-in cannot be reached by accident and cannot be reached by a caller
+ * that simply forgot the argument: `allowOnline` is absent-means-no, and a
+ * device that CAN transcribe locally still does, opt-in or not. Sending audio
+ * away when the phone could have done the job itself would be a bug, not a
+ * preference.
+ *
+ * The seam is still refused to browsers that do not expose these controls at
+ * all. Safari has `webkitSpeechRecognition` and no way to ask about locality;
+ * this application does not use a recognizer it cannot question, and the opt-in
+ * does not change which browsers qualify - only which mode a qualifying one may
+ * use.
  */
-import type { SpeechAvailability, SpeechRecognizer } from './recognizer';
+import type { SpeechAvailability, SpeechOptions, SpeechRecognizer } from './recognizer';
 import { SpeechFailureError, type SpeechFailure } from './failure';
 
 interface OnDeviceCapable {
@@ -63,17 +79,24 @@ function reasonOf(event: unknown): SpeechFailure {
 }
 
 export function createWebSpeechRecognizer(): SpeechRecognizer {
-  async function availability(tag = 'pt-BR'): Promise<SpeechAvailability> {
+  async function availability(
+    tag = 'pt-BR',
+    options?: SpeechOptions,
+  ): Promise<SpeechAvailability> {
     const Recognition = api();
     if (Recognition === undefined) return 'unavailable';
-    // Without this static method the browser has only the networked mode,
-    // which this application does not use under any circumstance.
+    // Without this static method the browser has only the networked mode and no
+    // way to be asked about locality, which this application does not use under
+    // any circumstance - including the opt-in.
     if (typeof Recognition.availableOnDevice !== 'function') return 'unavailable';
 
     const state = await Recognition.availableOnDevice(tag).catch(() => 'unavailable');
     if (state === 'available') return 'ready';
     if (state === 'downloadable' || state === 'downloading') return 'installable';
-    return 'unavailable';
+
+    // No model, and none to download. Still ready if - and only if - the user
+    // has allowed the networked mode.
+    return options?.allowOnline === true ? 'ready' : 'unavailable';
   }
 
   return {
@@ -85,25 +108,31 @@ export function createWebSpeechRecognizer(): SpeechRecognizer {
       return Recognition.installOnDevice(tag).catch(() => false);
     },
 
-    async listen(tag: string): Promise<string> {
+    async listen(tag: string, options?: SpeechOptions): Promise<string> {
       const Recognition = api();
       if (Recognition === undefined) {
         throw new SpeechFailureError('no-recognizer', 'Speech recognition is unavailable.');
       }
 
+      // Asked WITHOUT the option, so this is the true local state rather than
+      // what the user has permitted.
+      const onDevice = (await availability(tag)) === 'ready';
+      const allowOnline = options?.allowOnline === true;
+
       // Checked before construction, so a device without the language never
-      // reaches `start()` and therefore never reaches a server.
-      if ((await availability(tag)) !== 'ready') {
+      // reaches `start()` and therefore never reaches a server - unless the
+      // user has asked for exactly that.
+      if (!onDevice && !allowOnline) {
         throw new SpeechFailureError('no-offline-model', `No on-device speech model for ${tag}.`);
       }
 
       return new Promise<string>((resolve, reject) => {
         const recognition = new Recognition();
-        // First, and unconditionally. If the property does not exist the
+        // First, and on every path. If the property does not exist the
         // assignment is harmless; if a future engine makes it throw, the
         // executor rejects and `start()` below is never reached - which is the
         // outcome to want.
-        recognition.processLocally = true;
+        recognition.processLocally = onDevice;
         recognition.lang = tag;
         recognition.continuous = false;
         recognition.interimResults = false;

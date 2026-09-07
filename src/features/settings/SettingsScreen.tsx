@@ -56,9 +56,13 @@ export function SettingsScreen() {
    */
   const speech = useAsyncData(async () => {
     const tag = LOCALE_TAGS[settings.language];
-    const recognizer = await selectRecognizer(tag);
-    return { recognizer, tag, availability: await recognizer.availability(tag) };
-  }, [settings.language]);
+    // The opt-in changes the honest answer: a device with no local model for
+    // this language can transcribe after all, once its owner has allowed the
+    // audio to leave. Asked again when the switch moves, for that reason.
+    const options = { allowOnline: settings.voiceAllowOnline };
+    const recognizer = await selectRecognizer(tag, options);
+    return { recognizer, tag, availability: await recognizer.availability(tag, options) };
+  }, [settings.language, settings.voiceAllowOnline]);
 
   const info = live.data ?? diagnostics;
 
@@ -337,6 +341,22 @@ export function SettingsScreen() {
               <span className={screens.pageSubtitle}>{t('voice.installDownloads')}</span>
             </div>
           ))}
+
+        {/*
+          The only control in this application that can send anything off the
+          device, so it says what leaves and to whom rather than saying
+          "online". It is last on purpose: a person reads what this device can
+          do, then how to make it do it locally, and only then the option that
+          gives something up. Nothing switches it on but this.
+        */}
+        <SwitchRow
+          label={t('voice.settingAllowOnline')}
+          help={t('voice.settingAllowOnlineHelp')}
+          checked={settings.voiceAllowOnline}
+          onChange={(on) => {
+            void updateSettings({ voiceAllowOnline: on });
+          }}
+        />
       </Card>
 
       <section>

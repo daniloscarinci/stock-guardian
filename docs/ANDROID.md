@@ -168,6 +168,14 @@ of watching the recognizer screen flash past. It records nothing and needs no
 permission — the permission belongs to `startListening`, which is never called
 here — and the check below is what proves it rather than this paragraph.
 
+**Nor does the online opt-in.** **Settings → Voice → Send your audio to Google**
+is off by default; switched on, `SpeechPlugin` omits `EXTRA_PREFER_OFFLINE` and
+the system recognizer may transcribe over the network. The audio then leaves
+from Google's process under Google's permissions, not from this application,
+which still declares no `INTERNET` and still opens no socket. The permission
+check below is unchanged and still passes. `docs/OFFLINE.md` states the
+disclosure in full.
+
 The one thing the manifest gained is a `queries` element naming the speech
 intents. From Android 11 an application cannot see another it has not named, and
 without it the check for "is there a recognizer on this phone" would answer no
@@ -236,7 +244,8 @@ tells you something different:
    whether the phone honours it depends on the recognizer installed. This is the
    check that tells you what that phone actually does, and it is the one thing in
    this list no test here can answer. If it cannot, the panel from step 8 is what
-   you should be looking at.
+   you should be looking at, and **Settings → Voice → Send your audio to Google**
+   is the choice it leaves you.
 
 ---
 

@@ -21,6 +21,11 @@ See *How speech stays on the device*.
 platform, in the same sheet, doing the same thing. A device that cannot
 transcribe speech loses the button in the header and keeps everything else.
 
+**Nothing you say leaves the device unless you switch one thing on.** The
+default is on-device transcription or none at all, enforced rather than
+promised. **Settings → Voice → Send your audio to Google** is the exception, it
+is off, and it is described under *Sending your audio to Google* below.
+
 ---
 
 ## What you can say
@@ -190,7 +195,8 @@ belongs to the recognizer and never to this application, so there is no
 of which need the permission. `EXTRA_PREFER_OFFLINE` is a request, and what it
 is worth depends on the recognizer installed on the phone. The interface says
 on-device speech is a capability of the device, not a guarantee this application
-can make on the device's behalf.
+can make on the device's behalf. The extra is sent unless the user has switched
+on the opt-in below.
 
 The plugin does use the `SpeechRecognizer` class for one thing, and only one:
 `checkRecognitionSupport`, which asks the system which languages it can
@@ -204,12 +210,18 @@ One class is not a reason to add a language toolchain, a stdlib dependency and a
 second way for the APK build to break.
 
 **Chrome — `processLocally`, failing closed.** `webspeech.ts` is the only module
-permitted to construct `SpeechRecognition`. It sets `processLocally = true`
-first and unconditionally, and it refuses to start unless
-`availableOnDevice(tag)` reports a model for that language. `processLocally`
-fails **closed**: with no local model the call errors rather than quietly
-reaching a server. That property is what makes this API usable here at all,
-because the default mode of it streams audio to Google.
+permitted to construct `SpeechRecognition`. It sets `processLocally` first and
+on every path, and it refuses to start unless `availableOnDevice(tag)` reports a
+model for that language. `processLocally` fails **closed**: with no local model
+the call errors rather than quietly reaching a server. That property is what
+makes this API usable here at all, because the default mode of it streams audio
+to Google.
+
+The value is `true` unless there is no on-device model AND the user has opted
+in. A browser that can transcribe locally still does, whatever the setting says.
+A browser that cannot be asked about locality — Safari — is still refused
+outright: the opt-in governs which mode a qualifying browser may use, not which
+browsers qualify.
 
 **Everything else — nothing.** `none.ts` reports unavailable and throws if asked
 to listen. Safari exposes `webkitSpeechRecognition` but not `availableOnDevice`,
@@ -230,9 +242,12 @@ In the order it holds:
    An implementation that shipped audio to a server *itself* would have nowhere
    to send it. This is the structural one: it constrains what the code can do
    rather than what it may say.
-2. **`processLocally = true`.** The browser makes the Web Speech API's own
-   network calls, out of reach of the CSP, so inside that one implementation
-   this flag is the only thing between it and a server.
+2. **`processLocally`.** The browser makes the Web Speech API's own network
+   calls, out of reach of the CSP, so inside that one implementation this flag
+   is the only thing between it and a server. `webspeech.test.ts` pins it from
+   both sides: `start()` is never reached without it when the caller passes no
+   options, an empty options object, or `allowOnline: false`, and
+   `allowOnline: true` is the single way past.
 3. **The build audit.** `scripts/audit-offline.mjs` fails the build if the
    literal identifier `SpeechRecognition` appears anywhere in `src/` other than
    `webspeech.ts`. It is a text match on one spelling over source files, and it
@@ -242,7 +257,7 @@ In the order it holds:
 
 None of the three is sufficient alone, and the third is the weakest.
 
-### The one place a byte crosses the network
+### Downloading a speech pack
 
 **Settings → Speech recognition → Install.** When Chrome reports the language
 pack as downloadable, that button appears and calls `installOnDevice(tag)`,
@@ -250,15 +265,55 @@ asking the browser to download a speech model.
 
 That is the browser fetching on an explicit press, not the page fetching on its
 own, which is why the offline audit does not flag it. It never happens
-automatically, and it is the only thing in this feature that touches the
-network. The line above the button says both of those things, because the
-decision is made there and not here.
+automatically. The line beside the button says so, because the decision is made
+there and not here.
 
 The button never appears inside the APK. `install` is optional on the seam, and
 only the Chrome implementation defines one; on Android the system recognizer
-manages its own languages. So the installed Android application still has
-nothing in it that reaches the network, which is what keeps that promise in
-`docs/ANDROID.md` true.
+manages its own languages, so Settings prints the path through Android's menus
+instead. The installed Android application still fetches nothing.
+
+### Sending your audio to Google
+
+**Settings → Voice → Send your audio to Google**, stored as `voiceAllowOnline`,
+`false` by default. The first thing in this project that can put a recording of
+you onto a network.
+
+It exists because of a bug on a real phone. The plugin asked for offline-only
+recognition, the phone had no offline Portuguese model, the recognizer refused
+at once, and every unsuccessful outcome arrived in the web layer as
+"cancelled" — which the interface answers with silence, on purpose, because a
+banner after a deliberate "never mind" teaches people to ignore banners. The
+microphone did nothing and said nothing. Two things came out of that: failures
+now say what they are, and the person holding the phone gets to decide whether
+transcribing over the network is worth it to them. The application does not
+decide that on their behalf, in either direction.
+
+| | |
+|---|---|
+| **What is sent** | One recorded utterance, when you press the microphone. |
+| **To whom** | The platform's recognizer — Google's, on Android and in Chrome. |
+| **When** | Only if the device has no offline model for the language, and only while the switch is on. |
+| **What is never sent** | Anything in the database. Items, locations, contacts, backups. No code here could. |
+| **Default** | Off. |
+
+What holds it shut, because a default on its own is not an argument:
+
+- `settingsSchema` defaults it to `false`, and a corrupt stored value falls back
+  to `false` rather than to the permissive side. Both are tested.
+- `SpeechOptions.allowOnline` is absent-means-no everywhere on the seam, so a
+  caller that forgets the argument gets the private behaviour.
+- `SpeechPlugin.listen` reads `call.getBoolean("allowOnline", false)`, so a
+  bridge call that omits it sends `EXTRA_PREFER_OFFLINE` exactly as before.
+- A device that can transcribe locally still does. The opt-in permits the
+  network, it does not prefer it.
+- Nothing switches it on but a person. Not a failure, not a retry, not a
+  first-run prompt. The panel shown after a listen that found no offline model
+  names the setting; the user goes and moves it.
+
+The label names Google rather than saying "online", because "allow online
+recognition" describes a mechanism and "send your audio to Google" describes
+what happens to you. In Portuguese it reads *Seu áudio vai para o Google*.
 
 ### When the microphone does not work, it says so
 
@@ -277,13 +332,9 @@ rejection onto one of seven, and the interface branches on that:
 | `busy` | Something else holds the recognizer. | `voice.busy` |
 | `failed` | Everything else, including reasons a platform declines to name. | `voice.listenFailed` |
 
-Before this, the plugin answered every unsuccessful outcome with "cancelled",
-and the interface answers a cancellation with silence — on purpose, because a
-banner after a deliberate "never mind" teaches people to ignore banners. Two
-reasonable decisions met and produced a microphone that failed without a word on
-any phone with no offline Portuguese model. Now exactly one code is answered
-with silence, and an unrecognised failure maps to `failed` rather than to
-`cancelled`: the same bug, inverted.
+Exactly one of those is answered with silence, and an unrecognised failure maps
+to `failed` rather than to `cancelled` — which is the whole shape of the bug,
+inverted.
 
 **What the Intent flow actually tells you**, since the honest answer is "less
 than you would like". The result Intent carries no error extra; the whole of the
@@ -411,6 +462,10 @@ The Settings screen still asks the device what it can do, so the **Speech
 recognition** line reports honestly either way.
 
 **Settings → Read answers aloud** keeps the microphone and stops the speaking.
+
+**Settings → Voice → Send your audio to Google** is the one control here that
+starts off rather than on, and the one that has to be turned on rather than off.
+It is set out under *Sending your audio to Google* above.
 
 ---
 

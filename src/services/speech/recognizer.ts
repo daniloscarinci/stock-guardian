@@ -22,8 +22,34 @@
  *     servers.
  *
  * None of the three is sufficient alone, and the second is the weakest.
+ *
+ * THE ONE WAY AUDIO EVER LEAVES: `SpeechOptions.allowOnline`, which carries the
+ * `voiceAllowOnline` setting. It is false unless a person has switched it on in
+ * Settings, under a label that names Google rather than saying "online". While
+ * it is false nothing changes at all: the Android plugin sends
+ * EXTRA_PREFER_OFFLINE and webspeech.ts sets `processLocally = true`, both
+ * exactly as before. The default path is not weakened by the existence of the
+ * other one - it is the same code, with the same tests on it.
  */
 export type SpeechAvailability = 'ready' | 'installable' | 'unavailable';
+
+/**
+ * What the caller permits for one utterance.
+ *
+ * An argument rather than construction state because the answer belongs to the
+ * moment the button is pressed: the setting can change between two presses, and
+ * a recognizer built an hour ago must not still be acting on what it was told
+ * then.
+ */
+export interface SpeechOptions {
+  /**
+   * Whether the audio may leave the device.
+   *
+   * Absent means no. Every implementation reads it that way, so a caller that
+   * forgets the argument gets the private behaviour rather than the other one.
+   */
+  readonly allowOnline?: boolean;
+}
 
 export interface SpeechRecognizer {
   /**
@@ -31,15 +57,19 @@ export interface SpeechRecognizer {
    * English model and no Portuguese one is `ready` for one and `unavailable`
    * for the other. Optional so a caller that only wants "is there a microphone
    * at all" need not pick a language.
+   *
+   * `options` matters here as well as in `listen`: with `allowOnline` a
+   * recognizer that has no local model for the language can still transcribe,
+   * so the honest answer to "can this device do it" changes.
    */
-  readonly availability: (tag?: string) => Promise<SpeechAvailability>;
+  readonly availability: (tag?: string, options?: SpeechOptions) => Promise<SpeechAvailability>;
   /** Offer the platform's own language-pack install, where one exists. */
   readonly install?: (tag: string) => Promise<boolean>;
   /**
    * One utterance. Rejects rather than resolving empty, and rejects with a
    * `SpeechFailureError` so the caller can tell a cancellation from a failure.
    */
-  readonly listen: (tag: string) => Promise<string>;
+  readonly listen: (tag: string, options?: SpeechOptions) => Promise<string>;
 }
 
 import { noneRecognizer } from './none';
@@ -59,10 +89,17 @@ export {
  * Android first: inside the APK the system recognizer is both available and
  * permission-free, and Chrome's WebView does not expose the Web Speech API
  * anyway.
+ *
+ * `options` is passed through to the availability probe, so a browser whose
+ * only working mode is the networked one is selected when - and only when - the
+ * user has allowed that mode.
  */
-export async function selectRecognizer(tag: string): Promise<SpeechRecognizer> {
+export async function selectRecognizer(
+  tag: string,
+  options?: SpeechOptions,
+): Promise<SpeechRecognizer> {
   if (isNativeAndroid()) return createCapacitorRecognizer();
 
   const web = createWebSpeechRecognizer();
-  return (await web.availability(tag)) === 'unavailable' ? noneRecognizer : web;
+  return (await web.availability(tag, options)) === 'unavailable' ? noneRecognizer : web;
 }

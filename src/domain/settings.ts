@@ -68,6 +68,24 @@ export const settingsSchema = z.object({
   voiceSpeakAnswers: z.boolean().default(true),
 
   /**
+   * Whether recorded speech may leave the device.
+   *
+   * FALSE, AND EVERY PATH THAT READS IT TREATS ABSENT AS FALSE. This is the
+   * only setting in the application that can cause anything to be sent
+   * anywhere, so it fails closed in three places rather than one: this default,
+   * `options.allowOnline` being absent-means-no across the speech seam, and the
+   * Android plugin sending EXTRA_PREFER_OFFLINE unless told not to.
+   *
+   * On it lets the recognizer transcribe a language the device has no offline
+   * model for, which means sending the audio to Google. It exists because the
+   * alternative was worse: a microphone that silently did nothing on a phone
+   * with no Portuguese pack, and no way for the person holding it to choose. It
+   * is never switched on by the application - not after a failure, not as a
+   * retry. The failure panel names the setting; the user turns it on.
+   */
+  voiceAllowOnline: z.boolean().default(false),
+
+  /**
    * Items the user has taken off the replenishment list.
    *
    * Dismissal is a decision ("I know, and I am not restocking it"), so it has to

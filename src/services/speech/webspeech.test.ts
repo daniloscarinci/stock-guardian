@@ -79,16 +79,34 @@ describe('webspeech recognizer', () => {
     expect(instance?.started).toBe(true);
   });
 
-  it('NEVER starts when the language is not available on-device', async () => {
-    onDevice('unavailable');
-    const recognizer = createWebSpeechRecognizer();
+  /*
+   * The guarantee, and the shape it now has.
+   *
+   * It used to read "NEVER starts when the language is not available
+   * on-device", full stop. There is now exactly one way past it, and these
+   * three tests are the whole of it: absent means no, an empty options object
+   * means no, and only `allowOnline: true` opens the other path. If someone
+   * weakens the default, the first two fail.
+   */
+  describe('NEVER starts without processLocally unless the user has opted in', () => {
+    it('refuses, with no options at all', async () => {
+      onDevice('unavailable');
+      const recognizer = createWebSpeechRecognizer();
 
-    await expect(recognizer.listen('pt-BR')).rejects.toThrow(/on-device/i);
-    expect(FakeRecognition.instances.every((i) => !i.started)).toBe(true);
-  });
+      await expect(recognizer.listen('pt-BR')).rejects.toThrow(/on-device/i);
+      expect(FakeRecognition.instances.every((i) => !i.started)).toBe(true);
+    });
 
-  describe('failures carry a reason', () => {
-    it('names the missing model, so the interface can explain it', async () => {
+    it('refuses when the caller passes options that do not include the opt-in', async () => {
+      onDevice('unavailable');
+      const recognizer = createWebSpeechRecognizer();
+
+      await expect(recognizer.listen('pt-BR', {})).rejects.toThrow(/on-device/i);
+      await expect(recognizer.listen('pt-BR', { allowOnline: false })).rejects.toThrow(/on-device/i);
+      expect(FakeRecognition.instances.every((i) => !i.started)).toBe(true);
+    });
+
+    it('names the refusal, so the interface can explain it', async () => {
       onDevice('unavailable');
       const recognizer = createWebSpeechRecognizer();
       const failure = await recognizer
@@ -97,6 +115,55 @@ describe('webspeech recognizer', () => {
       expect(failure).toBe('no-offline-model');
     });
 
+    it('starts with processLocally false ONLY once the user has opted in', async () => {
+      onDevice('unavailable');
+      const recognizer = createWebSpeechRecognizer();
+      void recognizer.listen('pt-BR', { allowOnline: true });
+      await vi.waitFor(() => expect(FakeRecognition.instances[0]).toBeDefined());
+
+      const instance = FakeRecognition.instances[0];
+      expect(instance?.processLocally).toBe(false);
+      expect(instance?.started).toBe(true);
+    });
+
+    /*
+     * The opt-in permits the network; it does not prefer it. A device that can
+     * transcribe locally still does, because sending audio away when the phone
+     * could have done the job itself would be a bug rather than a preference.
+     */
+    it('still transcribes locally when it can, even with the opt-in on', async () => {
+      onDevice('available');
+      const recognizer = createWebSpeechRecognizer();
+      void recognizer.listen('pt-BR', { allowOnline: true });
+      await vi.waitFor(() => expect(FakeRecognition.instances[0]).toBeDefined());
+
+      expect(FakeRecognition.instances[0]?.processLocally).toBe(true);
+    });
+  });
+
+  describe('availability under the opt-in', () => {
+    it('stays unavailable for a language with no model, by default', async () => {
+      onDevice('unavailable');
+      const recognizer = createWebSpeechRecognizer();
+      expect(await recognizer.availability('pt-BR')).toBe('unavailable');
+      expect(await recognizer.availability('pt-BR', { allowOnline: false })).toBe('unavailable');
+    });
+
+    it('becomes ready for that language once the user has opted in', async () => {
+      onDevice('unavailable');
+      const recognizer = createWebSpeechRecognizer();
+      expect(await recognizer.availability('pt-BR', { allowOnline: true })).toBe('ready');
+    });
+
+    it('stays unavailable on a browser that cannot be asked about locality', async () => {
+      // Safari. The opt-in relaxes which mode a qualifying browser may use, not
+      // which browsers qualify.
+      const recognizer = createWebSpeechRecognizer();
+      expect(await recognizer.availability('pt-BR', { allowOnline: true })).toBe('unavailable');
+    });
+  });
+
+  describe('failures carry a reason', () => {
     it.each([
       ['no-speech', 'no-match'],
       ['aborted', 'cancelled'],

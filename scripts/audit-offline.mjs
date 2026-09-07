@@ -79,9 +79,16 @@ const FETCH_PATTERNS = [
 /*
  * `SpeechRecognition` in its default mode streams audio to Google's servers,
  * which would make this application's central claim false. It is permitted in
- * exactly one module, which sets `processLocally = true` and checks
- * `availableOnDevice()` before starting; `webspeech.test.ts` pins both. Anywhere
- * else, it is a bug.
+ * exactly one module, which sets `processLocally` before every start and checks
+ * `availableOnDevice()` first; `webspeech.test.ts` pins both. Anywhere else, it
+ * is a bug.
+ *
+ * That module has one documented way to set `processLocally` false: the
+ * `voiceAllowOnline` setting, off by default, which a person switches on under
+ * a label naming Google. This script has nothing to say about it - no fetch, no
+ * URL and no second use site are involved, so there is nothing here that would
+ * or should catch it. The disclosure lives in docs/OFFLINE.md, which is where a
+ * decision a user makes belongs.
  */
 const SPEECH_ALLOWED_SOURCE = 'src/services/speech/webspeech.ts';
 
@@ -314,8 +321,8 @@ if (speechOffenders.length > 0) {
   for (const { file, text } of speechOffenders) console.error(`  ${file}: ${text}`);
   console.error(
     '\nWithout `processLocally` the browser streams the microphone to Google. Use the recognizer ' +
-      `exported from ${SPEECH_ALLOWED_SOURCE}, which sets it unconditionally and refuses to ` +
-      'start without an on-device model.',
+      `exported from ${SPEECH_ALLOWED_SOURCE}, which sets it before every start and refuses to ` +
+      'start without an on-device model unless the user has opted in.',
   );
   failed = true;
 }
