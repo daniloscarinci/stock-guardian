@@ -98,3 +98,34 @@ describe('parseSpokenDate: an impossible date', () => {
     });
   }
 });
+
+/**
+ * A fraction is not a day.
+ *
+ * The day-month branch used to round whatever numeral it found, and a spoken
+ * numeral does not have to be a whole number: "meio" is 0.5 and "um e meio" is
+ * 1.5. Rounding turned the second into the 2nd of January - a date nobody
+ * said, with no error to notice, written into an expiry field.
+ *
+ * "meio de janeiro" was already null, because 0.5 failed the `day >= 1` guard
+ * that stood next to the rounding. That is exactly what made the defect quiet:
+ * the obvious phrase was safe and the ones a step past it were not.
+ */
+describe('parseSpokenDate: a fractional day', () => {
+  const cases: ReadonlyArray<readonly [string, string | null]> = [
+    ['meio de janeiro', null],
+    ['um e meio de janeiro', null],       // 1.5 used to round to the 2nd
+    ['dois e meio de janeiro', null],     // and 2.5 to the 3rd
+    ['dez e meio de janeiro', null],      // and 10.5 to the 11th
+    // A numeral that lands on a whole number is still a day. "duzia e meia" is
+    // 18 exactly, not 18.5 - the half attaches to the group word.
+    ['meia duzia de janeiro', '2027-01-06'],
+    ['duzia e meia de janeiro', '2027-01-18'],
+  ];
+
+  for (const [input, expected] of cases) {
+    it(`reads "${input}" as ${String(expected)}`, () => {
+      expect(parseSpokenDate(ptBRDates, ptBRNumbers, input, TODAY)).toBe(expected);
+    });
+  }
+});

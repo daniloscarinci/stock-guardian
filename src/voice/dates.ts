@@ -131,8 +131,20 @@ export function parseSpokenDate(
     // The day is read from the END of its capture, because the pattern hands
     // over the words in front of it too - see `trailingNumber`.
     const day = trailingNumber(numbers, dayMonth[1]);
-    if (month !== undefined && day !== null && day >= 1 && day <= 31) {
-      const occurrence = nextOccurrence(today, month, Math.round(day));
+    // A day has to be a whole one. `Math.round` used to stand in the call
+    // below, and a numeral does not have to be an integer: "um e meio de
+    // janeiro" is 1.5, which rounded to the 2nd of January - a date nobody
+    // said, written into an expiry field with nothing to notice it. Same
+    // family as the impossible dates handled by `nextOccurrence`, and the same
+    // answer: refuse it, and the phrase stays UNKNOWN for the user to correct.
+    if (
+      month !== undefined
+      && day !== null
+      && Number.isInteger(day)
+      && day >= 1
+      && day <= 31
+    ) {
+      const occurrence = nextOccurrence(today, month, day);
       if (occurrence !== null) return occurrence;
     }
   }
