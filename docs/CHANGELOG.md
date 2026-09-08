@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.2.0
 
 The 2.1.0 entry below records that release as it shipped and is left standing.
 One of the things it describes — the removal of the microphone — is no longer
