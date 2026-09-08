@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.2.1
 
 The 2.2.0 entry below records that release as it shipped and is left standing.
 The part of it describing `voiceAllowOnline` is no longer true, and it is named
