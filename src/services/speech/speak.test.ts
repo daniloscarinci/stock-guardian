@@ -539,3 +539,50 @@ describe('onVoicesChanged', () => {
     }).not.toThrow();
   });
 });
+
+describe('the automatic local-first choice, across language tags', () => {
+  // LOCALE_TAGS says 'en' and 'es'; real voices say 'en-US', 'es-ES'. A strict
+  // comparison matched neither, so the local-first preference - the reason this
+  // prefers localService at all - did nothing for two languages out of three.
+  const local = (lang: string, name: string) => ({ lang, name, voiceURI: name, localService: true });
+  const remote = (lang: string, name: string) => ({ lang, name, voiceURI: name, localService: false });
+
+  function spoken(voices: readonly unknown[], tag: string) {
+    const speak = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn(), getVoices: () => voices });
+    vi.stubGlobal('SpeechSynthesisUtterance', class {
+      lang = ''; voice: unknown = undefined; constructor(public text: string) {}
+    });
+    return { speak, say: () => createSpeaker(() => true).say('doze latas', tag) };
+  }
+
+  it('finds a local en-US voice for the tag "en"', async () => {
+    const { speak, say } = spoken([remote('en-US', 'Remote'), local('en-US', 'Local')], 'en');
+    await say();
+    expect((speak.mock.calls[0]?.[0] as { voice?: { name: string } }).voice?.name).toBe('Local');
+  });
+
+  it('finds a local es-ES voice for the tag "es"', async () => {
+    const { speak, say } = spoken([local('es-ES', 'Jorge')], 'es');
+    await say();
+    expect((speak.mock.calls[0]?.[0] as { voice?: { name: string } }).voice?.name).toBe('Jorge');
+  });
+
+  it('prefers the exact region over a sibling of the same language', async () => {
+    const { speak, say } = spoken([local('pt-PT', 'Joana'), local('pt-BR', 'Luciana')], 'pt-BR');
+    await say();
+    expect((speak.mock.calls[0]?.[0] as { voice?: { name: string } }).voice?.name).toBe('Luciana');
+  });
+
+  it('still names no voice at all rather than a remote one', async () => {
+    const { speak, say } = spoken([remote('en-US', 'Remote')], 'en');
+    await say();
+    expect((speak.mock.calls[0]?.[0] as { voice?: unknown }).voice).toBeUndefined();
+  });
+
+  it('does not cross languages', async () => {
+    const { speak, say } = spoken([local('pt-BR', 'Luciana')], 'en');
+    await say();
+    expect((speak.mock.calls[0]?.[0] as { voice?: unknown }).voice).toBeUndefined();
+  });
+});

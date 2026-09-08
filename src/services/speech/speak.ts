@@ -262,7 +262,24 @@ function pickVoice(
     if (named !== undefined) return named;
   }
 
-  return voices.find((candidate) => candidate.lang === tag && candidate.localService);
+  /*
+   * The automatic choice, when nothing was picked.
+   *
+   * This compared `candidate.lang === tag` until now, and for two languages out
+   * of three that could never match anything: `LOCALE_TAGS` says `en` and `es`
+   * while real voices report `en-US`, `en-GB`, `es-ES`, `es-MX`. So the
+   * local-first preference - the whole reason this function prefers
+   * `localService`, since a remote voice sends the sentence to a synthesis
+   * service - silently did nothing outside Portuguese.
+   *
+   * An exact region match is still preferred where one exists, because
+   * `pt-BR` should not settle for `pt-PT` while the right voice is installed.
+   */
+  const local = voices.filter((candidate) => candidate.localService);
+  return (
+    local.find((candidate) => candidate.lang === tag) ??
+    local.find((candidate) => sameLanguage(candidate.lang, tag))
+  );
 }
 
 export function createSpeaker(

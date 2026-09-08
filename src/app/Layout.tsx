@@ -7,6 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { useApp } from './AppContext';
 import { Button } from '../components/ui/primitives';
 import { LANGUAGES, type Language } from '../domain/settings';
@@ -58,6 +59,46 @@ export function Layout({ attentionCount }: { readonly attentionCount: number }) 
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
+  }, [settings.theme]);
+
+  /*
+   * Keep Android's status-bar icons legible against whatever this application
+   * is actually painting behind them.
+   *
+   * Capacitor sets the icon appearance from the SYSTEM theme, while this
+   * application's own default is dark whatever the system says. A phone in
+   * light mode therefore drew dark icons over `--surface-base` at #0b1220, and
+   * the clock and battery all but vanished. Clearing the strip so those can be
+   * read - which is why the insets exist at all - and then leaving them
+   * unreadable would have been worse than not clearing it.
+   *
+   * `SystemBarsStyle.Dark` means light content on a dark background, so it is
+   * the one to ask for when the app is dark. `'system'` has to be resolved
+   * against the media query, and re-resolved when the phone changes, which is
+   * why this listens rather than reading once.
+   *
+   * A no-op off Android: `setStyle` is not implemented on the web, so the call
+   * is skipped rather than rejected.
+   */
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const query = globalThis.matchMedia?.('(prefers-color-scheme: light)');
+
+    const apply = () => {
+      const dark = settings.theme === 'dark' || (settings.theme === 'system' && !query?.matches);
+      void SystemBars.setStyle({
+        style: dark ? SystemBarsStyle.Dark : SystemBarsStyle.Light,
+      }).catch(() => undefined);
+    };
+
+    apply();
+    if (settings.theme !== 'system' || query === undefined) return;
+
+    query.addEventListener('change', apply);
+    return () => {
+      query.removeEventListener('change', apply);
+    };
   }, [settings.theme]);
 
   useEffect(() => {
