@@ -40,81 +40,72 @@ sets out what the other one sends.
 ## What you can say
 
 Every row below is taken from `src/voice/grammar/*.phrases.test.ts`, which is a
-corpus rather than a sample: 222 rows across the three languages, and a phrase
+corpus rather than a sample: 848 rows across the three languages, and a phrase
 that is not in it is a phrase this document does not claim. They are written the
-way speech used to arrive — lowercase, and often without accents — because a
+way speech used to arrive - lowercase, and often without accents - because a
 folded, unaccented phrase is still what the parser is built to survive, and the
 corpus was not weakened when the microphone went.
 
-### Asking
+Accents, capitals and question marks are all optional. `o que ta vencendo` and
+`O que está vencendo?` fold to the same thing before any rule sees them.
 
-| Português | English | Español |
-|---|---|---|
-| `quanto arroz eu tenho` | `how much rice do i have` | `cuanto arroz tengo` |
-| `quantas latas de feijao preto eu tenho` | `how many cans of black beans do i have` | `cuantas latas de frijoles negros tengo` |
-| `quantos ovos restam` | `how many eggs are left` | `cuantos huevos quedan` |
-| `o que esta vencendo` | `what is expiring` | `que esta venciendo` |
-| `o que ja venceu` | `what has expired` | `que ya vencio` |
-| `o que vence nos proximos 30 dias` | `what will expire in the next 30 days` | `que vence en los proximos 30 dias` |
-| `o que falta` | `what do i need to buy` | `que necesito comprar` |
-| `lista de compras` | `shopping list` | `lista de compras` |
-| `onde esta o arroz` | `where is the rice` | `donde esta el arroz` |
-| `o que tem na despensa` | `what is in the pantry` | `que hay en la despensa` |
-| `quando vence o leite` | `when does the milk expire` | `cuando vence la leche` |
-| `como esta minha preparacao` | `how prepared am i` | `como estoy de preparacion` |
-| `ajuda` | `help` | `ayuda` |
+A one-page version of this table, formatted to read on a phone or print for a
+wall, is at <https://claude.ai/code/artifact/fe802827-2be9-46fc-8529-cddf3e5b23c4>.
+It carries the same phrases, and every one of them was run through `parse()`
+before it was published.
 
-Word order is forgiving where forgiving costs nothing. `tenho quanto de acucar`,
-`restam quantos ovos` and `cuanto tengo de azucar` are all answered, because
-these are read-only questions and the worst outcome of a generous reading is a
-number you did not want. Writes are not treated this way.
+### Asking - eleven questions, none of which writes anything
 
-`como esta minha preparacao` answers with the number the Preparedness card
-shows, not with a number of its own. `execute` calls `evaluatePreparedness` with
-the tracked categories from settings, exactly as the dashboard does, so the two
-cannot drift apart. That matters because the two are not the same arithmetic as
-a percentage of healthy items: categories count equally, so an empty water
-category pulls the score down however full the pantry is. `execute.queries.test.ts`
-asserts the equality rather than the plausibility of the spoken number.
+| What it tells you | Português | English | Español |
+|---|---|---|---|
+| How much you have | `quanto arroz eu tenho`<br>`sobrou arroz` | `how much rice do i have`<br>`any rice left` | `cuanto arroz tengo`<br>`queda arroz` |
+| What is expiring | `o que ta vencendo`<br>`o que ja venceu` | `is anything expiring`<br>`what expires this week` | `que esta por vencer`<br>`que vence esta semana` |
+| What is running out | `o que ta faltando`<br>`o que preciso repor` | `what am i low on`<br>`what have i run out of` | `que me hace falta`<br>`que tengo que reponer` |
+| Where something is | `onde ta o arroz` | `where is the rice` | `donde esta el arroz` |
+| What is in a place | `o que tem na despensa` | `whats in the pantry` | `que hay en la despensa` |
+| What is in a category | `o que tem na categoria alimentos` | `whats in the food category` | `que hay en la categoria alimentos` |
+| When one thing expires | `quando vence o leite` | `when does the milk expire` | `cuando vence la leche` |
+| An item's history | `quando comprei arroz` | `when did i last buy rice` | `cuando compre arroz` |
+| A phone number | `qual o telefone do medico` | `whats the doctors number` | `cual es el telefono del medico` |
+| How prepared you are | `como ta minha preparacao` | `how prepared am i` | `que tan preparado estoy` |
+| How much there is of everything | `quantos itens eu tenho` | `how many items do i have` | `cuantos items tengo` |
 
-### Changing
+### Changing - seven, each confirmed or undoable
 
-| Português | English | Español |
-|---|---|---|
-| `adiciona cinco latas de feijao` | `add five cans of beans` | `agrega cinco latas de frijoles` |
-| `comprei 2 kg de arroz` | `i bought 2 kg of rice` | `compre 2 kg de arroz` |
-| `usei 3 ovos` | `i used 3 eggs` | `use 3 huevos` |
-| `tira meio quilo de arroz` | `take half a kilo of rice` | `quita medio kilo de arroz` |
-| `usei meia duzia de ovos` | `i ate half a dozen eggs` | `comi media docena de huevos` |
-| `poe mais 2 ovos` | `add 2 more eggs` | `pon mas 2 huevos` |
-| `agora tenho 12 latas de feijao` | `now i have 12 cans of beans` | `ahora tengo 12 latas de frijoles` |
-| `o leite vence dia 12` | `the milk expires on the 12th` | `la leche vence el 12` |
-| `o arroz vence em 10 de outubro` | `the rice expires on october 10` | `el arroz vence el 10 de octubre` |
-| `criar item 10 kg de arroz na despensa` | `create item 10 kg of rice in the pantry` | `crear item 10 kg de arroz en la despensa` |
+| What it does | Português | English | Español |
+|---|---|---|---|
+| Add or take away | `adiciona cinco latas de feijao`<br>`usei 3 ovos` | `add five cans of beans`<br>`i used 3 eggs` | `agrega cinco latas de frijoles`<br>`use 3 huevos` |
+| Correct a count | `agora tenho 12 latas de feijao` | `now i have 12 cans of beans` | `ahora tengo 12 latas de frijoles` |
+| Set an expiry date | `o leite vence dia 12`<br>`o arroz vence em 10 de outubro` | `the milk expires on the 12th` | `la leche vence el 12` |
+| Add something new | `criar item 10 kg de arroz na despensa` | `create item 10 kg of rice in the pantry` | `crear item 10 kg de arroz en la despensa` |
+| Move it somewhere else | `move o arroz para o porao` | `move the rice to the cellar` | `mueve el arroz al sotano` |
+| Set a minimum | `o minimo de arroz e 5 quilos` | `the minimum for rice is 5 kg` | `el minimo de arroz es 5 kilos` |
+| Set a target | `quero ter 20 latas de feijao` | `i want 20 cans of beans` | `quiero tener 20 latas de frijoles` |
 
-The verb decides the direction and the reason. `comprei` records a purchase,
-`usei` records consumption, and `agora tenho 12` records a correction — so the
-movement history says why the number moved, not merely that it did.
+`ajuda` / `help` / `ayuda` lists examples in whichever language the interface is
+set to, drawn from the grammar itself so they cannot drift out of date.
 
-### What is refused on purpose
+### The two that are not on the list
 
-| Said | Answer |
-|---|---|
-| `comprei arroz` | UNKNOWN |
-| `add beans` | UNKNOWN |
-| `quanto tem` | UNKNOWN |
-| `poe menos 2 ovos` | UNKNOWN |
-| `o arroz vence 31 de abril` | UNKNOWN |
+`MOVE_ITEM` refuses a destination that does not exist rather than moving an item
+to nowhere, and it declines a phrase that names a quantity - `coloca 2 quilos de
+arroz na despensa` is two kilos arriving on a shelf, not a partial move, and an
+item holds one location. A partial move is not something this application can
+perform, so it is not something this parser pretends to understand.
 
-A write with no number stays UNKNOWN. "I bought rice" is an ordinary sentence
-and the tempting reading is +1, but nothing in it says one. Guessing writes a
-number the user never said into an emergency food inventory and then tells them
-it worked — the exact failure this design exists to prevent. UNKNOWN puts the
-phrase back on the screen with examples beside it, where a person can see what
-was read and type the amount.
+`SET_MINIMUM` and `SET_TARGET` ask before storing a number counted in a unit the
+row does not keep. A wrong adjustment shows up the next time anyone looks at the
+quantity; a wrong minimum shows up as a replenishment list that is quietly wrong
+about what is running out.
 
-A question with no item is refused for the same reason: the item is what is
-missing, not something the parser mislaid.
+### Numbers and dates
+
+Numbers may be words: `cinco`, `vinte e cinco`, `meia duzia`, `meio quilo`,
+`dois mil`. `1,5` is one and a half, with the comma Portuguese and Spanish write.
+
+Dates may be vague: `hoje`, `amanha`, `dia 12`, `12 de setembro`, `em marco`,
+`daqui a 30 dias`, `semana que vem`. A bare month means its last day, because
+"vence em marco" names a deadline rather than an instant.
 
 `31 de abril` is refused rather than repaired. April has never had a 31st, so
 there is no year in which that phrase means anything.
