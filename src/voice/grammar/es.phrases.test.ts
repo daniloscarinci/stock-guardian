@@ -18,7 +18,11 @@ const say = (text: string): Intent => parse(esGrammar, text, CTX);
 
 describe('es phrases: asking', () => {
   const quantity = ['cuanto arroz tengo', 'cuanto arroz', 'cuantas latas de frijoles tengo',
-    'hay azucar', 'tengo agua', 'cuanta agua tengo', 'cuanto queda de cafe'];
+    'hay azucar', 'tengo agua', 'cuanta agua tengo', 'cuanto queda de cafe',
+    // The clipped register, which is most of what a phone actually receives.
+    'queda arroz', 'quedan huevos', 'todavia tengo frijoles', 'todavia hay cafe',
+    'aun tengo arroz', 'sobra arroz', 'dime cuanto arroz hay',
+    'muestrame cuanto arroz tengo', 'cuanto arroz me queda'];
   for (const phrase of quantity) {
     it(`"${phrase}" asks a quantity`, () => {
       expect(say(phrase).kind).toBe('QUERY_QUANTITY');
@@ -60,14 +64,18 @@ describe('es phrases: asking', () => {
   }
 
   const expiring = ['que esta venciendo', 'que vence', 'cuales items estan venciendo',
-    'que va a vencer'];
+    'que va a vencer',
+    'que esta por vencer', 'que se vence', 'hay algo venciendo', 'algo venciendo',
+    'que productos estan venciendo', 'que cosas van a vencer',
+    'que esta caducando', 'que va a caducar', 'que se esta echando a perder'];
   for (const phrase of expiring) {
     it(`"${phrase}" asks what is expiring`, () => {
       expect(say(phrase)).toMatchObject({ kind: 'QUERY_EXPIRING', expiredOnly: false });
     });
   }
 
-  const expired = ['que ha vencido', 'que ya vencio'];
+  const expired = ['que ha vencido', 'que ya vencio', 'que vencio',
+    'que esta vencido', 'que ha caducado', 'que ya caduco'];
   for (const phrase of expired) {
     it(`"${phrase}" asks only for what is already past`, () => {
       expect(say(phrase)).toMatchObject({ kind: 'QUERY_EXPIRING', expiredOnly: true });
@@ -80,8 +88,33 @@ describe('es phrases: asking', () => {
     });
   });
 
+  /**
+   * A period is a window too.
+   *
+   * "esta semana" and "este mes" are the ordinary way to ask, and the number
+   * behind each is this application's own - seven and thirty, the figures the
+   * expiry screen already uses. Saying it out loud in a row here is what keeps
+   * that choice honest: nobody said seven.
+   */
+  const windows: ReadonlyArray<readonly [string, number]> = [
+    ['que vence hoy', 0],
+    ['que vence manana', 1],
+    ['que vence esta semana', 7],
+    ['que vence este mes', 30],
+    ['que vence dentro de 10 dias', 10],
+  ];
+  for (const [phrase, withinDays] of windows) {
+    it(`"${phrase}" asks about ${withinDays} days`, () => {
+      expect(say(phrase)).toMatchObject({ kind: 'QUERY_EXPIRING', withinDays });
+    });
+  }
+
   const missing = ['que falta', 'que me falta', 'que necesito comprar',
-    'lista de compras', 'que esta acabando'];
+    'lista de compras', 'que esta acabando',
+    'que me hace falta', 'que faltan', 'que se acabo', 'que se termino',
+    'que tengo que comprar', 'que hay que comprar', 'que debo comprar',
+    'que necesito reponer', 'que tengo que reponer', 'que falta comprar',
+    'lista del super', 'lista del mercado', 'que comprar', 'que reponer'];
   for (const phrase of missing) {
     it(`"${phrase}" asks what is missing`, () => {
       expect(say(phrase).kind).toBe('QUERY_MISSING');
@@ -91,6 +124,12 @@ describe('es phrases: asking', () => {
   const whereItem: ReadonlyArray<readonly [string, string]> = [
     ['donde esta el arroz', 'arroz'],
     ['donde estan las pilas', 'pilas'],
+    ['donde guardo el arroz', 'arroz'],
+    ['donde guarde el arroz', 'arroz'],
+    ['donde puse el arroz', 'arroz'],
+    ['donde deje el arroz', 'arroz'],
+    ['donde quedo el arroz', 'arroz'],
+    ['en que lugar esta el arroz', 'arroz'],
   ];
   for (const [phrase, item] of whereItem) {
     it(`"${phrase}" asks where ${item} is`, () => {
@@ -101,6 +140,11 @@ describe('es phrases: asking', () => {
   const whereLocation: ReadonlyArray<readonly [string, string]> = [
     ['que hay en la despensa', 'despensa'],
     ['que tengo en el congelador', 'congelador'],
+    ['que guardo en el sotano', 'sotano'],
+    ['que esta en la despensa', 'despensa'],
+    ['que hay dentro de la nevera', 'nevera'],
+    ['que hay guardado en el garaje', 'garaje'],
+    ['muestrame que hay en la despensa', 'despensa'],
   ];
   for (const [phrase, location] of whereLocation) {
     it(`"${phrase}" asks what is in the ${location}`, () => {
@@ -108,26 +152,149 @@ describe('es phrases: asking', () => {
     });
   }
 
-  const expiryOf = ['cuando vence la leche', 'cuando caduca la leche'];
+  const expiryOf = ['cuando vence la leche', 'cuando caduca la leche',
+    'cuando se vence la leche', 'cuando la leche se vence',
+    'cuando la leche caduca', 'cuando expira la leche',
+    'cual es la fecha de vencimiento de la leche',
+    'cual es la caducidad de la leche'];
   for (const phrase of expiryOf) {
     it(`"${phrase}" asks when milk expires`, () => {
       expect(say(phrase)).toEqual({ kind: 'QUERY_EXPIRY_OF', item: 'leche' });
     });
   }
 
-  const score = ['como estoy de preparacion', 'que tan preparado estoy'];
+  const score = ['como estoy de preparacion', 'que tan preparado estoy',
+    'como voy de preparacion', 'que tan listo estoy', 'cual es mi puntuacion',
+    'cual es mi nivel', 'mi puntuacion', 'estoy preparado', 'estoy listo'];
   for (const phrase of score) {
     it(`"${phrase}" asks for the preparedness score`, () => {
       expect(say(phrase).kind).toBe('QUERY_SCORE');
     });
   }
 
-  const help = ['ayuda', 'que puedes hacer'];
+  const help = ['ayuda', 'que puedes hacer', 'ayudame', 'que entiendes',
+    'que sabes hacer', 'que puedo decir', 'que puedo preguntar',
+    'cuales son los comandos', 'como funciona', 'como se usa'];
   for (const phrase of help) {
     it(`"${phrase}" asks for help`, () => {
       expect(say(phrase).kind).toBe('HELP');
     });
   }
+});
+
+describe('es phrases: the whole stock, the address book and the past', () => {
+  const total = ['cuantos items tengo', 'cuantos items', 'cuantas cosas tengo',
+    'cuantos productos tengo', 'cuantos articulos hay', 'cuantos items en total',
+    'cual es el total de items', 'total de items', 'que tan grande es mi inventario'];
+  for (const phrase of total) {
+    it(`"${phrase}" counts the whole inventory`, () => {
+      expect(say(phrase)).toEqual({ kind: 'QUERY_TOTAL' });
+    });
+  }
+
+  /**
+   * The counting question and the whole-stock question are one word apart.
+   *
+   * "cuantos items de arroz tengo" is about rice, and it has to survive
+   * QUERY_TOTAL to reach the rule that can answer it - the `$` on that rule is
+   * what lets it through.
+   */
+  it('still asks about one item when the sentence names one', () => {
+    expect(say('cuantos items de arroz tengo')).toEqual({
+      kind: 'QUERY_QUANTITY', item: 'arroz',
+    });
+  });
+
+  const contact: ReadonlyArray<readonly [string, string]> = [
+    ['cual es el telefono del medico', 'medico'],
+    ['cual es el numero del medico', 'medico'],
+    ['telefono del medico', 'medico'],
+    ['numero de ana', 'ana'],
+    ['celular del vecino', 'vecino'],
+    ['contacto del vecino', 'vecino'],
+    ['me pasa el telefono del medico', 'medico'],
+    ['como llamo al medico', 'medico'],
+    ['como contacto a ana', 'ana'],
+  ];
+  for (const [phrase, query] of contact) {
+    it(`"${phrase}" looks up ${query} in the contacts`, () => {
+      expect(say(phrase)).toEqual({ kind: 'QUERY_CONTACT', query });
+    });
+  }
+
+  /**
+   * The article comes off the front and nothing else does.
+   *
+   * `contacts.search` asks whether a stored field CONTAINS the phrase, so "el
+   * medico" matches nothing and "medico" matches the doctor - while a name
+   * with a preposition inside it has to survive whole.
+   */
+  it('keeps the inside of a name and drops only the article', () => {
+    expect(say('telefono de ana de la clinica')).toEqual({
+      kind: 'QUERY_CONTACT', query: 'ana de la clinica',
+    });
+  });
+
+  const history: ReadonlyArray<readonly [string, string]> = [
+    ['cuando compre arroz', 'arroz'],
+    ['cuando compramos arroz', 'arroz'],
+    ['cuando fue que compre arroz', 'arroz'],
+    ['cuando use los frijoles', 'frijoles'],
+    ['cuando abri la leche', 'leche'],
+    ['cuando fue la ultima vez que compre arroz', 'arroz'],
+    ['historial del arroz', 'arroz'],
+    ['el historial de arroz', 'arroz'],
+    ['movimientos del arroz', 'arroz'],
+    ['la ultima compra de arroz', 'arroz'],
+  ];
+  for (const [phrase, item] of history) {
+    it(`"${phrase}" asks for the history of ${item}`, () => {
+      expect(say(phrase)).toEqual({ kind: 'QUERY_HISTORY', item });
+    });
+  }
+
+  /**
+   * "cuando compre" and "cuando vence" open identically, and only one of them
+   * is about a date in the future. The expiry question is tried first and
+   * declines everything that is not about a date, which keeps these apart.
+   */
+  it('does not read a history question as an expiry question', () => {
+    expect(say('cuando compre la leche')).toEqual({ kind: 'QUERY_HISTORY', item: 'leche' });
+    expect(say('cuando vence la leche')).toEqual({ kind: 'QUERY_EXPIRY_OF', item: 'leche' });
+  });
+
+  const category: ReadonlyArray<readonly [string, string]> = [
+    ['que hay en la categoria alimentos', 'alimentos'],
+    ['que tengo en la categoria agua', 'agua'],
+    ['que items en categoria alimentos', 'alimentos'],
+    ['muestra la categoria alimentos', 'alimentos'],
+    ['muestrame la categoria alimentos', 'alimentos'],
+    ['lista la categoria alimentos', 'alimentos'],
+    ['categoria alimentos', 'alimentos'],
+  ];
+  for (const [phrase, name] of category) {
+    it(`"${phrase}" asks for the ${name} category`, () => {
+      expect(say(phrase)).toEqual({ kind: 'QUERY_CATEGORY', category: name });
+    });
+  }
+
+  /**
+   * THE DECISION, written down.
+   *
+   * "que hay en alimentos" names something that could be a shelf or could be a
+   * category, and the words cannot say which - so the grammar does not try. It
+   * produces the LOCATION question, and `execute` looks for a place first and
+   * falls back to the category when there is none. A place wins because it is
+   * the more concrete of the two: locations are things the user made and
+   * named, categories are twenty fixed labels that ship with the application.
+   *
+   * The unambiguous form above says "categoria" out loud and skips the race.
+   */
+  it('leaves the ambiguous form as a place, for execute to resolve', () => {
+    expect(say('que hay en alimentos')).toEqual({
+      kind: 'QUERY_WHERE', item: null, location: 'alimentos',
+    });
+  });
 });
 
 describe('es phrases: changing', () => {
@@ -162,6 +329,48 @@ describe('es phrases: changing', () => {
       direction: 'down', transaction: 'consume',
     });
   });
+
+  /**
+   * Stock arrives in more ways than it is "agregado", and the words differ by
+   * half a continent: "coger" is ordinary in Spain and startling in much of
+   * Latin America, where "agarrar" does the same work. Both are here.
+   */
+  const arriving: ReadonlyArray<readonly [string, string, number]> = [
+    ['recibi 4 cajas de leche', 'leche', 4],
+    ['meti 2 latas de frijoles', 'frijoles', 2],
+    ['puse 3 botellas de agua', 'agua', 3],
+    ['coloque 2 kilos de arroz', 'arroz', 2],
+    ['guarde 5 latas de frijoles', 'frijoles', 5],
+    ['traje 3 bolsas de arroz', 'arroz', 3],
+    ['consegui 2 paquetes de arroz', 'arroz', 2],
+    ['llegaron 6 latas de frijoles', 'frijoles', 6],
+  ];
+  for (const [phrase, item, amount] of arriving) {
+    it(`"${phrase}" adds ${amount} of ${item}`, () => {
+      expect(say(phrase)).toMatchObject({
+        kind: 'ADJUST_QUANTITY', item, amount, direction: 'up',
+      });
+    });
+  }
+
+  const leaving: ReadonlyArray<readonly [string, string, number]> = [
+    ['cogi 3 huevos', 'huevos', 3],
+    ['agarre 2 latas de frijoles', 'frijoles', 2],
+    ['bote 2 huevos', 'huevos', 2],
+    ['tome 2 litros de agua', 'agua', 2],
+    ['bebi 1 litro de agua', 'agua', 1],
+    ['comimos 6 huevos', 'huevos', 6],
+    ['abri una lata de frijoles', 'frijoles', 1],
+    ['perdi 3 huevos', 'huevos', 3],
+    ['saque 2 kilos de arroz', 'arroz', 2],
+  ];
+  for (const [phrase, item, amount] of leaving) {
+    it(`"${phrase}" removes ${amount} of ${item}`, () => {
+      expect(say(phrase)).toMatchObject({
+        kind: 'ADJUST_QUANTITY', item, amount, direction: 'down',
+      });
+    });
+  }
 
   it('removes with a fraction', () => {
     expect(say('quita medio kilo de arroz')).toMatchObject({
@@ -216,6 +425,46 @@ describe('es phrases: changing', () => {
       kind: 'SET_QUANTITY', amount: 0, item: 'huevos',
     });
   });
+
+  /**
+   * "se acabo el arroz" is a number, not a removal.
+   *
+   * Read as an adjustment it would take one bag off a shelf that is already
+   * empty - wrong, and useless. The speaker is stating what is there now,
+   * which is nothing, so it sets the quantity to zero the way "ahora tengo 12"
+   * sets it to twelve.
+   */
+  const emptied = ['se acabo el arroz', 'se acabaron los huevos', 'se termino el arroz',
+    'ya no hay arroz', 'ya no queda arroz', 'ya no tengo arroz',
+    'use todo el arroz', 'comi todos los huevos', 'se agoto el arroz'];
+  for (const phrase of emptied) {
+    it(`"${phrase}" sets the quantity to zero`, () => {
+      expect(say(phrase)).toMatchObject({ kind: 'SET_QUANTITY', amount: 0 });
+    });
+  }
+
+  it('names the item that ran out', () => {
+    expect(say('se acabo el arroz')).toEqual({
+      kind: 'SET_QUANTITY', item: 'arroz', amount: 0, unit: null,
+    });
+  });
+
+  /**
+   * "solo quedan 2 huevos" says what is left, which is a correction rather
+   * than a removal: two is the count now, not the count that went.
+   */
+  const leftovers: ReadonlyArray<readonly [string, string, number]> = [
+    ['solo quedan 2 huevos', 'huevos', 2],
+    ['quedan solo 2 huevos', 'huevos', 2],
+    ['solo hay 3 latas de frijoles', 'frijoles', 3],
+    ['solamente tengo 1 kilo de arroz', 'arroz', 1],
+    ['queda solo 1 litro de agua', 'agua', 1],
+  ];
+  for (const [phrase, item, amount] of leftovers) {
+    it(`"${phrase}" corrects ${item} to ${amount}`, () => {
+      expect(say(phrase)).toMatchObject({ kind: 'SET_QUANTITY', item, amount });
+    });
+  }
 
   /**
    * A write with no number is read as one, and says so.
@@ -290,6 +539,111 @@ describe('es phrases: changing', () => {
   });
 });
 
+describe('es phrases: moving and thresholds', () => {
+  const moves: ReadonlyArray<readonly [string, string, string]> = [
+    ['mueve el arroz al sotano', 'arroz', 'sotano'],
+    ['mueve el arroz para el sotano', 'arroz', 'sotano'],
+    ['mover el arroz a la cocina', 'arroz', 'cocina'],
+    ['traslada los frijoles al garaje', 'frijoles', 'garaje'],
+    ['transfiere el agua al sotano', 'agua', 'sotano'],
+    ['pasa el arroz a la cocina', 'arroz', 'cocina'],
+    ['lleva los frijoles a la cocina', 'frijoles', 'cocina'],
+    ['guarde el arroz en la despensa', 'arroz', 'despensa'],
+    ['pon el arroz en la despensa', 'arroz', 'despensa'],
+    ['mete los frijoles en el sotano', 'frijoles', 'sotano'],
+    ['coloca el arroz dentro de la nevera', 'arroz', 'nevera'],
+  ];
+  for (const [phrase, item, location] of moves) {
+    it(`"${phrase}" moves ${item} to the ${location}`, () => {
+      expect(say(phrase)).toEqual({ kind: 'MOVE_ITEM', item, location });
+    });
+  }
+
+  /**
+   * The overlap between moving and adding, decided by the destination and by
+   * the number.
+   *
+   * "guardar" is both. With a shelf it moves the row that exists; without one
+   * it is stock arriving. And a NUMBER in front of the item means the sentence
+   * is about a quantity, not about a row changing shelf - an item holds one
+   * location, so a partial move is not something this application can perform.
+   */
+  it('reads the same verb as an addition when no destination was named', () => {
+    expect(say('guarde 5 latas de frijoles')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'frijoles', amount: 5, direction: 'up',
+    });
+  });
+
+  it('reads a numbered phrase as an addition even with a shelf in it', () => {
+    expect(say('pon 2 kilos de arroz en la despensa')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', amount: 2, direction: 'up',
+    });
+  });
+
+  const minimums: ReadonlyArray<readonly [string, string, number]> = [
+    ['el minimo de arroz es 5 kilos', 'arroz', 5],
+    ['el minimo de arroz es de 5 kilos', 'arroz', 5],
+    ['minimo de arroz es 5 kilos', 'arroz', 5],
+    ['el stock minimo de arroz es 5 kilos', 'arroz', 5],
+    ['el nivel minimo de agua es 20 litros', 'agua', 20],
+    ['quiero tener al menos 5 kilos de arroz', 'arroz', 5],
+    ['necesito mantener al menos 10 latas de frijoles', 'frijoles', 10],
+    ['tener por lo menos 12 botellas de agua', 'agua', 12],
+    ['al menos 10 latas de frijoles', 'frijoles', 10],
+  ];
+  for (const [phrase, item, amount] of minimums) {
+    it(`"${phrase}" sets the minimum for ${item} to ${amount}`, () => {
+      expect(say(phrase)).toMatchObject({ kind: 'SET_MINIMUM', item, amount });
+    });
+  }
+
+  it('keeps the unit the minimum was spoken in', () => {
+    expect(say('el minimo de arroz es 5 kilos')).toEqual({
+      kind: 'SET_MINIMUM', item: 'arroz', amount: 5, unit: 'kilos',
+    });
+  });
+
+  /** Zero is a minimum: it says "never warn me about this one again". */
+  it('accepts a minimum of zero', () => {
+    expect(say('el minimo de arroz es 0')).toMatchObject({
+      kind: 'SET_MINIMUM', amount: 0,
+    });
+  });
+
+  const targets: ReadonlyArray<readonly [string, string, number]> = [
+    ['quiero tener 20 latas de frijoles', 'frijoles', 20],
+    ['quiero tener 20 huevos', 'huevos', 20],
+    ['quiero mantener 20 latas de frijoles', 'frijoles', 20],
+    ['necesito tener 12 botellas de agua', 'agua', 12],
+    ['la meta de frijoles es 20 latas', 'frijoles', 20],
+    ['el objetivo de agua es 50 litros', 'agua', 50],
+    ['el ideal de arroz es de 30 kilos', 'arroz', 30],
+  ];
+  for (const [phrase, item, amount] of targets) {
+    it(`"${phrase}" sets the target for ${item} to ${amount}`, () => {
+      expect(say(phrase)).toMatchObject({ kind: 'SET_TARGET', item, amount });
+    });
+  }
+
+  /**
+   * The two thresholds share an opener, and the order decides it.
+   *
+   * "quiero tener al menos 5 kilos de arroz" is a MINIMUM, and SET_MINIMUM
+   * runs first precisely so that the target rule never sees it.
+   */
+  it('reads "al menos" as a minimum rather than a target', () => {
+    expect(say('quiero tener al menos 5 kilos de arroz')).toMatchObject({
+      kind: 'SET_MINIMUM', item: 'arroz', amount: 5,
+    });
+  });
+
+  it('reads the same opener without "al menos" as a target', () => {
+    expect(say('quiero tener 5 kilos de arroz')).toMatchObject({
+      kind: 'SET_TARGET', item: 'arroz', amount: 5,
+    });
+  });
+});
+
 describe('es phrases: what must NOT parse', () => {
   const rejected = ['', '   ', 'arroz', 'frijoles negros', 'y', 'aaa bbb ccc',
     'gracias'];
@@ -323,9 +677,39 @@ describe('es phrases: what must NOT parse', () => {
    *   "agrega latas de" has no item left once the unit and the filler come
    *   off, and an adjustment with no item is not an adjustment.
    */
-  const clipped = ['quita de arroz', 'agrega latas de'];
+  const clipped = ['quita de arroz', 'agrega latas de',
+    // The same argument with a shelf instead of a measure: "guarde [el arroz]
+    // en la despensa" lost its item, and adding one of a product called
+    // "despensa" would invent a row named after the shelf it was going on.
+    'guarde en la despensa', 'agrega en la despensa', 'pon en el sotano',
+    // A number with nothing to count. Answering would send a bare number to
+    // the item search.
+    'quedan solo 2', 'solo hay 3'];
   for (const phrase of clipped) {
     it(`"${phrase}" is a fragment, so it stays UNKNOWN`, () => {
+      expect(say(phrase).kind).toBe('UNKNOWN');
+    });
+  }
+
+  /**
+   * The new rules refuse as much as they accept.
+   *
+   * Every one of these is the opening of a sentence the grammar understands,
+   * with the part that carries the meaning missing. A move with no destination
+   * is not a move; a threshold with no number is not a threshold; a category
+   * or a contact with nothing named is not a question anyone can answer.
+   */
+  const halfSaid = [
+    'mueve el arroz', 'mueve al sotano', 'traslada', 'lleva a la cocina',
+    'el minimo de arroz', 'el minimo de arroz es mucho', 'al menos de arroz',
+    'quiero tener', 'quiero tener mucho arroz', 'la meta de frijoles',
+    'categoria', 'muestra la categoria',
+    'telefono', 'cual es el telefono', 'contacto de',
+    'cuando compre', 'historial de', 'la ultima compra de',
+    'cuantos items de', 'que hay en',
+  ];
+  for (const phrase of halfSaid) {
+    it(`"${phrase}" says half a command, so it stays UNKNOWN`, () => {
       expect(say(phrase).kind).toBe('UNKNOWN');
     });
   }
