@@ -1,20 +1,23 @@
 /**
  * The switch on the side of the phone.
  *
- * All that is left of what used to be `capacitor.ts`, and it is here because
- * the speaker needs it. Reading an answer aloud is a sound the device makes;
- * a phone on silent should make none, and a WebView cannot see the ringer
- * mode on its own. `speak.ts` deliberately knows nothing about platforms, so
- * the voice sheet composes the two: this answers "is the phone silenced", the
- * setting answers "did the user ask for speech at all", and either one saying
- * no is enough.
+ * It is here because the speaker needs it. Reading an answer aloud is a sound
+ * the device makes; a phone on silent should make none, and a WebView cannot
+ * see the ringer mode on its own. `speak.ts` deliberately knows nothing about
+ * platforms, so the voice sheet composes the two: this answers "is the phone
+ * silenced", the setting answers "did the user ask for speech at all", and
+ * either one saying no is enough.
  *
- * The rest of that file - the system recognizer, the availability probe, the
- * offline-model heuristics - went with the microphone. Android's recognizer
- * refuses EXTRA_PREFER_OFFLINE with no Portuguese pack installed, which is the
- * phone this was built for, and the feature was dropped rather than left to
- * fail silently. `android/.../RingerPlugin.java` is the matching remnant on the
- * other side of the bridge.
+ * THIS AND `capacitor.ts` WERE ONE MODULE, AND THEY ARE NOT AGAIN. The
+ * microphone was removed once, this half stayed behind because the speaker
+ * could not do without it, and when the microphone came back the two were left
+ * apart on purpose: the ringer belongs to the output, the recognizer to the
+ * input, and nothing about playing a sentence should drag a speech recognizer
+ * into its module graph. `android/.../RingerPlugin.java` is the matching
+ * remnant on the other side of the bridge, one method wide.
+ *
+ * `isNativeAndroid` is exported and `capacitor.ts` imports it rather than
+ * keeping a second copy, because two copies of one predicate is how they drift.
  *
  * Off Android this is false and the bridge is never asked: a browser cannot
  * read that state, so there the setting is the only control there is.

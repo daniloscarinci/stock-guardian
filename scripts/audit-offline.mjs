@@ -20,8 +20,9 @@
  *     checked for URLs in positions that actually cause a fetch.
  *   - Source maps are skipped: they are debugging artifacts, requested only by
  *     devtools, never by the application.
- *   - `SpeechRecognition` is read out of `src/` rather than `dist/`, and is now
- *     permitted in no module at all. See SPEECH_ALLOWED_SOURCE below.
+ *   - `SpeechRecognition` is read out of `src/` rather than `dist/`, because it
+ *     is permitted in exactly one module and a bundle has no modules left to
+ *     name. See SPEECH_ALLOWED_SOURCE below.
  *
  * One host is allowed, and it is the only one: `https://api.anthropic.com`,
  * reached from `src/services/ai/client.ts` and from nowhere else, so that the
@@ -138,30 +139,29 @@ const FETCH_PATTERNS = [
 
 /*
  * `SpeechRecognition` in its default mode streams audio to Google's servers,
- * which would make this application's central claim false.
+ * which would make this application's central claim false. It is permitted in
+ * exactly one module, which sets `processLocally` before every start and checks
+ * `availableOnDevice()` first; `webspeech.test.ts` pins both. Anywhere else, it
+ * is a bug.
  *
- * IT USED TO BE PERMITTED IN ONE MODULE. THAT MODULE IS GONE, AND THE RULE IS
- * NOT. `webspeech.ts` set `processLocally` before every start and was the sole
- * allowed use site; the microphone was then removed outright, because Android's
- * recognizer refuses EXTRA_PREFER_OFFLINE with no offline Portuguese pack
- * installed - the phone this was built for - and a button that silently did
- * nothing was worse than no button.
+ * THE ALLOWANCE WAS `null` FOR ONE RELEASE, AND THE RULE OUTLIVED ITS SUBJECT
+ * ON PURPOSE. Speech input was removed when Android's recognizer refused
+ * EXTRA_PREFER_OFFLINE on a phone with no Portuguese pack, and the rule was
+ * kept pointing at nothing rather than deleted, because the hazard does not
+ * move when a file does: the browser API is still there, still streams audio by
+ * default, and the way it comes back is somebody adding speech input again in
+ * good faith. Speech input did come back. The rule was waiting, and naming its
+ * one module again is the whole of what that cost.
  *
- * So the allowance is now `null`, which no filename equals: the identifier is
- * permitted NOWHERE, and any reappearance of it fails the build. Deleting the
- * rule along with its subject was the other option and would have been the
- * wrong one. The hazard did not move when the file did - the browser API is
- * still there, still streams audio by default, and the way it would come back
- * is somebody adding speech input again in good faith, in a build whose only
- * check for it had been quietly retired as unused. A rule guarding nothing
- * costs one string comparison per source file; the check it replaces cannot be
- * bought back afterwards.
- *
- * `voiceAllowOnline`, the setting that let that module send audio to Google,
- * is gone with it. There is no longer any path by which this application sends
- * a microphone anywhere, and docs/OFFLINE.md says so.
+ * That module has one documented way to set `processLocally` false: the
+ * `voiceAllowOnline` setting, off by default, which a person switches on under
+ * a label naming Google - in Settings, or on the panel that says a listen found
+ * no local model. This script has nothing to say about it: no fetch, no URL and
+ * no second use site are involved, so there is nothing here that would or
+ * should catch it. The disclosure lives in docs/OFFLINE.md, which is where a
+ * decision a user makes belongs.
  */
-const SPEECH_ALLOWED_SOURCE = null;
+const SPEECH_ALLOWED_SOURCE = 'src/services/speech/webspeech.ts';
 
 /*
  * These are the two rules that read `src/` instead of `dist/`, and the choice
@@ -190,10 +190,11 @@ const SOURCE_FORMATS = new Set(['.ts', '.tsx']);
 const SPEECH_API = /\b(?:webkit)?SpeechRecognition\b/;
 
 /*
- * Tests are out of scope, decided rather than left to luck: a test of the AI
- * client has to be able to name the host it asserts about. No file matching
- * this is built into `dist/` or ever runs in a browser. A second real use site
- * has to live in a module that ships, and every one of those is covered.
+ * Tests are out of scope, decided rather than left to luck. `webspeech.test.ts`
+ * stubs a fake recognizer under that name, and a test of the AI client has to
+ * be able to name the host it asserts about. No file matching this is built
+ * into `dist/` or ever runs in a browser. A second real use site has to live in
+ * a module that ships, and every one of those is covered.
  */
 const TEST_SOURCE = /\.test\.tsx?$/;
 
@@ -384,7 +385,7 @@ console.log(`  wasm binaries:  ${String(wasm.length)} (${wasm.map((f) => relativ
 console.log(`  service worker: ${serviceWorker.length > 0 ? 'present' : 'absent'}`);
 console.log(
   `  source rules:   ${String(sourceScanned)} files checked ` +
-    `(speech api: permitted nowhere; ${AI_HOST}: ${AI_ALLOWED_SOURCE} only)`,
+    `(speech api: ${SPEECH_ALLOWED_SOURCE} only; ${AI_HOST}: ${AI_ALLOWED_SOURCE} only)`,
 );
 
 let failed = false;
@@ -428,15 +429,14 @@ if (aiHostOffenders.length > 0) {
 
 if (speechOffenders.length > 0) {
   console.error(
-    `\naudit-offline: FAILED - SpeechRecognition is permitted in no module, ` +
+    `\naudit-offline: FAILED - SpeechRecognition outside ${SPEECH_ALLOWED_SOURCE}, ` +
       `${String(speechOffenders.length)} site(s):`,
   );
   for (const { file, text } of speechOffenders) console.error(`  ${file}: ${text}`);
   console.error(
-    '\nWithout `processLocally` the browser streams the microphone to Google, which this ' +
-      'application promises not to do. Speech input was removed, and no module is allowed to ' +
-      'name this API. Bringing it back is a decision to make on purpose, in docs/OFFLINE.md ' +
-      'first and in this rule second.',
+    '\nWithout `processLocally` the browser streams the microphone to Google. Use the recognizer ' +
+      `exported from ${SPEECH_ALLOWED_SOURCE}, which sets it before every start and refuses to ` +
+      'start without an on-device model unless the user has opted in.',
   );
   failed = true;
 }

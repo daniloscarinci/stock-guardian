@@ -62,9 +62,10 @@ describe('on Android', () => {
 
   /*
    * A rejected bridge call must not become an exception in the interface. An
-   * older APK may not carry this plugin at all - the one it replaces was named
-   * `Speech` - and an application that throws rather than speaks is worse than
-   * one that speaks when it might have kept quiet.
+   * older APK may not carry this plugin at all - for one release this method
+   * lived on the `Speech` plugin instead - and an application that throws
+   * rather than speaks is worse than one that speaks when it might have kept
+   * quiet.
    */
   it('treats a failed silence check as not silenced', async () => {
     onAndroid();
