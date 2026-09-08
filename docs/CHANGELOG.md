@@ -1,5 +1,47 @@
 # Changelog
 
+## 2.3.0
+
+### The microphone asks for the microphone
+
+Four releases shipped a microphone that could not transcribe a word on the phone
+this application was built for, and the reason was a design decision made here
+on purpose.
+
+`ACTION_RECOGNIZE_SPEECH` hands recording to the system, so the application
+never touched the microphone and the APK asked for no permission to use it. That
+property was real, it was checked on every build, and it was written about at
+length in three documents.
+
+It is also handled by Google Voice Search, which is not available on a moto g35
+5G. The keyboard's voice typing works on that phone, because Gboard binds the
+speech service directly rather than going through that Intent. So the phone could
+always transcribe; this application was knocking on the one door that was locked.
+
+The microphone now binds `SpeechRecognizer` the way the keyboard does, and
+therefore declares `RECORD_AUDIO`. Android asks once, on the first press, never
+at startup. The workflow gate that proved the APK asked for nothing was narrowed
+rather than deleted: it allows `INTERNET` and `RECORD_AUDIO` and still fails the
+build on anything else, which is proved on every run by rejecting a deliberately
+added permission.
+
+**What comes back with the permission.** `RecognitionListener` reports the real
+error constants, including the two that name a missing language pack and never
+reached the Intent at all. The timing heuristic that guessed a refusal from how
+fast a cancellation returned is deleted; there is nothing left to guess.
+
+Offline is still the standard. On Android 13 and later the first attempt binds
+the on-device recognizer, which has no network of its own, so "offline" is a
+property of what was bound rather than a request that can be ignored. Where that
+cannot serve the language and the phone has a connection, it retries over the
+network and the answer says `Transcrito pela internet`. `voiceOfflineOnly`
+refuses that, and with the radio off nothing is retried.
+
+**A stop button**, because a bound service draws no interface of its own. The
+Intent had a system dialog with a back button; without one, a mistaken press
+would hold a microphone this process now owns.
+
+
 ## 2.2.1
 
 The 2.2.0 entry below records that release as it shipped and is left standing.
