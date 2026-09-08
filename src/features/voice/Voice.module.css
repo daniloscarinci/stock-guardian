@@ -134,33 +134,6 @@
   color: var(--text-secondary);
 }
 
-/* ---- The microphone notice ------------------------------------------------ */
-
-.noticeActions {
-  display: flex;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin-top: var(--space-3);
-}
-
-/*
- * The install path, folded away until it is asked for. A phone with no speech
- * pack needs one sentence and a way out, not a page of instructions. No
- * `display` here on purpose: the `hidden` attribute has to be able to win.
- */
-.steps {
-  margin-top: var(--space-3);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
-
-/* Points at the online setting. Nothing in this feature switches it on. */
-.hint {
-  margin-top: var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
-
 /* ---- The typed box -------------------------------------------------------- */
 
 /*

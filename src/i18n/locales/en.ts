@@ -469,13 +469,11 @@ export const en = {
   },
 
   voice: {
-    title: 'Voice',
-    button: 'Speak a command',
-    listening: 'Listening…',
-    heard: 'Heard: {transcript}',
-    typeInstead: 'Or type a command',
+    title: 'Ask',
+    button: 'Ask about your stock',
+    heard: 'You asked: {transcript}',
+    typeInstead: 'Ask a question, or type a command',
     send: 'Send',
-    understood: 'Understood',
     confirm: 'Confirm',
     cancel: 'Cancel',
     confirmAction: 'Confirm: {detail}',
@@ -495,22 +493,6 @@ export const en = {
     createInstead: 'Create it?',
     notUnderstood: 'I did not understand that.',
     examplesTitle: 'Try one of these',
-    unavailable: 'This device cannot transcribe speech on its own, so the microphone opens straight to the typed box.',
-    installable: 'No speech pack for this language is installed on this device yet.',
-    installDownloads: 'Installing downloads the pack. Nothing of yours is sent in exchange.',
-    install: 'Install',
-    installHow: 'How to install',
-    installSteps:
-      'On Android: Settings → System → Languages & input → Voice input → Google → Offline speech recognition, then download this language.',
-    nothingHeard: 'I did not hear anything. Try again, or type the command.',
-    listenFailed: 'The microphone could not be used. Typing works.',
-    noOfflineModel:
-      'This device has no offline speech pack for this language, so the recognizer had nothing to listen with. Nothing was recorded and nothing was sent.',
-    networkFailed: 'The recognizer went looking for the internet and did not find it.',
-    busy: 'Something else is using the microphone. Close it and try again.',
-    typeCommandInstead: 'Type the command instead',
-    allowOnlineHint:
-      'Or let the recognizer send your audio to Google, in Settings → Voice. It stays off until you switch it on.',
     quantityAnswer: '{name}: {quantity} {unit}, in {location}.',
     quantityAnswerNoLocation: '{name}: {quantity} {unit}.',
     expiringNone_one: 'Nothing expires in the next day.',
@@ -531,17 +513,11 @@ export const en = {
     expiryOf: '{name} expires on {date}.',
     expiryOfNone: '{name} has no expiry date.',
     score: 'Your preparedness score is {score}.',
-    settingEnabled: 'Voice control',
-    settingEnabledHelp:
-      'Shows the microphone in the header. The typed command box opens only from it, so switching this off removes both.',
+    settingEnabled: 'The ask button',
+    settingEnabledHelp: 
+      'Shows the button in the header. The question box opens only from it, so switching this off removes both.',
     settingSpeak: 'Read answers aloud',
     settingSpeakHelp: "Uses the system voice. On Android the phone's silent switch wins over this.",
-    settingAllowOnline: 'Send your audio to Google',
-    settingAllowOnlineHelp:
-      'Off, and the only setting here that sends anything off this device. While it is off, what you say never leaves the phone. Switched on, the recognizer may send your recorded speech to Google when this device has no offline pack for your language.',
-    availability: 'Speech recognition',
-    ready:
-      'Ready on this device. Chrome transcribes here or not at all; Android asks its recognizer to, and not every recognizer honours the request.',
     andMore: 'and {count} more',
     dayWindow_one: '{count} day',
     dayWindow_other: '{count} days',

@@ -470,13 +470,11 @@ export const es: LocaleTree = {
   },
 
   voice: {
-    title: 'Voz',
-    button: 'Decir un comando',
-    listening: 'Escuchando…',
-    heard: 'Escuché: {transcript}',
-    typeInstead: 'O escribe un comando',
+    title: 'Preguntar',
+    button: 'Pregunta sobre tu stock',
+    heard: 'Preguntaste: {transcript}',
+    typeInstead: 'Haz una pregunta o escribe un comando',
     send: 'Enviar',
-    understood: 'Entendido',
     confirm: 'Confirmar',
     cancel: 'Cancelar',
     confirmAction: 'Confirmar: {detail}',
@@ -496,23 +494,6 @@ export const es: LocaleTree = {
     createInstead: '¿Crear ese ítem?',
     notUnderstood: 'No te entendí.',
     examplesTitle: 'Prueba uno de estos',
-    unavailable:
-      'Este dispositivo no puede transcribir voz por sí solo, así que el micrófono abre directamente el cuadro de texto.',
-    installable: 'En este dispositivo no hay instalado ningún paquete de voz para este idioma.',
-    installDownloads: 'Instalarlo descarga el paquete. No se envía nada tuyo a cambio.',
-    install: 'Instalar',
-    installHow: 'Cómo instalarlo',
-    installSteps:
-      'En Android: Ajustes → Sistema → Idiomas e introducción → Entrada por voz → Google → Reconocimiento de voz sin conexión, y descarga este idioma.',
-    nothingHeard: 'No escuché nada. Inténtalo otra vez o escribe el comando.',
-    listenFailed: 'No se pudo usar el micrófono. Escribir funciona.',
-    noOfflineModel:
-      'Este dispositivo no tiene el paquete de voz sin conexión de este idioma, así que el reconocedor no tenía con qué escuchar. No se grabó nada y no se envió nada.',
-    networkFailed: 'El reconocedor fue a buscar internet y no la encontró.',
-    busy: 'Otra aplicación está usando el micrófono. Ciérrala e inténtalo otra vez.',
-    typeCommandInstead: 'Escribir el comando',
-    allowOnlineHint:
-      'O deja que el reconocedor envíe tu audio a Google, en Ajustes → Voz. Sigue desactivado hasta que lo actives.',
     quantityAnswer: '{name}: {quantity} {unit}, en {location}.',
     quantityAnswerNoLocation: '{name}: {quantity} {unit}.',
     expiringNone_one: 'Nada vence en el próximo día.',
@@ -533,17 +514,11 @@ export const es: LocaleTree = {
     expiryOf: '{name} vence el {date}.',
     expiryOfNone: '{name} no tiene fecha de caducidad.',
     score: 'Tu índice de preparación es {score}.',
-    settingEnabled: 'Control por voz',
-    settingEnabledHelp:
-      'Muestra el micrófono en la cabecera. El cuadro de texto solo se abre desde ahí, así que si lo desactivas desaparecen los dos.',
+    settingEnabled: 'El botón de preguntar',
+    settingEnabledHelp: 
+      'Muestra el botón en la cabecera. El cuadro de preguntas solo se abre desde ahí, así que si lo desactivas desaparecen los dos.',
     settingSpeak: 'Leer las respuestas en voz alta',
     settingSpeakHelp: 'Usa la voz del sistema. En Android manda el interruptor de silencio del teléfono.',
-    settingAllowOnline: 'Tu audio se envía a Google',
-    settingAllowOnlineHelp:
-      'Desactivado, y el único ajuste de aquí que envía algo fuera de este dispositivo. Mientras esté desactivado, lo que dices nunca sale del teléfono. Activado, el reconocedor puede enviar tu voz grabada a Google cuando este dispositivo no tenga el paquete sin conexión de tu idioma.',
-    availability: 'Reconocimiento de voz',
-    ready:
-      'Listo en este dispositivo. Chrome transcribe aquí o no transcribe; en Android se le pide al reconocedor del sistema, y no todos atienden la petición.',
     andMore: 'y {count} más',
     dayWindow_one: '{count} día',
     dayWindow_other: '{count} días',

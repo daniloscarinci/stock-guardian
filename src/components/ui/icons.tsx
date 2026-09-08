@@ -135,18 +135,21 @@ export const MenuIcon = (props: IconProps) =>
   );
 
 /**
- * A microphone: capsule, stand, and the arc of the pickup pattern.
+ * A speech bubble with a question in it: the ask button in the header.
+ *
+ * It replaces a microphone, which is the honest change. The recognizer is gone
+ * - see `features/voice/VoiceButton.tsx` - and an icon promising to listen
+ * over a feature that only reads would be the interface lying about itself.
  *
  * Drawn here for the same reason as the rest - an icon font would be a network
  * request, and this application is not allowed to make one.
  */
-export const MicIcon = (props: IconProps) =>
+export const AskIcon = (props: IconProps) =>
   svg(
     <>
-      <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
-      <path d="M5 11a7 7 0 0 0 14 0" />
-      <path d="M12 18v3" />
-      <path d="M9 21h6" />
+      <path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-5.5A8 8 0 0 1 13 4a8 8 0 0 1 8 8Z" />
+      <path d="M10.5 9.5a2.5 2.5 0 0 1 4.4 1.6c0 1.7-2.4 2-2.4 3.4" />
+      <path d="M12.5 17.2h.01" />
     </>,
     props,
   );

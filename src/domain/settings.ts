@@ -57,8 +57,24 @@ export const settingsSchema = z.object({
   /** Whether the browser has been asked for persistent storage. */
   storagePersistenceRequested: z.boolean().default(false),
 
-  /** Shows or hides the microphone. The typed box stays either way. */
-  voiceEnabled: z.boolean().default(true),
+  /**
+   * Shows or hides the ask button in the header, and with it the whole feature.
+   *
+   * WAS `voiceEnabled`, AND THE RENAME COSTS ONE STORED BOOLEAN. It used to
+   * mean "show the microphone"; there is no microphone. The question box opens
+   * from this button and from nowhere else, so this is now the on/off for
+   * asking anything at all - by parser or by Claude, which `aiEnabled` chooses
+   * between.
+   *
+   * A stored `voiceEnabled` row is not read: `parseSettings` skips a key that
+   * is not in the schema, so the row stays in the table, is ignored forever,
+   * and this key falls back to its default. The default is `true` and so was
+   * the old one, so the only person who notices is somebody who had switched
+   * the microphone off - and they get a button that no longer holds a
+   * microphone. That was judged a better trade than a key named for a feature
+   * that has been deleted.
+   */
+  askEnabled: z.boolean().default(true),
 
   /**
    * Reads answers aloud through the system voice. On Android this also yields
@@ -67,23 +83,23 @@ export const settingsSchema = z.object({
    */
   voiceSpeakAnswers: z.boolean().default(true),
 
-  /**
-   * Whether recorded speech may leave the device.
+  /*
+   * `voiceAllowOnline` USED TO BE HERE, AND IS GONE.
    *
-   * FALSE, AND EVERY PATH THAT READS IT TREATS ABSENT AS FALSE. This is the
-   * only setting in the application that can cause anything to be sent
-   * anywhere, so it fails closed in three places rather than one: this default,
-   * `options.allowOnline` being absent-means-no across the speech seam, and the
-   * Android plugin sending EXTRA_PREFER_OFFLINE unless told not to.
+   * It let the recognizer transcribe a language the phone had no offline model
+   * for, which meant sending the audio to Google. It was the only setting in
+   * the application that could send anything anywhere, it defaulted to false,
+   * and it now describes nothing: the recognizer was removed because Android's
+   * refused EXTRA_PREFER_OFFLINE on the phone this was built for.
    *
-   * On it lets the recognizer transcribe a language the device has no offline
-   * model for, which means sending the audio to Google. It exists because the
-   * alternative was worse: a microphone that silently did nothing on a phone
-   * with no Portuguese pack, and no way for the person holding it to choose. It
-   * is never switched on by the application - not after a failure, not as a
-   * retry. The failure panel names the setting; the user turns it on.
+   * A stored `voiceAllowOnline` row is ignored rather than deleted -
+   * `parseSettings` skips any key the schema does not have, and `toSettingRows`
+   * will not write it again. The row is inert: nothing reads it, and a setting
+   * that fails closed by not existing cannot fail open. It is not migrated
+   * away, because a migration to delete one unread row is a schema change
+   * bought for nothing.
    */
-  voiceAllowOnline: z.boolean().default(false),
+
 
   /**
    * Whether Claude may be asked anything at all.

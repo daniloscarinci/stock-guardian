@@ -2,25 +2,36 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, parseSettings } from './settings';
 
 describe('settings', () => {
-  describe('voice defaults', () => {
-    it('defaults voice on, and speaking on', () => {
-      expect(DEFAULT_SETTINGS.voiceEnabled).toBe(true);
+  describe('asking defaults', () => {
+    it('defaults the ask button on, and speaking on', () => {
+      expect(DEFAULT_SETTINGS.askEnabled).toBe(true);
       expect(DEFAULT_SETTINGS.voiceSpeakAnswers).toBe(true);
     });
 
     /*
-     * The only setting that can send anything off the device. A default of
-     * `true` here would make the application's central claim false without
-     * anybody choosing it, so this is asserted on its own rather than folded
-     * into the test above.
+     * `voiceAllowOnline` was the only setting that could send anything off the
+     * device, and it is gone with the recognizer it controlled. A stored row is
+     * skipped rather than migrated - `parseSettings` ignores any key the schema
+     * does not have - so an old database neither restores it nor trips over it.
      */
-    it('defaults sending audio to Google OFF', () => {
-      expect(DEFAULT_SETTINGS.voiceAllowOnline).toBe(false);
+    it('ignores the online opt-in that no longer exists', () => {
+      const { settings, invalidKeys } = parseSettings([
+        { key: 'voiceAllowOnline', value: 'true' },
+        { key: 'language', value: '"es"' },
+      ]);
+      expect('voiceAllowOnline' in settings).toBe(false);
+      expect(invalidKeys).not.toContain('voiceAllowOnline');
+      expect(settings.language).toBe('es');
     });
 
-    it('leaves it off for a database that predates the setting', () => {
-      const { settings } = parseSettings([{ key: 'voiceEnabled', value: 'true' }]);
-      expect(settings.voiceAllowOnline).toBe(false);
+    /*
+     * `voiceEnabled` became `askEnabled` when the microphone went. The old row
+     * is unread for the same reason, and the key falls back to its default -
+     * which is `true`, exactly as the old default was.
+     */
+    it('does not read a stored voiceEnabled into the ask button', () => {
+      const { settings } = parseSettings([{ key: 'voiceEnabled', value: 'false' }]);
+      expect(settings.askEnabled).toBe(true);
     });
   });
 
@@ -47,9 +58,9 @@ describe('settings', () => {
     });
 
     /*
-     * A corrupt value falls back to the behaviour that sends nothing, the same
-     * way `voiceAllowOnline` does. Failing open here would mean a bad settings
-     * row could switch on the one feature that costs money and uses a network.
+     * A corrupt value falls back to the behaviour that sends nothing. Failing
+     * open here would mean a bad settings row could switch on the one feature
+     * that costs money and uses a network.
      */
     it('falls back to off when the switch is corrupt', () => {
       const { settings, invalidKeys } = parseSettings([
@@ -67,20 +78,10 @@ describe('settings', () => {
   });
 
   describe('corrupt values', () => {
-    it('keeps the application startable when a voice setting is corrupt', () => {
-      const { settings, invalidKeys } = parseSettings([{ key: 'voiceEnabled', value: '"nonsense"' }]);
-      expect(settings.voiceEnabled).toBe(true);
-      expect(invalidKeys).toContain('voiceEnabled');
-    });
-
-    // A corrupt value must fall back to the private behaviour, never to the
-    // one that sends audio away.
-    it('falls back to off when the online opt-in is corrupt', () => {
-      const { settings, invalidKeys } = parseSettings([
-        { key: 'voiceAllowOnline', value: '"yes please"' },
-      ]);
-      expect(settings.voiceAllowOnline).toBe(false);
-      expect(invalidKeys).toContain('voiceAllowOnline');
+    it('keeps the application startable when a setting is corrupt', () => {
+      const { settings, invalidKeys } = parseSettings([{ key: 'askEnabled', value: '"nonsense"' }]);
+      expect(settings.askEnabled).toBe(true);
+      expect(invalidKeys).toContain('askEnabled');
     });
   });
 });

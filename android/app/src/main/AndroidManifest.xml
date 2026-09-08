@@ -78,10 +78,12 @@
           - With no key stored, and with the assistant switched off, nothing
             runs and nothing is sent. That is the shipping default.
 
-        Voice control still needs no RECORD_AUDIO. Speech arrives through the
-        system's own recognizer (ACTION_RECOGNIZE_SPEECH, see SpeechPlugin),
-        which holds the microphone itself. Do not add it: the feature works
-        without it, and the check in .github/workflows/android.yml fails on it.
+        RECORD_AUDIO is not here and never will be. The microphone was removed
+        outright: Android's recognizer refuses EXTRA_PREFER_OFFLINE with no
+        offline Portuguese pack installed, which is this phone, so voice
+        commands were dropped rather than left to fail in silence. Reading
+        answers aloud stays, and speech synthesis asks for nothing. Do not add
+        it: the check in .github/workflows/android.yml fails on it.
 
         That check was narrowed rather than deleted. It allows exactly
         android.permission.INTERNET and still fails the build on every other
@@ -106,26 +108,4 @@
     -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!--
-        Not a permission, and the only reason it is here.
-
-        From Android 11 an application sees no other application it has not
-        named, so SpeechPlugin.availability - which asks the package manager
-        whether anything answers ACTION_RECOGNIZE_SPEECH - would report an empty
-        list on every modern phone and the microphone button would never appear.
-        Naming the intent restores the answer for that one query.
-
-        This grants nothing and asks the system for nothing. It is not
-        QUERY_ALL_PACKAGES, which is a permission and is not here; it makes
-        visible only the applications that themselves declare they can do speech
-        recognition. The check in the workflow still finds nothing but INTERNET.
-    -->
-    <queries>
-        <intent>
-            <action android:name="android.speech.RecognitionService" />
-        </intent>
-        <intent>
-            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
-        </intent>
-    </queries>
 </manifest>

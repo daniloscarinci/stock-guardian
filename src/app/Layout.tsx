@@ -159,7 +159,7 @@ export function Layout({ attentionCount }: { readonly attentionCount: number }) 
             {/*
               First among the header controls, so the fastest way into the
               application is also the first thing a keyboard reaches. Renders
-              nothing at all when voice is switched off.
+              nothing at all when asking is switched off.
             */}
             <VoiceButton />
 

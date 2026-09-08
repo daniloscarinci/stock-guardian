@@ -24,8 +24,9 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * The native shell. It exists to do the two things a WebView cannot: save
- * exported files, and register SpeechPlugin so the web layer can reach the
- * system's speech recognizer. The download listener below is the first of those.
+ * exported files, and read the ringer switch, so a spoken answer does not talk
+ * over a phone somebody has deliberately silenced. The download listener below
+ * is the first of those; RingerPlugin is the second.
  *
  * Stock Guardian exports backups and CSV reports with a blob URL and a
  * synthetic anchor click, which every browser understands. Android's WebView
@@ -61,7 +62,7 @@ public class MainActivity extends BridgeActivity {
         // Before super.onCreate, which is when Capacitor builds the bridge and
         // reads the plugin list. Registered later, the plugin does not exist as
         // far as the web layer is concerned.
-        registerPlugin(SpeechPlugin.class);
+        registerPlugin(RingerPlugin.class);
 
         super.onCreate(savedInstanceState);
 
