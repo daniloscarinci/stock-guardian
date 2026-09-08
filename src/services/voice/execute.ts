@@ -631,11 +631,19 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
      * meant, and an exact name makes the write explicit.
      *
      * The spoken UNIT is deliberately not treated as a guess, where an
-     * adjustment treats it as one. An adjustment adds its number to a stored
-     * count, so counting in the wrong unit silently changes what is stored.
-     * A threshold replaces a field that is only ever read against that same
-     * stored count, in the row's own unit; there is no second reading of it to
-     * ask the user about.
+     * adjustment treats it as one - and the same is true here, for a worse
+     * reason.
+     *
+     * It is true that a threshold replaces a field rather than adding into one,
+     * so the arithmetic cannot drift. But "o minimo de arroz e 5 latas" against
+     * rice kept in kilos stores the number 5 and reads it as five KILOS, for
+     * ever, against a count the user never sees it beside. A wrong adjustment
+     * shows up the next time anybody looks at the quantity. A wrong minimum
+     * shows up as a replenishment list that is quietly wrong about what is
+     * running out - which is the one list this application exists to get right.
+     *
+     * So a unit the row does not use is an assumption here too, and the card
+     * says which unit it stored.
      */
     case 'SET_MINIMUM': {
       const found = await one(deps, intent.item, intent);
@@ -650,7 +658,7 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
           item: found.item,
           before: found.item.minimumQuantity,
           after: intent.amount,
-          ...certaintyOf(found.exact ? [] : ['item']),
+          ...certaintyOf(thresholdAssumptions(found.exact, intent.unit, found.item.unit)),
         },
       };
     }
@@ -668,7 +676,7 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
           item: found.item,
           before: found.item.idealQuantity,
           after: intent.amount,
-          ...certaintyOf(found.exact ? [] : ['item']),
+          ...certaintyOf(thresholdAssumptions(found.exact, intent.unit, found.item.unit)),
         },
       };
     }
@@ -787,6 +795,24 @@ function guesses(
  * it cannot settle - "quilos" against "kg" - it reports as a difference, which
  * asks rather than assumes.
  */
+/**
+ * Why a threshold is not exactly what the user said.
+ *
+ * A unit the row does not keep matters here as much as it does on an
+ * adjustment: the number is stored bare and read for ever afterwards in the
+ * row's own unit, against a count nobody sees it next to.
+ */
+function thresholdAssumptions(
+  exact: boolean,
+  spokenUnit: string | null,
+  storedUnit: string,
+): AssumptionReason[] {
+  const assumptions: AssumptionReason[] = [];
+  if (!exact) assumptions.push('item');
+  if (unitDiffers(spokenUnit, storedUnit)) assumptions.push('unit');
+  return assumptions;
+}
+
 function unitDiffers(spoken: string | null, stored: string): boolean {
   if (spoken === null) return false;
   const singular = (unit: string): string => foldText(unit).replace(/s$/, '');

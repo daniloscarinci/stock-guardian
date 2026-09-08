@@ -209,18 +209,25 @@ describe('execute: certainty', () => {
     });
 
     /**
-     * The spoken unit is NOT a guess here, where it is one for an adjustment.
+     * A differing unit IS a guess here, as it is for an adjustment - and this
+     * test used to assert the opposite.
      *
-     * An adjustment adds its number to a stored count, so counting in the wrong
-     * unit silently changes what is stored. A threshold replaces a field that
-     * is only ever read against that same stored count, in the row's own unit;
-     * there is no second reading of it to ask the user about.
+     * The argument for letting it through was that a threshold replaces a field
+     * rather than adding into one, so the arithmetic cannot drift. True, and
+     * beside the point: "o minimo de milho e 8 kg" against corn kept in cans
+     * stores the bare number 8 and reads it as eight CANS for ever, against a
+     * count the user never sees it beside.
+     *
+     * A wrong adjustment surfaces the next time anyone looks at the quantity.
+     * A wrong minimum surfaces as a replenishment list that is quietly wrong
+     * about what is running out - the one list this application exists to get
+     * right. So it asks.
      */
-    it('does not treat a differing unit as a guess', async () => {
+    it('treats a differing unit as a guess', async () => {
       const write = await pending(deps, { kind: 'SET_MINIMUM', item: 'milho verde',
         amount: 8, unit: 'kg' });
 
-      expect(write).toMatchObject({ certainty: 'explicit', assumptions: [] });
+      expect(write).toMatchObject({ certainty: 'assumed', assumptions: ['unit'] });
     });
   });
 
@@ -235,6 +242,48 @@ describe('execute: certainty', () => {
         unit: 'kg', location: 'despensa', expiresOn: '2027-03-01' });
 
       expect(write).toMatchObject({ certainty: 'assumed', assumptions: ['newItem'] });
+    });
+  });
+
+  describe('a threshold in a unit the row does not keep', () => {
+    // A wrong adjustment shows up next time anyone looks at the quantity. A wrong
+    // minimum shows up as a replenishment list that is quietly wrong about what is
+    // running out - so this asks, rather than storing five cans as five kilos.
+    it('asks before storing a minimum counted in another unit', async () => {
+      const result = await execute(deps, {
+        kind: 'SET_MINIMUM', item: 'feijao preto', amount: 5, unit: 'latas',
+      });
+      expect(result.kind).toBe('pending');
+      if (result.kind !== 'pending') return;
+      expect(result.write.certainty).toBe('assumed');
+      expect(result.write.assumptions).toContain('unit');
+    });
+
+    it('asks before storing a target counted in another unit', async () => {
+      const result = await execute(deps, {
+        kind: 'SET_TARGET', item: 'feijao preto', amount: 20, unit: 'latas',
+      });
+      expect(result.kind).toBe('pending');
+      if (result.kind !== 'pending') return;
+      expect(result.write.assumptions).toContain('unit');
+    });
+
+    it('stays explicit when the unit is the one the row keeps', async () => {
+      const result = await execute(deps, {
+        kind: 'SET_MINIMUM', item: 'feijao preto', amount: 5, unit: 'kg',
+      });
+      expect(result.kind).toBe('pending');
+      if (result.kind !== 'pending') return;
+      expect(result.write.certainty).toBe('explicit');
+    });
+
+    it('stays explicit when no unit was spoken at all', async () => {
+      const result = await execute(deps, {
+        kind: 'SET_MINIMUM', item: 'feijao preto', amount: 5, unit: null,
+      });
+      expect(result.kind).toBe('pending');
+      if (result.kind !== 'pending') return;
+      expect(result.write.certainty).toBe('explicit');
     });
   });
 });
