@@ -234,6 +234,22 @@ public class SpeechPlugin extends Plugin {
     private final Handler main = new Handler(Looper.getMainLooper());
 
     /**
+     * Runs something on the main thread, now if that is where we already are.
+     *
+     * Deferring unconditionally would be correct and slower, and in one place
+     * it would be worse than slower: `handleOnDestroy` already runs on the main
+     * thread, and a post from there releases the microphone after the activity
+     * it belonged to has gone.
+     */
+    private void onMain(Runnable action) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            action.run();
+        } else {
+            main.post(action);
+        }
+    }
+
+    /**
      * The listen in progress, or null.
      *
      * Read and written on the main thread only. One at a time is not a
@@ -411,7 +427,7 @@ public class SpeechPlugin extends Plugin {
             return;
         }
 
-        main.post(() -> start(call, tag, preferOffline));
+        onMain(() -> start(call, tag, preferOffline));
     }
 
     /**
@@ -450,16 +466,19 @@ public class SpeechPlugin extends Plugin {
         session = started;
         recognizer.setRecognitionListener(started);
 
+        // Armed before the listen rather than after it, so that a recognizer
+        // answering the instant it is started cannot have its own longer timer
+        // overwritten by this one, and so that a throw below cancels a watchdog
+        // that is already scheduled rather than scheduling one nobody cancels.
+        started.arm(READY_TIMEOUT_MILLIS);
+
         try {
             recognizer.startListening(request(context, tag, preferOffline));
         } catch (Throwable refused) {
             // Releases the recognizer as well as answering, which a bare
             // call.reject here would not.
             started.fail(CODE_FAILED);
-            return;
         }
-
-        started.arm(READY_TIMEOUT_MILLIS);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
@@ -482,7 +501,7 @@ public class SpeechPlugin extends Plugin {
      */
     @PluginMethod
     public void cancel(PluginCall call) {
-        main.post(() -> {
+        onMain(() -> {
             Session running = session;
             if (running != null) running.fail(CODE_CANCELLED);
             call.resolve();
@@ -524,7 +543,7 @@ public class SpeechPlugin extends Plugin {
      */
     @Override
     protected void handleOnDestroy() {
-        main.post(() -> {
+        onMain(() -> {
             Session running = session;
             if (running != null) running.fail(CODE_CANCELLED);
         });
@@ -700,7 +719,7 @@ public class SpeechPlugin extends Plugin {
             return;
         }
         // SpeechRecognizer must be created, used and destroyed on the main thread.
-        main.post(() -> checkSupport(activity, tag, done));
+        onMain(() -> checkSupport(activity, tag, done));
     }
 
     @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
