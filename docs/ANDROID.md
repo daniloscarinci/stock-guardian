@@ -175,25 +175,40 @@ it writes to the application's own external files directory instead, because the
 public Downloads folder would need a storage permission there and this
 application has none.
 
-**There is no microphone, so there is nothing to ask for.** Voice control was
-built on `ACTION_RECOGNIZE_SPEECH`, which let the system hold the microphone and
-kept `RECORD_AUDIO` out of the manifest. It was then removed outright: Android's
-recognizer refuses `EXTRA_PREFER_OFFLINE` when no offline pack for the language
-is installed, and on the Portuguese phone this was built for it answered *"Voice
-search isn't available"*. `SpeechPlugin.java` is gone with it, and so is the
-`queries` element that let it see the system recognizer at all.
+**The microphone asks for no permission.** `SpeechPlugin` fires
+`ACTION_RECOGNIZE_SPEECH`: the system's own screen opens, the system holds the
+microphone, and this application is handed a sentence. It never opens an audio
+stream, so `RECORD_AUDIO` is not in the manifest and fails the build if anybody
+puts it there.
 
-What replaced it is `RingerPlugin`. One method, `isSilent`,
+It sends `EXTRA_PREFER_OFFLINE` unless **Settings → Ask → Use internet
+recognition** has been switched on, which is off by default. That flag is why
+this feature was once removed: on a phone with no offline pack for the language,
+Android's recognizer simply refuses, and it answered *"Voice search isn't
+available"* on the Portuguese phone this was built for while the plugin reported
+every refusal as a cancellation. `docs/VOICE.md` sets out how each failure is
+now named, and where the switch that lifts the flag is offered.
+
+**The manifest carries a `<queries>` element, and it is not a permission.** From
+Android 11 an application sees no other application it has not named, so without
+it `queryIntentActivities` returns an empty list, and the microphone would
+report itself unavailable on every modern phone. It names
+`android.speech.RecognitionService` and `android.speech.action.RECOGNIZE_SPEECH`
+and nothing else. It grants no capability and is not `QUERY_ALL_PACKAGES`, which
+is a permission and is not there. The build's permission check still finds
+`INTERNET` alone.
+
+**`RingerPlugin` is the other half of the sound.** One method, `isSilent`,
 reading `AudioManager.getRingerMode` so that an answer read aloud does not talk
 over a phone somebody has deliberately silenced. It records nothing, opens
 nothing, and needs no permission, which the build's check proves rather than
-this paragraph.
+this paragraph. It was part of `SpeechPlugin` once, survived that plugin's
+deletion because the speaker could not do without it, and stayed separate when
+the microphone came back.
 
-Reading answers aloud stays and uses `speechSynthesis`, which asks the system
-for nothing. `RECORD_AUDIO` is still one of the names that fails the build, and
-now nothing in this application could ever want it.
+Reading answers aloud uses `speechSynthesis`, which asks the system for nothing.
 
-`docs/VOICE.md` covers the typed command engine itself, including what it will
+`docs/VOICE.md` covers the ask box itself — both ways into it, and what it will
 not do.
 
 ---
@@ -220,7 +235,7 @@ cannot read fails in seconds with a clear message.
 ## What to check on the device
 
 No emulator and no phone took part in producing this project, so the first
-install is the first real test. Check eight things in order, because each one
+install is the first real test. Check ten things in order, because each one
 tells you something different:
 
 1. **It opens.** A blank screen means the WebView could not start the
@@ -240,15 +255,20 @@ tells you something different:
 6. **The back button behaves.** It should move back through the screens and
    leave the application from the dashboard.
 7. **The ask button opens the box.** Tap the speech bubble in the header and
-   type *"quanto arroz eu tenho?"*. There is no microphone and there should be
-   none: confirm in **Settings → Apps → Stock Guardian → Permissions** that the
-   microphone is not among what this application holds. The one permission it
-   declares is the network, and only the assistant uses it.
-8. **Answers are read aloud, and the silent switch stops them.** Leave
+   type *"quanto arroz eu tenho?"*.
+8. **The microphone works, or says why.** Press it in the sheet and say the same
+   thing. With an offline Portuguese pack installed you get an answer; without
+   one you get a panel naming the missing pack, the way to install it, and the
+   switch that lets the recognizer use the network — never a button that does
+   nothing. Either way, confirm in **Settings → Apps → Stock Guardian →
+   Permissions** that the microphone is *not* among what this application holds:
+   the system's recognizer holds it. The one permission declared is the network,
+   and only the assistant uses it.
+9. **Answers are read aloud, and the silent switch stops them.** Leave
    **Settings → Ask → Read answers aloud** on, ask a question, and listen. Then
    put the phone on silent and ask again: `RingerPlugin` reads the ringer mode,
    and the phone's own switch wins over the setting.
-9. **The assistant is off, and stays off.** With no key pasted, ask something the
+10. **The assistant is off, and stays off.** With no key pasted, ask something the
    twelve rules do not know and confirm the answer is "I did not understand
    that" with examples - not a network error, and not a pause while something
    times out. Nothing should leave the phone until a key is stored and

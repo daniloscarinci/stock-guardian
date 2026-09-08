@@ -26,7 +26,7 @@
                     └──────────────────────────────┘
 ```
 
-Three rules hold the whole thing together.
+Four rules hold the whole thing together.
 
 **The database is the only source of truth.** No store keeps a copy of a domain
 value that also lives in a table. Components read through `useAsyncData`, writes
@@ -38,16 +38,17 @@ test, or sitting behind a Rust process on the desktop. That is why the desktop
 driver is eighty lines: transaction semantics were written once, in
 `createDriver`, and all three drivers inherit them.
 
-**`SpeechRecognizer` WAS the second seam, and is gone.** It stood above
-Android's system recognizer, Chrome's on-device model and a `none` that reported
-unavailable, and it was built well. It was also built for a phone whose
-recognizer refuses to transcribe offline without a Portuguese pack, so the
-feature never worked there and was removed rather than kept as a button that
-failed in silence. What survives of that layer is `speak.ts`, which reads an
-answer aloud, and `ringer.ts`, which asks Android whether the phone is on
-silent. Neither is a seam; both are one function.
+**`SpeechRecognizer` is the second seam.** It stands above Android's system
+recognizer, Chrome's on-device model and a `none` that reports unavailable, so
+that nothing above it knows which is listening. It was deleted for one release —
+it was built for a phone whose recognizer refuses to transcribe offline without
+a Portuguese pack, and a button that failed in silence was worse than no button
+— and recovered once the failure could be named and the offline request made
+conditional rather than absolute. `speak.ts` and `ringer.ts` sit beside it and
+are deliberately not part of it: reading an answer aloud is the speaker's
+business, and neither is a seam.
 
-**The second seam now is the pair of engines behind one box.** A typed question
+**The third seam is the pair of engines behind one box.** A typed question
 goes to Claude when the assistant is on and a key is stored, and to the twelve
 parser rules otherwise - and to the parser anyway when Claude cannot be reached.
 `useVoice.ts` is where that choice is made, and it is the only place it is made.
@@ -152,7 +153,7 @@ in a way no user could detect.
 
 ```
                     ┌──────────────────────────────┐
-   features/voice/ ─│  Button, sheet, confirm card │
+   features/voice/ ─│  Button, sheet, mic, confirm │
                     └───────┬──────────────────────┘
                             │ one question, one of two engines
               ┌─────────────┴──────────────┐
@@ -206,8 +207,9 @@ any particular language. Rule order inside a grammar is load-bearing — first
 match wins, so specific forms precede general ones — and `parse.test.ts` pins
 it.
 
-`docs/VOICE.md` covers what can be typed and what happens to it;
-`docs/OFFLINE.md` covers what the other engine sends.
+`docs/VOICE.md` covers both ways into that box - the microphone and the
+keyboard - and what happens to a sentence afterwards; `docs/OFFLINE.md` covers
+what the other engine sends, and what the microphone does not.
 
 ---
 

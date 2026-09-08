@@ -93,22 +93,26 @@ replace.
 **Three languages.** English, Portuguese (Brazil) and Spanish, switchable at any
 time. Your choice persists — the original reset to Portuguese on every reload.
 
-**Ask about your stock.** Type *"quanto arroz eu tenho?"* into the box behind
-the header button and read the answer. Type *"usei 3 ovos"* and the stock moves,
-with **Desfazer** offered for ten seconds; type something the application had to
-guess at, and a card appears saying what would change — and changes nothing
-until you press **Confirmar**. It works in all three languages.
+**Ask about your stock.** Say or type *"quanto arroz eu tenho?"* into the sheet
+behind the header button and read the answer. Say *"usei 3 ovos"* and the stock
+moves, with **Desfazer** offered for ten seconds; say something the application
+had to guess at, and a card appears saying what would change — and changes
+nothing until you press **Confirmar**. It works in all three languages.
 
 Three things about it belong here rather than in a footnote.
 
-*There is no microphone, and there used to be.* It was removed. Android's own
-recognizer refuses to transcribe without a network unless an offline pack for
-your language is installed, and on the Portuguese phone this was built for it
-answered *"Voice search isn't available"* — a button that did nothing and could
-not say why. The typed box was never the fallback for it; the box was always the
-feature, on every platform, and it is what remains.
+*The microphone is offline first, and it tells you when it cannot be.* It sits
+in the sheet next to the box, and it asks the phone's own recognizer to
+transcribe without a network. Where no offline pack for your language is
+installed, that request is refused — which is exactly what happened on the
+Portuguese phone this was built for, and the button appeared dead because the
+failure came back as a cancellation and a cancellation is answered with silence.
+Every failure is now named. The one that can be fixed comes with a panel holding
+the install path, the way back to the box, and **Use internet recognition — your
+voice goes to Google**, which is off until you switch it on and is the only
+thing here that can send a recording of anybody anywhere.
 
-*Answers are still read aloud.* **Settings → Ask → Read answers aloud** uses the
+*Answers are read aloud.* **Settings → Ask → Read answers aloud** uses the
 system voice and is on by default. On Android the silent switch on the side of
 the phone wins over the setting. Speaking is not listening: it opens no
 microphone, asks for no permission and sends nothing anywhere.
@@ -200,9 +204,10 @@ change. The APK used to ask for nothing at all, which was the better sentence,
 and Android offers no narrower way to make one request. So the build's check was
 narrowed rather than dropped: it allows that one name and fails on every other —
 `RECORD_AUDIO`, camera, location, contacts, storage — and you can run it
-yourself against a built APK. `RECORD_AUDIO` was never declared and now could
-not be: there is no microphone left to ask for. Leave the key blank and the
-application opens no connection at all.
+yourself against a built APK. `RECORD_AUDIO` has never been declared, microphone
+and all: speech goes through the system's own recognizer, which holds the
+microphone itself and hands this application a sentence. Leave the key blank and
+the application opens no connection at all.
 
 `docs/ANDROID.md` explains how to produce the APK and what to check after
 installing it. Nothing else here changes: the phone still holds its own database,
@@ -269,7 +274,7 @@ to see the behaviour for yourself.
 | `docs/DATABASE.md` | Schema, every table and column |
 | `docs/MIGRATION.md` | Legacy import, field by field |
 | `docs/OFFLINE.md` | How the offline guarantee is made and enforced |
-| `docs/VOICE.md` | The typed command engine: every phrase, and every limit |
+| `docs/VOICE.md` | The ask box: the microphone, the phrases, and every limit |
 | `docs/BUILD.md` | Building, hosting, and the desktop build |
 | `docs/ANDROID.md` | The Android app: building, signing, installing |
 | `docs/TESTING.md` | What is tested, and how to run it |

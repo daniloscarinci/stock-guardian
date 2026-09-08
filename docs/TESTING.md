@@ -44,7 +44,7 @@ silently diverge.
 | Voice parsing | Spoken numbers and dates, rule order, the three phrase corpora |
 | Voice execution | Every intent over a real database, and the write spy |
 | Speech | The seam's three implementations, `processLocally`, the speaker |
-| The voice sheet | The typed path, end to end, against a real database |
+| The ask sheet | Both ways in, end to end, against a real database |
 
 ### What the tests are actually for
 
@@ -64,10 +64,9 @@ back:
 
 `src/voice/grammar/*.phrases.test.ts` holds every phrase form the application
 claims to understand — 67 in Portuguese, 77 in English, 78 in Spanish. They are
-written lowercase and often without accents - the way speech used to arrive,
-and the way a hurried thumb still does - rather than the way a careful person
-would type it, because a folded, unaccented phrase is what the parser is built
-to survive.
+written lowercase and often without accents - the way speech arrives, and the
+way a hurried thumb does - rather than the way a careful person would type it,
+because a folded, unaccented phrase is what the parser is built to survive.
 
 A corpus, not a sample. It is the specification of the feature: a phrase that is
 not in it is a phrase `docs/VOICE.md` does not claim.
@@ -157,12 +156,22 @@ Stated so nobody mistakes green for complete.
   `docs/BUILD.md` lists what to check.
 - **Component rendering, nearly everywhere.** `VoiceSheet.test.tsx` is the only
   React Testing Library suite, written because the confirmation card's whole
-  purpose is a thing that must not happen and no other layer can prove it. Every
+  purpose is a thing that must not happen, and because a microphone that failed
+  in silence is a defect no layer below the interface can see. Every
   screen is exercised end to end by the smoke test instead, not unit tested.
-- **Real speech.** No test speaks, and nothing listens any more: the
-  recognizers were deleted with the feature, and their suites with them.
-  `ringer.test.ts` covers what is left of that layer - that the ringer is read
-  on Android, that it is not asked anywhere else, and that a bridge call which
+- **Real speech.** No test speaks and no test listens. What is covered is
+  everything around the microphone: `webspeech.test.ts` pins that
+  `processLocally` is set before every start and that a listen without a local
+  model is refused unless the user has opted in; `capacitor.test.ts` pins the
+  codes the Android plugin returns and that `allowOnline` is absent-means-no;
+  `recognizer.test.ts` pins that no unrecognised failure is ever read as a
+  cancellation; and `VoiceSheet.test.tsx` drives a stubbed recognizer through
+  the real sheet, for each failure's sentence and for the one that must stay
+  silent. What no test can reach is the recognizer itself - whether a given
+  phone honours `EXTRA_PREFER_OFFLINE` is a fact about that phone, which is why
+  `docs/ANDROID.md` has a step for it.
+  `ringer.test.ts` covers the speaker's half - that the ringer is read on
+  Android, that it is not asked anywhere else, and that a bridge call which
   fails is read as "not silenced" rather than thrown.
 - **The real Anthropic API.** Never. `converse.test.ts` and `VoiceSheet.test.tsx`
   both replace the SDK and keep `client.ts` real, so the assertion that no key

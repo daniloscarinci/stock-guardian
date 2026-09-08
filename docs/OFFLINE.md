@@ -6,22 +6,29 @@ and it is still enforced. This page describes how, because a promise like this
 erodes by accident: one webfont, one analytics snippet, one CDN fallback added
 while debugging.
 
-One thing sits outside it. It is off until a person switches it on, it is set
-out in full below, and it does not put your database on a network.
+Three things sit outside it. Each is off until a person switches it on, each is
+set out in full below, and none of them puts your database on a network.
 
 **Asking Claude.** Paste your own Anthropic API key into Settings, switch the
-assistant on, and a question you type goes to `api.anthropic.com`. This is the
-only request in this project that the application itself makes, and *The AI
+assistant on, and a question goes to `api.anthropic.com`. This is the only
+request in this project that the application itself makes, and *The AI
 assistant* below says precisely what is in it. With no key stored, the assistant
 does not run, opens no connection and sends nothing.
 
-**There used to be three.** Downloading a speech pack and sending recorded
-speech to Google were the other two, and both went with the microphone - see
-*Speech* below. Nothing replaced them: this application no longer has any way to
-open a microphone or to send audio anywhere.
+**Internet speech recognition.** The microphone asks the device to transcribe
+without a network, and where that is refused it fails and says so. **Settings →
+Ask → Use internet recognition** lifts that request instead: the system
+recognizer may then send what you say away to transcribe it, which on most
+phones means to Google. It is off, it is the only control here that can put a
+recording of anybody on a network, and nothing but a person switches it on. See
+*Speech* below.
 
-Leave the assistant alone and nothing in the application, on any platform,
-reaches the network at all. Your database is never uploaded even when you do not:
+**Downloading a speech pack.** Where the browser offers it, installing an
+on-device model for your language is a download you ask for. Nothing of yours
+goes with it, and the point of it is to make the first of these unnecessary.
+
+Leave all three alone and nothing in the application, on any platform, reaches
+the network at all. Your database is never uploaded even when you do not:
 the assistant sends the rows a question asked about and never the file they came
 from.
 
@@ -114,10 +121,11 @@ nothing else. That is a weaker sentence than "it asks for nothing", and it is
 still a sentence a machine checks on every build rather than one you have to
 believe.
 
-Voice control never needed any of this, and no longer exists to need it. The
-manifest has lost the `queries` element that let the old plugin see the system
-recognizer, and there is still - and now permanently - no `RECORD_AUDIO`. See
-`docs/ANDROID.md`.
+The microphone needs none of this. The manifest carries a `<queries>` element so
+that `SpeechPlugin` can see the system recognizer at all — from Android 11 an
+application sees no other application it has not named — and that grants nothing
+and asks for nothing. There is still no `RECORD_AUDIO`, because the system's own
+recognizer holds the microphone. See `docs/ANDROID.md`.
 
 ---
 
@@ -227,41 +235,56 @@ Stated rather than glossed, in the manner of the rest of this page.
 
 ## Speech
 
-**There is no speech input in this application, and there was.** It is worth a
-chapter rather than a deletion, because for a while it was the one feature that
-could have quietly undone everything above, and the checks written against it
-are still running.
+**Speech input is the one feature that could quietly undo everything above**, so
+it is worth a chapter, and the chapter has a history. It shipped, it was removed
+because it did not work, and it is back with the reason it did not work fixed.
 
-Voice control shipped with three recognizers behind one seam. Android's fired
-`ACTION_RECOGNIZE_SPEECH` with `EXTRA_PREFER_OFFLINE`, so the system held the
-microphone and no `RECORD_AUDIO` was declared. Chrome's set `processLocally`
-before every start, which fails closed. Everything else reported unavailable
-rather than falling back to the API's default mode, which streams the microphone
-to Google. It worked, and it did not work on the phone it was for: Android's
-recognizer refuses `EXTRA_PREFER_OFFLINE` with no offline Portuguese pack
-installed, and the button did nothing.
+Three recognizers sit behind one seam. Android's fires
+`ACTION_RECOGNIZE_SPEECH`, so the system holds the microphone and no
+`RECORD_AUDIO` is declared. Chrome's sets `processLocally` before every start,
+which fails closed. Everything else reports itself unavailable rather than
+falling back to the API's default mode, which streams the microphone to Google.
 
-So all of it went — `recognizer.ts`, `webspeech.ts`, `none.ts`, the recording
-half of the Android plugin, the install button, and **Settings → Voice → Send
-your audio to Google**, which was the only control in this application that
-could put a recording of anybody onto a network. `voiceAllowOnline` is gone from
-the settings schema; a stored row for it is ignored rather than read, so no old
-database can switch on a thing that no longer exists.
+### The one thing that can send your voice anywhere
 
-### What is left, and what still guards it
+By default the Android plugin sends `EXTRA_PREFER_OFFLINE` and Chrome's
+recognizer sets `processLocally = true`. Neither is a preference the recognizer
+may ignore quietly: with no model on the device for your language, the listen
+fails.
 
-`speak.ts` reads answers aloud, and `ringer.ts` asks Android whether the phone
-is silenced. Neither opens a microphone; the Android side of it is one method,
-`isSilent`, on a plugin that needs no permission.
+**That failure is what removed this feature once.** On the Portuguese phone this
+was built for there was no offline pack, the recognizer refused every time, and
+the plugin reported the refusal as a cancellation — which this interface answers
+with silence. The button appeared dead and could not say why, so it was deleted.
 
-**The audit rule stayed and its allowance became `null`.** `scripts/audit-offline.mjs`
-used to fail the build if the identifier `SpeechRecognition` appeared in `src/`
-anywhere but `webspeech.ts`. That file is gone and the rule is not: the
-identifier is now permitted **nowhere**, and any reappearance of it fails the
-build. The hazard did not move when the file did — the browser API is still
-there, still streams audio in its default mode — and the way it would come back
-is somebody adding speech input again in good faith, in a build whose only check
-for it had been retired as unused.
+**`voiceAllowOnline` is the answer to it, and it is off.** Switched on, the
+offline flag is omitted and the system recognizer may use the network: what you
+say then goes to whichever service that recognizer uses, which on most phones is
+Google's. The label says that rather than saying *online*, in Settings and on
+the failure panel both, because *online* does not name who receives your voice.
+
+Three properties hold it closed, and all three are tested:
+
+- The schema default is `false`.
+- `allowOnline` is absent-means-no at every layer of the seam, so a caller that
+  forgets the argument gets the private behaviour.
+- The Android plugin sends `EXTRA_PREFER_OFFLINE` unless explicitly told not to.
+
+**Nothing in the application ever writes it.** Not a retry, not a failure, not
+an upgrade. A failure may put the switch in front of you — the panel that
+explains a missing offline model carries it, because sending somebody to hunt
+through a settings screen after a failure they cannot interpret is how this
+failed the first time — and only a press moves it.
+
+### What still guards the default
+
+**The audit rule survived the feature's deletion, which is why it was there when
+it came back.** `scripts/audit-offline.mjs` fails the build if the identifier
+`SpeechRecognition` appears in `src/` anywhere but `webspeech.ts`. When speech
+input was removed, the allowance became `null` — permitted nowhere — rather than
+the rule being deleted along with its subject, on the grounds that the browser
+API was still there and still streamed audio by default. Speech input came back;
+naming the module again was the whole of what restoring the guarantee cost.
 
 What it cannot catch is unchanged: it is a text match on one spelling over
 source files, so a name assembled at runtime passes it. It catches the second
@@ -270,11 +293,27 @@ use site somebody adds on purpose, which is the failure that actually happens.
 **The Content-Security-Policy still refuses.** `connect-src 'self'
 https://api.anthropic.com` names one host, and it is not a speech service. An
 implementation that shipped audio somewhere itself would have nowhere to send
-it.
+it. What it cannot reach is the browser's own recognizer, which makes its calls
+outside the page — which is exactly why `processLocally` matters.
 
-**The APK still declares no `RECORD_AUDIO`.** It never did, and now there is
-nothing that could want it. `.github/workflows/android.yml` fails the build on
-that name along with every other permission but `INTERNET`.
+**The APK still declares no `RECORD_AUDIO`.** It never has.
+`.github/workflows/android.yml` fails the build on that name along with every
+other permission but `INTERNET`, and the command to check a built APK yourself
+is in `docs/ANDROID.md`.
+
+**Failures are named rather than swallowed.** The plugin returns a stable code
+and the interface owns the wording; only a deliberate cancellation renders as
+nothing. That is not a privacy property, but it is the property whose absence
+made a microphone that failed in total silence, and `docs/VOICE.md` sets out
+each code and each sentence.
+
+### The speaker, which is not the microphone
+
+`speak.ts` reads answers aloud, and `ringer.ts` asks Android whether the phone
+is silenced. Neither opens a microphone; the Android side of it is one method,
+`isSilent`, on a plugin that needs no permission. It was part of the speech
+plugin once and is deliberately not again: the ringer belongs to the speaker,
+and an APK that can speak needs nothing from the plugin that listens.
 
 ### Reading answers aloud
 

@@ -1,10 +1,65 @@
 # Changelog
 
+## Unreleased
+
+The 2.1.0 entry below records that release as it shipped and is left standing.
+One of the things it describes — the removal of the microphone — is no longer
+true, and it is named here rather than edited out of the history.
+
+### The microphone comes back, offline first
+
+**Speech input returns, and the reason it failed is fixed.** It was removed in
+2.1.0 because Android's recognizer refuses `EXTRA_PREFER_OFFLINE` on a phone
+with no offline pack for the language, and because the plugin reported every
+refusal as a cancellation — which the interface answers with silence. The button
+appeared dead. `EXTRA_PREFER_OFFLINE` is no longer unconditional and no failure
+is silent.
+
+**`voiceAllowOnline` is back, and it is off.** With it off, nothing changes at
+all: the Android plugin sends `EXTRA_PREFER_OFFLINE`, Chrome's recognizer sets
+`processLocally = true`, and a language with no local model fails rather than
+quietly reaching a server. Switched on, the flag is omitted and the system
+recognizer may use the network — which on most phones means Google. The label
+says so rather than saying *online*.
+
+**The switch is on the failure panel, not only in Settings.** The first version
+of this named the setting in a sentence and sent the reader to Settings to find
+it, having just told them their phone had no *offline speech pack*. The panel
+that explains the failure now carries the switch itself, in the same words as
+the Settings row. It is never flipped by the application: a failure may offer
+it, and only a person moves it.
+
+**The microphone is in the sheet, next to the box, not in the header.** The
+header button opens the sheet and starts no listen of its own. Pressing it used
+to do both, which on a phone with no offline pack put a warning panel on top of
+the typed box every time somebody opened the sheet to type.
+
+**The diagnostics are recovered whole.** Real result codes off the Intent, the
+API 33 pre-flight through `checkRecognitionSupport`, and below that the timing
+heuristic on how fast `RESULT_CANCELED` returns — still marked as a heuristic,
+and still applied only where nothing else could answer. `cancelled` is the one
+code that renders as nothing; every other renders a sentence.
+
+**The APK still asks for `INTERNET` and nothing else.** `ACTION_RECOGNIZE_SPEECH`
+hands recording to the system, so there is no `RECORD_AUDIO` to declare. The
+manifest's `<queries>` element comes back with the plugin — without it,
+`queryIntentActivities` returns empty from Android 11 on and the microphone
+reports itself unavailable on every modern phone. It is package visibility, not
+a permission.
+
+**The audit rule points at `webspeech.ts` again.** It spent one release pointing
+at `null` — permitted nowhere — rather than being deleted along with its
+subject. The subject came back and the rule was still there, so restoring the
+guarantee cost one string.
+
+---
+
 ## 2.1.0
 
 The entry below records 2.0.0 as it shipped and is left standing. Two of the
 things it describes are no longer true, and both are named here rather than
-edited out of the history.
+edited out of the history. One thing in *this* entry is no longer true either —
+see *Unreleased* above, where the microphone comes back.
 
 ### The assistant is wired in
 

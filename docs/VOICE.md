@@ -1,34 +1,34 @@
-# The typed command engine
+# The ask box: speaking, typing, and the engine behind both
 
 Ask the inventory a question, or tell it what you just used, in a handful of
-words. Type *"quanto arroz eu tenho?"* and read the answer. Type *"usei 3
-ovos"* and the stock moves, with **Desfazer** offered for ten seconds. Type
-something the engine had to guess at, and a card appears saying what would
-change, which changes nothing until you press **Confirmar**.
+words. Say or type *"quanto arroz eu tenho?"* and read the answer — and hear it,
+if the setting is on. Say *"usei 3 ovos"* and the stock moves, with **Desfazer**
+offered for ten seconds. Say something the engine had to guess at, and a card
+appears saying what would change, which changes nothing until you press
+**Confirmar**.
 
 The original application had none of this. It exists because the situation this
 project is built for is one where you are holding a torch in one hand and a box
 in the other, and a form with six fields is the wrong thing to be looking at.
 
-**THIS DOCUMENT USED TO BE ABOUT A MICROPHONE. THERE IS NO LONGER ONE.** Speech
-input was built, shipped, and did not work on the phone it was built for:
-Android's recognizer refuses `EXTRA_PREFER_OFFLINE` when no offline Portuguese
-pack is installed, and answers *"Voice search isn't available"*. Every path
-round that was worse than the box itself, so listening was removed - the two
-web recognizers, the seam above them, the Android plugin's recording half, the
-install panel, and the setting that could have sent recorded speech to Google.
-What is described below is the engine those things fed, which was always the
-part doing the work.
-
-Two facts shape every decision below.
+Three facts shape every decision below.
 
 **The box is the feature, and always was.** It is present on every platform, in
-the same sheet, doing the same thing. Nothing about it was a fallback for
-anything.
+the same sheet, doing the same thing. Nothing about it is a fallback for
+anything, which is why it survived the release where the microphone did not.
 
-**Answers are still read aloud.** Speaking is not listening: `speechSynthesis`
-opens no microphone, asks for no permission, and sends nothing anywhere. See
-*Reading answers aloud* below.
+**The microphone is back, offline first, and it says why when it fails.** It was
+built, shipped, and did not work on the phone it was built for: Android's
+recognizer refuses `EXTRA_PREFER_OFFLINE` when no offline Portuguese pack is
+installed, and answers *"Voice search isn't available"* — while the plugin
+reported every failure as a cancellation, which this interface renders as
+silence. So the button appeared dead, and it was removed. What was wrong with it
+is fixed: every failure is now named, and the one failure with something to do
+about it carries the fix on the panel. See *Speaking instead of typing*.
+
+**Answers are read aloud.** Speaking is not listening: `speechSynthesis` opens
+no microphone, asks for no permission, and sends nothing anywhere. See *Reading
+answers aloud*.
 
 Since the assistant shipped, this engine is one of two behind the same box. It
 answers when the assistant is switched off or has no key, and whenever Claude
@@ -42,9 +42,9 @@ sets out what the other one sends.
 Every row below is taken from `src/voice/grammar/*.phrases.test.ts`, which is a
 corpus rather than a sample: 848 rows across the three languages, and a phrase
 that is not in it is a phrase this document does not claim. They are written the
-way speech used to arrive - lowercase, and often without accents - because a
-folded, unaccented phrase is still what the parser is built to survive, and the
-corpus was not weakened when the microphone went.
+way speech arrives - lowercase, and often without accents - because that is what
+the parser has to survive, and it survived it through the release that had no
+microphone to produce it.
 
 Accents, capitals and question marks are all optional. `o que ta vencendo` and
 `O que está vencendo?` fold to the same thing before any rule sees them.
@@ -197,17 +197,134 @@ no way to refuse. On Android the system voice is on the phone. Switching the
 setting off is the only thing here that is certain.
 
 On Android the phone's silent switch wins over the setting: `RingerPlugin`
-reads the ringer mode, which a WebView cannot see on its own. That plugin is all
-that is left of `SpeechPlugin` - one method, `isSilent`, needing no permission
-and recording nothing. `src/services/speech/ringer.ts` is the other half of it.
+reads the ringer mode, which a WebView cannot see on its own. It is one method,
+`isSilent`, needing no permission and recording nothing;
+`src/services/speech/ringer.ts` is the other half of it.
+
+It used to be part of `SpeechPlugin` and it is not again. Reading the ringer
+switch belongs to the speaker; recognizing speech belongs to the microphone.
+Keeping them apart means nothing about playing a sentence pulls a recognizer
+into its module graph, and an APK that can speak needs nothing from the plugin
+that listens.
+
+---
+
+## Speaking instead of typing
+
+The microphone is in the sheet, beside the box, not in the header. Press it, say
+one sentence, and what comes back goes to the same `run` the **Send** button
+calls: a spoken question and a typed one take the same path from the first line.
+
+It is in the sheet rather than in the header on purpose, and the reason is the
+bug this feature died of. The header button used to be the microphone: pressing
+it opened the sheet and started a listen in the same gesture. On a phone with no
+offline pack, that means a warning panel on top of the box every single time you
+open the sheet to type. The failure that killed this feature was a control that
+appeared dead; burying the control that works under an explanation of the one
+that does not is the same mistake wearing a hat.
+
+### Nothing leaves the device unless you say so
+
+**Offline is the default and it is not a preference — it is the request the
+recognizer is given.** On Android the plugin sends `EXTRA_PREFER_OFFLINE`; in
+Chrome the recognizer sets `processLocally = true`, which fails closed. With no
+model on the device for your language, the listen fails. It does not quietly go
+looking for a network.
+
+**Settings → Ask → Use internet recognition** is the one control in this
+application that can send a recording of anybody anywhere, and it is off. Switch
+it on and the offline flag is omitted: the system recognizer may then use the
+network, and on most phones the system recognizer is Google's. The label says
+that rather than saying "online", because *online* does not name who receives
+your voice.
+
+Nothing switches it on for you. Not a retry, not a failure, not an upgrade. A
+failure may put the switch in front of you; only you flip it.
+
+### When it fails, it says which failure
+
+Every unsuccessful listen used to arrive as "cancelled", and a cancellation is
+the one failure this interface answers with silence — correctly, because a
+banner after a deliberate *never mind* teaches people to ignore banners. Those
+two reasonable decisions together made a microphone that failed in total
+silence.
+
+The plugin now returns a code and the interface owns the sentence, because the
+plugin cannot know which of three languages you read:
+
+| What happened | What you see |
+|---|---|
+| You pressed back | Nothing at all. It was deliberate. |
+| No offline model for your language | The panel below |
+| Nothing on the device transcribes | *This device cannot transcribe speech on its own* |
+| The recognizer wanted a network | *The recognizer went looking for the internet and did not find it* |
+| It heard nothing it could read | *I did not hear anything. Try again, or type the command* |
+| Something else holds the microphone | *Something else is using the microphone* |
+| Anything else | *The microphone could not be used. Typing works* |
+
+The missing-model case gets a panel rather than a sentence, because it is the
+only failure with something you can actually do about it. The panel carries all
+three ways forward: the install path for the offline pack, folded away until you
+ask for it; **Type the command instead**, which dismisses the panel and puts the
+cursor in the box; and the internet-recognition switch itself, in the same
+words as the Settings row.
+
+The switch is on the panel deliberately. The first version of this named the
+setting in a sentence and sent you to Settings to find it, having just told you
+your phone had no *offline speech pack* — a term nobody outside this repository
+uses. Sending somebody hunting through a settings screen after a failure they
+cannot interpret is how this failed the first time.
+
+### What Android actually tells you, and what is guessed
+
+Less than you would like. `ACTION_RECOGNIZE_SPEECH` hands recording to the
+system, which is why this application declares no `RECORD_AUDIO` — but the
+result `Intent` carries no error extra. `EXTRA_RESULTS` and
+`EXTRA_CONFIDENCE_SCORES` are its whole documented contents, so the entire
+diagnosis is the activity result code. `RecognizerIntent` documents five beyond
+`RESULT_OK` and `RESULT_CANCELED`, and every one is mapped — but a recognizer is
+free to answer `RESULT_CANCELED` instead, and Google's commonly does. The two
+constants that name a missing offline model, `ERROR_LANGUAGE_UNAVAILABLE` and
+`ERROR_LANGUAGE_NOT_SUPPORTED`, arrive through `RecognitionListener`, which
+belongs to the API that needs the microphone permission. They never reach an
+`Intent` result.
+
+So a missing model is established two other ways, in this order:
+
+1. **Before the dialog opens**, by asking `checkRecognitionSupport` which
+   languages are installed. That is API 33 and up, it records nothing, and it
+   needs no permission: it is a question about the recognizer, not a use of the
+   microphone. A definite *the installed list is not empty and your language is
+   not in it* rejects before anything opens.
+2. **Below API 33, or when that cannot answer**, by how fast `RESULT_CANCELED`
+   comes back. A refusal returns at once; a person deciding not to speak cannot
+   open the dialog, read it and press back inside a second. **This one is a
+   heuristic**, and it is applied only while the question is genuinely open —
+   never when the pre-flight check answered — because being wrong the other way
+   means a banner after a deliberate cancellation.
+
+`android/.../SpeechPlugin.java` says the same thing at greater length, next to
+the code it describes.
+
+### Package visibility, which is not a permission
+
+The manifest carries a `<queries>` element naming
+`android.speech.RecognitionService` and `android.speech.action.RECOGNIZE_SPEECH`.
+From Android 11 an application sees no other application it has not named, so
+without it `queryIntentActivities` returns an empty list and the microphone
+reports itself unavailable on every modern phone. It grants nothing and asks for
+nothing. It is not `QUERY_ALL_PACKAGES`, which is a permission and is not there.
 
 ---
 
 ## What it will not do
 
-- **No speech input, on any platform.** Removed rather than hidden: there is
-  no recognizer module, no seam above one, and no `RECORD_AUDIO` that could be
-  declared. Reading answers aloud is unaffected.
+- **No wake word, and no continuous listening.** One utterance per press. The
+  Intent has no continuous mode, and an application that listens without being
+  asked is not one to build on a promise about what leaves the device.
+- **No `RECORD_AUDIO`, ever.** The system's recognizer holds the microphone and
+  this application is handed a sentence. The check in
+  `.github/workflows/android.yml` fails the build on that permission.
 - **No conversation.** The engine answers the forms in the tables above.
   Anything else is UNKNOWN with examples, not a guess. It has no memory between
   sentences: each one is parsed on its own, so "and two more" refers to nothing.
@@ -268,6 +385,10 @@ and the box inside it are reached through that button and through nothing else,
 so switching it off removes the feature rather than only its entry point.
 
 **Settings → Ask → Read answers aloud** keeps the box and stops the speaking.
+
+**Settings → Ask → Use internet recognition** is off, and switching it off again
+after you have switched it on returns the microphone to offline-only. Nothing
+else in the application writes that setting.
 
 Neither is the assistant's switch. **Settings → Ask Claude** decides which
 engine answers, and with it off - or with no key pasted - this one does, and
