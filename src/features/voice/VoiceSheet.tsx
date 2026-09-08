@@ -1,23 +1,28 @@
 /**
- * The ask sheet: what was asked, what came of it, and a box to type in.
+ * The ask sheet: what was asked, what came of it, a microphone and a box to
+ * type in.
  *
  * Built on `components/ui/Dialog`, which is the native `<dialog>` element. That
  * is where focus trapping, Escape-to-close, inertness of the page behind and
  * the bottom-sheet behaviour on a phone come from; none of it is reimplemented
  * here.
  *
- * THE MICROPHONE IS GONE AND THE SPEAKER IS NOT. Android's recognizer refuses
- * EXTRA_PREFER_OFFLINE with no offline Portuguese pack installed - the phone
- * this was built for - so listening was dropped rather than left to fail in
- * silence. Reading an answer aloud works, is tested, and is the half that is
- * useful with your hands full, so it stays: `createSpeaker` for the setting,
- * `androidIsSilent` for the switch on the side of the phone.
+ * TWO WAYS IN, AND NEITHER IS A FALLBACK. The box is on every platform and
+ * always worked; the microphone is on the platforms that have a recognizer, and
+ * it was removed once because Android refused every offline request on a phone
+ * with no Portuguese pack. It is back, offline-first, and it says why when it
+ * cannot - see `MicButton`, which owns the listening and hands over one
+ * sentence at a time. A transcript goes to `run`, the same function the Send
+ * button calls, so a spoken question and a typed one take exactly the same
+ * path from here on.
  *
- * The typed box was never a fallback. It is the whole feature, on every
- * platform, and it now has two engines behind it - see `useVoice`.
+ * THE ANSWER IS READ BACK. `createSpeaker` for the setting, `androidIsSilent`
+ * for the switch on the side of the phone. Speaking is not listening and asks
+ * for nothing; the composition of the two is a few lines below.
  *
- * The component holds no logic. `useVoice` owns the state machine and is tested
- * through this file's typed path.
+ * The component holds no logic of its own. `useVoice` owns the state machine
+ * and is tested through this file's typed path, which needs no speech API at
+ * all.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/AppContext';
@@ -28,6 +33,7 @@ import { createSpeaker } from '../../services/speech/speak';
 import { androidIsSilent } from '../../services/speech/ringer';
 import { CREATABLE_INTENTS } from '../../voice/intents';
 import { useVoice, type Exchange, type Voice } from './useVoice';
+import { MicButton } from './MicButton';
 import { ConfirmCard } from './ConfirmCard';
 import { ChoiceList } from './ChoiceList';
 import type { AiFailureReason } from '../../services/ai/converse';
@@ -90,6 +96,17 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
     onClose();
   }, [onClose, speaker]);
 
+  /**
+   * The failure panel's way out.
+   *
+   * The cursor lands where the feature still works. A phone with no speech pack
+   * has lost its microphone and nothing else, and the point of saying so is to
+   * put somebody in front of that fact rather than in front of an apology.
+   */
+  const typeInstead = useCallback(() => {
+    formRef.current?.querySelector('input')?.focus();
+  }, []);
+
   const submit = () => {
     const value = typed.trim();
     if (value === '') return;
@@ -127,6 +144,19 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
         two frames and a status line for it would be a flicker, not a message.
       */}
       {voice.busy && voice.engine === 'claude' && <p role="status">{t('ai.thinking')}</p>}
+
+      {/*
+        The microphone is here rather than in the header, so that nothing
+        explains a speech failure to somebody who only came to type. See
+        `MicButton`.
+      */}
+      <MicButton
+        onHeard={(transcript) => {
+          void run(transcript);
+        }}
+        onTypeInstead={typeInstead}
+        busy={voice.busy}
+      />
 
       <form
         ref={formRef}

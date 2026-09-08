@@ -14,6 +14,8 @@ import { useApp } from '../../app/AppContext';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { Alert, Button, Card, Loading } from '../../components/ui/primitives';
 import { OptionChip, SelectField, SwitchRow, TextField } from '../../components/ui/Field';
+import { selectRecognizer } from '../../services/speech/recognizer';
+import { LOCALE_TAGS } from '../../i18n/translate';
 import { BackupPanel } from './BackupPanel';
 import { requestPersistentStorage, storageEstimate } from '../../app/bootstrap';
 import { DATE_FORMATS, LANGUAGES, type DateFormat, type Language } from '../../domain/settings';
@@ -31,6 +33,7 @@ export function SettingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [integrity, setIntegrity] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   const storage = useAsyncData(() => storageEstimate(), []);
   const persisted = useAsyncData(
@@ -46,6 +49,22 @@ export function SettingsScreen() {
     [repositories.categories, revision],
   );
   const live = useAsyncData(() => refreshDiagnostics(), [refreshDiagnostics, revision]);
+
+  /*
+   * What this device can actually do, asked of the device rather than assumed.
+   * Per-language on purpose: a phone with an English model and no Portuguese
+   * one is ready for one and unavailable for the other, so switching the
+   * interface language asks again.
+   */
+  const speech = useAsyncData(async () => {
+    const tag = LOCALE_TAGS[settings.language];
+    // The opt-in changes the honest answer: a device with no local model for
+    // this language can transcribe after all, once its owner has allowed the
+    // audio to leave. Asked again when the switch moves, for that reason.
+    const options = { allowOnline: settings.voiceAllowOnline };
+    const recognizer = await selectRecognizer(tag, options);
+    return { recognizer, tag, availability: await recognizer.availability(tag, options) };
+  }, [settings.language, settings.voiceAllowOnline]);
 
   const info = live.data ?? diagnostics;
 
@@ -102,6 +121,41 @@ export function SettingsScreen() {
       setIntegrity(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setChecking(false);
+    }
+  };
+
+  /**
+   * The language pack, downloaded at the user's request.
+   *
+   * The one place in this feature where a byte crosses the network, and it is
+   * the browser fetching on an explicit press rather than the page fetching on
+   * its own - which is why the offline audit is right to ignore it, and why
+   * this must never happen automatically or without a label saying so.
+   */
+  const installSpeech = async () => {
+    const state = speech.data;
+    if (state === undefined || state.recognizer.install === undefined) return;
+    setInstalling(true);
+    try {
+      await state.recognizer.install(state.tag);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setInstalling(false);
+      speech.reload();
+    }
+  };
+
+  const speechStatus = () => {
+    switch (speech.data?.availability) {
+      case 'ready':
+        return t('voice.ready');
+      case 'installable':
+        return t('voice.installable');
+      case 'unavailable':
+        return t('voice.unavailable');
+      default:
+        return t('common.loading');
     }
   };
 
@@ -260,18 +314,70 @@ export function SettingsScreen() {
             void updateSettings({ askEnabled: on });
           }}
         />
-        {/*
-          What is left of voice, and the half that worked. The microphone was
-          removed - Android's recognizer refuses to transcribe offline with no
-          Portuguese pack installed - and reading an answer aloud was not, so
-          this setting stays and means exactly what it says.
-        */}
         <SwitchRow
           label={t('voice.settingSpeak')}
           help={t('voice.settingSpeakHelp')}
           checked={settings.voiceSpeakAnswers}
           onChange={(on) => {
             void updateSettings({ voiceSpeakAnswers: on });
+          }}
+        />
+
+        {/*
+          Settings already tells the truth about where the data is stored and
+          whether the browser has promised to keep it. Speech gets the same
+          treatment: what this device can do, said plainly, rather than a
+          microphone that silently does nothing.
+        */}
+        <dl className={screens.definitionList}>
+          <dt>{t('voice.availability')}</dt>
+          <dd>{speechStatus()}</dd>
+        </dl>
+
+        {speech.data?.availability === 'installable' &&
+          (speech.data.recognizer.install === undefined ? (
+            /*
+              Android installs speech packs through its own settings and offers
+              no API for it, so the honest thing to show is the path rather than
+              a button that cannot work. This is the same wording the ask sheet
+              shows after a listen that found no model.
+            */
+            <Alert tone="warning" title={t('voice.installHow')}>
+              {t('voice.installSteps')}
+            </Alert>
+          ) : (
+            <div className={screens.pageActions} style={{ marginTop: 'var(--space-4)' }}>
+              <Button
+                variant="primary"
+                disabled={installing}
+                onClick={() => {
+                  void installSpeech();
+                }}
+              >
+                {installing ? t('common.loading') : t('voice.install')}
+              </Button>
+              <span className={screens.pageSubtitle}>{t('voice.installDownloads')}</span>
+            </div>
+          ))}
+
+        {/*
+          The only control in this application that can send anything off the
+          device, so it says what leaves and to whom rather than saying
+          "online". It is last on purpose: a person reads what this device can
+          do, then how to make it do it locally, and only then the option that
+          gives something up.
+
+          The same switch, in the same words, is on the panel that appears when
+          a listen fails for want of a local model - which is where somebody
+          actually is when the question comes up. Neither place ever writes it
+          without a press.
+        */}
+        <SwitchRow
+          label={t('voice.settingAllowOnline')}
+          help={t('voice.settingAllowOnlineHelp')}
+          checked={settings.voiceAllowOnline}
+          onChange={(on) => {
+            void updateSettings({ voiceAllowOnline: on });
           }}
         />
       </Card>

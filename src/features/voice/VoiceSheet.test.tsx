@@ -2,11 +2,12 @@
 /**
  * The ask sheet, driven through the box it is made of.
  *
- * There is no microphone left to stub. Android's recognizer refuses to
- * transcribe offline with no Portuguese pack installed, so voice commands were
- * removed and the typed box - which was never a fallback - is the whole
- * feature. What is stubbed now is the network: the Anthropic SDK, so that not
- * one assertion here can reach the real API or spend anybody's money.
+ * Two things are stubbed and nothing else. The network - the Anthropic SDK, so
+ * that not one assertion here can reach the real API or spend anybody's money.
+ * And the choice of recognizer, in the last blocks only, because speech cannot
+ * be typed and what those blocks test is precisely what the interface does with
+ * a listen that fails. `speechFailureReason` and the failure codes stay real:
+ * reading a reason out of what a platform threw is half of what is checked.
  *
  * The database is real - the same in-memory SQLite driver the repository tests
  * use, migrated and seeded. That is what lets the central promise of this
@@ -18,7 +19,7 @@
  * cannot be trusted to have understood.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryDriver } from '../../database/driver/memory.driver';
 import type { SqlDriver } from '../../database/driver/types';
@@ -38,8 +39,75 @@ import Anthropic from '@anthropic-ai/sdk';
 import type * as AnthropicSdk from '@anthropic-ai/sdk';
 import type * as ConverseModule from '../../services/ai/converse';
 import type { AiOutcome } from '../../services/ai/converse';
+import type * as RecognizerModule from '../../services/speech/recognizer';
+import {
+  selectRecognizer,
+  SpeechFailureError,
+  type SpeechFailure,
+  type SpeechRecognizer,
+} from '../../services/speech/recognizer';
 import { VoiceSheet } from './VoiceSheet';
 import { VoiceButton } from './VoiceButton';
+
+// Only the choice of recognizer. Everything else in that module is the real
+// thing, including the reason-reading the microphone was rebuilt around.
+vi.mock('../../services/speech/recognizer', async (importOriginal) => {
+  const actual = await importOriginal<typeof RecognizerModule>();
+  return { ...actual, selectRecognizer: vi.fn() };
+});
+
+/** A device that can listen, and whose every listen ends the same way. */
+function recognizerFailing(reason: SpeechFailure): SpeechRecognizer {
+  return {
+    availability: () => Promise.resolve('ready'),
+    listen: () => Promise.reject(new SpeechFailureError(reason)),
+  };
+}
+
+/** A device that hears one thing, however many times it is asked. */
+function recognizerHearing(phrase: string): SpeechRecognizer {
+  return {
+    availability: () => Promise.resolve('ready'),
+    listen: () => Promise.resolve(phrase),
+  };
+}
+
+/**
+ * Lets the availability probe settle before the microphone is pressed.
+ *
+ * `useAsyncData` selects the recognizer in an effect, so a press in the same
+ * tick would find no recognizer and report the device unable to transcribe -
+ * which is a different message from the one under test.
+ */
+async function ready() {
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  });
+}
+
+/** Presses the microphone and lets the listen settle. */
+async function listen(user: ReturnType<typeof userEvent.setup>) {
+  await ready();
+  await user.click(screen.getByRole('button', { name: /speak instead of typing/i }));
+  await ready();
+}
+
+/** A `speechSynthesis` that records what it was asked to read. */
+function stubSpeaker() {
+  const spoken = vi.fn();
+  vi.stubGlobal('speechSynthesis', { speak: spoken, cancel: vi.fn(), getVoices: () => [] });
+  vi.stubGlobal(
+    'SpeechSynthesisUtterance',
+    class {
+      lang = '';
+      voice: unknown = null;
+      constructor(public text: string) {}
+    },
+  );
+  return spoken;
+}
 
 /*
  * The SDK, replaced. The real error classes are kept as statics, because
@@ -203,10 +271,15 @@ beforeEach(async () => {
   ai.outcome = null;
   anthropic.create.mockReset();
   anthropic.constructed.mockReset();
+
+  // A microphone whose every listen ends in a cancellation, which is the one
+  // outcome the interface answers with silence. Tests that care override it.
+  vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('cancelled'));
 });
 
 afterEach(async () => {
   cleanup();
+  vi.unstubAllGlobals();
   await db.close().catch(() => undefined);
 });
 
@@ -422,19 +495,190 @@ describe('VoiceButton', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('opens the sheet from the header, with no microphone anywhere', async () => {
+  /*
+   * The header opens the sheet and does not listen. That is the placement
+   * decision, asserted rather than described: a header control that started a
+   * listen would put a speech failure in front of everybody who only came to
+   * type, on exactly the phone this feature failed on the first time.
+   */
+  it('opens the sheet from the header, and starts no listen of its own', async () => {
     const { user, view } = await setup({ askEnabled: true });
     view(<VoiceButton />);
 
-    const button = screen.getByRole('button', { name: /ask about your stock/i });
-    // The listening path is gone, not hidden. Nothing here offers to hear.
-    expect(screen.queryByRole('button', { name: /speak|microphone|listen/i })).toBeNull();
-
-    await user.click(button);
+    await user.click(screen.getByRole('button', { name: /ask about your stock/i }));
 
     expect(screen.getByRole('textbox')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /speak|microphone|listen/i })).toBeNull();
-    expect(screen.queryByText(/speech pack|offline model|audio to Google/i)).toBeNull();
+    // The microphone is here, inside the sheet, and it has not been used.
+    expect(screen.getByRole('button', { name: /speak instead of typing/i })).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByText(/speech pack|offline model|internet recognition/i)).toBeNull();
+  });
+});
+
+/**
+ * The reported bug, in a test.
+ *
+ * "the mobile seems to be blocking the mic" - it was not. Every failure the
+ * Android plugin could not name came back as "cancelled", and a cancellation is
+ * the one failure this interface answers with silence, so a phone with no
+ * offline speech pack produced nothing at all: no sentence, no banner, no way
+ * to find out. Each case below is a failure that must now say something, and
+ * the one case that must still say nothing.
+ */
+describe('the microphone: why it produced nothing', () => {
+  it.each([
+    ['no-recognizer', /cannot transcribe speech on its own/i],
+    ['network', /did not find it/i],
+    ['no-match', /did not hear anything/i],
+    ['busy', /Something else is using the microphone/i],
+    ['failed', /microphone could not be used/i],
+  ] as const)('says what happened when the listen failed with %s', async (reason, expected) => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing(reason));
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(expected)).toBeTruthy();
+  });
+
+  /** A banner after a deliberate "never mind" teaches people to ignore banners. */
+  it('shows nothing at all when the listen was cancelled', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    // The box is still there and still works, which is the whole point.
+    expect(screen.getByRole('textbox')).toBeTruthy();
+  });
+
+  it('explains a missing speech pack, and offers the install path', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('no-offline-model'));
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/no offline speech pack/i)).toBeTruthy();
+
+    // The install path is there, folded away until it is asked for.
+    const steps = screen.getByText(/Offline speech recognition/i);
+    expect(steps.hidden).toBe(true);
+    await user.click(screen.getByRole('button', { name: /how to install/i }));
+    expect(steps.hidden).toBe(false);
+  });
+
+  it('dismisses that panel to the typed box, which is the feature that still works', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('no-offline-model'));
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+    await screen.findByText(/no offline speech pack/i);
+
+    await user.click(screen.getByRole('button', { name: /type the command instead/i }));
+
+    expect(screen.queryByText(/no offline speech pack/i)).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('textbox'));
+  });
+});
+
+/**
+ * The switch, on the panel, and never flipped by anything but a person.
+ *
+ * The first version of this feature named the setting in a sentence and left
+ * the reader to find it in Settings, after telling them their phone had no
+ * "offline speech pack" - a term nobody outside this repository uses. The
+ * switch is now on the panel that explains the failure, and the whole of what
+ * it must never do is move on its own.
+ */
+describe('the microphone: the online opt-in', () => {
+  it('offers the switch on the failure panel, off, saying where the voice goes', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('no-offline-model'));
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+    await screen.findByText(/no offline speech pack/i);
+
+    const opt = screen.getByRole('checkbox', { name: /internet recognition/i });
+    expect((opt as HTMLInputElement).checked).toBe(false);
+    // Labelled with what it does and who receives the audio, not with "online".
+    expect(screen.getByText(/your voice goes to Google/i)).toBeTruthy();
+  });
+
+  it('leaves it off through a failure that never gets a press', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('no-offline-model'));
+    const store = createSettingsRepository(db);
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+    await screen.findByText(/no offline speech pack/i);
+
+    const { settings } = await store.load();
+    expect(settings.voiceAllowOnline).toBe(false);
+  });
+
+  it('writes the setting when, and only when, somebody presses it', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('no-offline-model'));
+    const store = createSettingsRepository(db);
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+    await screen.findByText(/no offline speech pack/i);
+
+    await user.click(screen.getByRole('checkbox', { name: /internet recognition/i }));
+
+    await vi.waitFor(async () => {
+      const { settings } = await store.load();
+      expect(settings.voiceAllowOnline).toBe(true);
+    });
+  });
+});
+
+/**
+ * A question asked out loud, answered out loud.
+ *
+ * The two halves of this feature were built in different releases and one of
+ * them was deleted in between, so the whole path is asserted rather than
+ * assumed: the recognizer hands over a sentence, `run` treats it exactly as it
+ * treats a typed one, and the answer reaches `speechSynthesis`.
+ */
+describe('the microphone: a spoken question gets a spoken answer', () => {
+  it('runs what was heard and reads the answer back', async () => {
+    const spoken = stubSpeaker();
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerHearing('how much rice do i have'));
+
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    expect(screen.getByText(/You asked: how much rice do i have/i)).toBeTruthy();
+
+    await vi.waitFor(() => {
+      expect(spoken).toHaveBeenCalled();
+    });
+    expect((spoken.mock.calls[0]?.[0] as { text: string }).text).toMatch(/Rice: 3 kg/i);
+  });
+
+  it('says nothing aloud when the setting is off, and still answers on screen', async () => {
+    const spoken = stubSpeaker();
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerHearing('how much rice do i have'));
+
+    const { user, view } = await setup({ voiceSpeakAnswers: false });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    expect(spoken).not.toHaveBeenCalled();
   });
 });
 

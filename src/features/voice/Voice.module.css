@@ -154,6 +154,51 @@
   color: var(--text-secondary);
 }
 
+/* ---- The microphone notice ------------------------------------------------ */
+
+.noticeActions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+
+/*
+ * The install path, folded away until it is asked for. A phone with no speech
+ * pack needs one sentence and a way out, not a page of instructions. No
+ * `display` here on purpose: the `hidden` attribute has to be able to win.
+ */
+.steps {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+/*
+ * The online opt-in, inside the panel that explains why it is being offered.
+ * Ruled off above so it reads as a decision rather than as more of the
+ * paragraph: it is the one control in this application that can send a
+ * recording anywhere, and it should not be possible to flip it by accident
+ * while reading.
+ */
+.noticeSwitch {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/*
+ * The microphone, above the box rather than in the header. Both ways in are
+ * the same feature and neither is a fallback for the other, so they sit next
+ * to each other.
+ */
+.micRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
 /* ---- The typed box -------------------------------------------------------- */
 
 /*

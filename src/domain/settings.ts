@@ -60,19 +60,17 @@ export const settingsSchema = z.object({
   /**
    * Shows or hides the ask button in the header, and with it the whole feature.
    *
-   * WAS `voiceEnabled`, AND THE RENAME COSTS ONE STORED BOOLEAN. It used to
-   * mean "show the microphone"; there is no microphone. The question box opens
-   * from this button and from nowhere else, so this is now the on/off for
-   * asking anything at all - by parser or by Claude, which `aiEnabled` chooses
-   * between.
+   * WAS `voiceEnabled`, AND THE RENAME COST ONE STORED BOOLEAN. It used to mean
+   * "show the microphone". The microphone is now one of two ways into the same
+   * sheet - the other is a text box, and the box is on every platform - so the
+   * setting is named for the sheet rather than for either way in. Switching it
+   * off removes the button, the sheet, the box and the microphone together,
+   * which is what somebody switching it off means.
    *
    * A stored `voiceEnabled` row is not read: `parseSettings` skips a key that
    * is not in the schema, so the row stays in the table, is ignored forever,
    * and this key falls back to its default. The default is `true` and so was
-   * the old one, so the only person who notices is somebody who had switched
-   * the microphone off - and they get a button that no longer holds a
-   * microphone. That was judged a better trade than a key named for a feature
-   * that has been deleted.
+   * the old one.
    */
   askEnabled: z.boolean().default(true),
 
@@ -83,23 +81,31 @@ export const settingsSchema = z.object({
    */
   voiceSpeakAnswers: z.boolean().default(true),
 
-  /*
-   * `voiceAllowOnline` USED TO BE HERE, AND IS GONE.
+  /**
+   * Whether recorded speech may leave the device.
    *
-   * It let the recognizer transcribe a language the phone had no offline model
-   * for, which meant sending the audio to Google. It was the only setting in
-   * the application that could send anything anywhere, it defaulted to false,
-   * and it now describes nothing: the recognizer was removed because Android's
-   * refused EXTRA_PREFER_OFFLINE on the phone this was built for.
+   * FALSE, AND EVERY PATH THAT READS IT TREATS ABSENT AS FALSE. This is the one
+   * setting in the application that can put a recording of somebody on a
+   * network, so it fails closed in three places rather than one: this default,
+   * `options.allowOnline` being absent-means-no across the speech seam, and the
+   * Android plugin sending EXTRA_PREFER_OFFLINE unless told not to.
    *
-   * A stored `voiceAllowOnline` row is ignored rather than deleted -
-   * `parseSettings` skips any key the schema does not have, and `toSettingRows`
-   * will not write it again. The row is inert: nothing reads it, and a setting
-   * that fails closed by not existing cannot fail open. It is not migrated
-   * away, because a migration to delete one unread row is a schema change
-   * bought for nothing.
+   * On, it lets the recognizer transcribe a language the device has no offline
+   * model for, which means the system recognizer may send the audio to
+   * whichever service it uses - on most phones, Google's.
+   *
+   * IT EXISTS BECAUSE THE ALTERNATIVE WAS A DEAD BUTTON. Offline was once
+   * demanded unconditionally, and on a phone with no Portuguese pack the
+   * recognizer refused every time. The application is never the one to switch
+   * this on: not after a failure, not as a retry, not on an upgrade. What a
+   * failure may do is put the switch in front of the person, which is what the
+   * panel in MicNotice does, because sending somebody to hunt through Settings
+   * after a failure they cannot interpret is how this failed the first time.
+   *
+   * A stored row from the release that had no such setting simply does not
+   * exist, and this key falls back to the default, which is the private one.
    */
-
+  voiceAllowOnline: z.boolean().default(false),
 
   /**
    * Whether Claude may be asked anything at all.

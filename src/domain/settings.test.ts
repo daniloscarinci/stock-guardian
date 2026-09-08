@@ -9,19 +9,18 @@ describe('settings', () => {
     });
 
     /*
-     * `voiceAllowOnline` was the only setting that could send anything off the
-     * device, and it is gone with the recognizer it controlled. A stored row is
-     * skipped rather than migrated - `parseSettings` ignores any key the schema
-     * does not have - so an old database neither restores it nor trips over it.
+     * The one setting that can send a recording of somebody anywhere. A default
+     * of `true` here would make the application's central claim false without
+     * anybody choosing it, so this is asserted on its own rather than folded
+     * into the test above.
      */
-    it('ignores the online opt-in that no longer exists', () => {
-      const { settings, invalidKeys } = parseSettings([
-        { key: 'voiceAllowOnline', value: 'true' },
-        { key: 'language', value: '"es"' },
-      ]);
-      expect('voiceAllowOnline' in settings).toBe(false);
-      expect(invalidKeys).not.toContain('voiceAllowOnline');
-      expect(settings.language).toBe('es');
+    it('defaults the online opt-in OFF', () => {
+      expect(DEFAULT_SETTINGS.voiceAllowOnline).toBe(false);
+    });
+
+    it('leaves it off for a database that predates the setting', () => {
+      const { settings } = parseSettings([{ key: 'askEnabled', value: 'true' }]);
+      expect(settings.voiceAllowOnline).toBe(false);
     });
 
     /*
@@ -91,6 +90,16 @@ describe('settings', () => {
       const { settings, invalidKeys } = parseSettings([{ key: 'askEnabled', value: '"nonsense"' }]);
       expect(settings.askEnabled).toBe(true);
       expect(invalidKeys).toContain('askEnabled');
+    });
+
+    // A corrupt value must fall back to the private behaviour, never to the
+    // one that sends audio away.
+    it('falls back to off when the online opt-in is corrupt', () => {
+      const { settings, invalidKeys } = parseSettings([
+        { key: 'voiceAllowOnline', value: '"yes please"' },
+      ]);
+      expect(settings.voiceAllowOnline).toBe(false);
+      expect(invalidKeys).toContain('voiceAllowOnline');
     });
   });
 });

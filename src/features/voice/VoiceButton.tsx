@@ -1,17 +1,15 @@
 /**
  * The ask button in the header.
  *
- * It used to own a recognizer, one utterance and a small state machine for
- * everything that could go wrong with a microphone. All of that is gone:
- * Android's recognizer refuses EXTRA_PREFER_OFFLINE with no offline Portuguese
- * pack installed, which is the phone this was built for, so voice commands were
- * dropped rather than kept as a button that silently did nothing. What is left
- * is a button that opens the sheet, which is what every path through this
- * feature did anyway.
+ * It opens the sheet and does nothing else. It used to own a recognizer, one
+ * utterance and a small state machine for everything that can go wrong with a
+ * microphone; the microphone is now inside the sheet, next to the box, because
+ * a header control that starts listening puts a speech failure in front of
+ * everybody who only came to type. `MicButton` has the rest of that argument.
  *
- * Rendering nothing is `askEnabled`'s whole meaning. The sheet, and the box
- * inside it, open from here and from nowhere else, so switching that setting
- * off removes the feature rather than only its entry point.
+ * Rendering nothing is `askEnabled`'s whole meaning. The sheet, and both ways
+ * into it, open from here and from nowhere else, so switching that setting off
+ * removes the feature rather than only its entry point.
  */
 import { useState } from 'react';
 import { useApp } from '../../app/AppContext';
