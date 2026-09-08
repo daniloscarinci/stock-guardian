@@ -126,11 +126,15 @@ textarea {
   border: 0;
 }
 
-/* Becomes visible when focused - the skip link. */
+/*
+ * Becomes visible when focused - the skip link. It is the one thing in the
+ * application that pins itself to the top-left corner, so it is also the one
+ * thing that would appear underneath the clock without an inset of its own.
+ */
 .sr-only-focusable:focus-visible {
   position: fixed;
-  top: var(--space-3);
-  left: var(--space-3);
+  top: calc(var(--space-3) + var(--inset-top));
+  left: calc(var(--space-3) + var(--inset-left));
   z-index: 100;
   width: auto;
   height: auto;

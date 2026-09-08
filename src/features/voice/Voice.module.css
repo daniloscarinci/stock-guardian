@@ -2,6 +2,13 @@
  * The voice sheet's own layout only. The frame - width, backdrop, the way it
  * becomes a bottom sheet below 40rem - belongs to Dialog.module.css and is not
  * repeated here.
+ *
+ * That includes the safe-area insets, and it is worth saying so because this is
+ * the sheet whose bottom edge matters most: `.form` below is the last thing in
+ * it, and on a phone it sits exactly where the gesture bar is. This sheet
+ * passes no footer to Dialog, so the clearance comes from the `.body:last-child`
+ * rule there rather than from anything in this file. Grep for `--inset-` in
+ * src/components/ui/Dialog.module.css.
  */
 
 .history {

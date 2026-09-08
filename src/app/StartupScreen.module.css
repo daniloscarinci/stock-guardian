@@ -1,8 +1,15 @@
+/*
+ * The whole viewport, and both the first thing shown at startup and what
+ * ErrorBoundary falls back to. It is the one screen with no header above it, so
+ * its own padding is all that keeps a tall panel - the failure message with its
+ * details expanded - out from under the clock and the gesture bar.
+ */
 .screen {
   display: grid;
   place-items: center;
   min-height: 100dvh;
-  padding: var(--space-6);
+  padding: calc(var(--space-6) + var(--inset-top)) calc(var(--space-6) + var(--inset-right))
+    calc(var(--space-6) + var(--inset-bottom)) calc(var(--space-6) + var(--inset-left));
   background: var(--surface-base);
 }
 

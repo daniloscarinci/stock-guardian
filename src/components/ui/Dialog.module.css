@@ -1,6 +1,15 @@
+/*
+ * The dialog is centred by the browser in the viewport, not in the safe area,
+ * so both its width and its height are held short of the system's furniture
+ * rather than padded away from it: subtracting the insets from the box leaves
+ * the leftover margin split evenly on each axis, which keeps it clear of a
+ * cutout on the left and a curved edge on the right at the same time. Every
+ * inset is 0px on a desktop, so this is min(40rem, 100vw - 2rem) there exactly
+ * as before.
+ */
 .dialog {
-  width: min(40rem, calc(100vw - 2rem));
-  max-height: min(90dvh, 56rem);
+  width: min(40rem, calc(100vw - 2rem - var(--inset-left) - var(--inset-right)));
+  max-height: min(calc(90dvh - var(--inset-top) - var(--inset-bottom)), 56rem);
   padding: 0;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
@@ -16,7 +25,7 @@
 }
 
 .wide {
-  width: min(62rem, calc(100vw - 2rem));
+  width: min(62rem, calc(100vw - 2rem - var(--inset-left) - var(--inset-right)));
 }
 
 .inner {
@@ -77,15 +86,40 @@
   .dialog {
     width: 100vw;
     max-width: 100vw;
-    max-height: 92dvh;
+    /*
+     * Anchored to the bottom and grows upward, so it is the TOP inset that
+     * bounds it: a tall sheet would otherwise slide its own header under the
+     * clock. Full-bleed horizontally, so the sections below carry the side
+     * insets rather than the box - padding here would show the dialog's own
+     * surface as a stripe beside the footer, which is a different colour.
+     */
+    max-height: calc(92dvh - var(--inset-top));
     margin: auto 0 0;
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     border-bottom: none;
   }
 
+  .header,
+  .body,
+  .footer {
+    padding-left: calc(var(--space-5) + var(--inset-left));
+    padding-right: calc(var(--space-5) + var(--inset-right));
+  }
+
   .footer {
     /* Clears the home indicator on phones with a gesture bar. */
-    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--space-4) + var(--inset-bottom));
+  }
+
+  /*
+   * A dialog with no footer ends at the body, and then it is the body that has
+   * to clear the gesture bar. The voice sheet is the one that does this, and it
+   * is the one people touch most: its send button is the last thing in the
+   * scroll box. The padding is inside the scroller, so the room appears at the
+   * end of the content rather than shortening the sheet.
+   */
+  .body:last-child {
+    padding-bottom: calc(var(--space-5) + var(--inset-bottom));
   }
 
   .footer > * {

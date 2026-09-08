@@ -1,3 +1,12 @@
+/*
+ * Every rule in this file that touches a screen edge carries a --inset-* token
+ * from src/styles/tokens.css, added to the spacing that was already there. The
+ * page is drawn edge to edge (viewport-fit=cover in index.html), so without
+ * them the header sits under the phone's clock and the quick bar under its
+ * gesture bar. Each token is 0px where there is no such furniture, which is
+ * every desktop browser, so none of this changes the desktop layout.
+ */
+
 .shell {
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
@@ -8,7 +17,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-3);
+  /*
+   * Full height in both layouts - sticky beside the content on a desktop,
+   * fixed to `inset: 0 auto 0 0` as a drawer on a phone - so it meets the top
+   * edge, the bottom edge and the left edge, and takes an inset on all three.
+   * Its right edge never reaches the screen, so it takes none there.
+   */
+  padding: calc(var(--space-4) + var(--inset-top)) var(--space-3)
+    calc(var(--space-4) + var(--inset-bottom)) calc(var(--space-3) + var(--inset-left));
   background: var(--surface-raised);
   border-right: 1px solid var(--border-subtle);
   position: sticky;
@@ -133,12 +149,25 @@
   min-width: 0;
 }
 
+/*
+ * Sticky at `top: 0`, which on a phone means underneath the clock and the
+ * battery. Both the padding and the min-height grow by the top inset: without
+ * the second, the box keeps its old height and the extra padding pushes the
+ * menu button and the language select down into the bottom border instead of
+ * making room above them.
+ *
+ * The left inset is deliberately absent here and added in the mobile block
+ * below. Above 60rem the sidebar occupies the left edge and already carries it;
+ * adding it here as well would pad the header twice on a wide screen with a
+ * cutout.
+ */
 .header {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: var(--header-height);
-  padding: var(--space-3) var(--space-5);
+  min-height: calc(var(--header-height) + var(--inset-top));
+  padding: calc(var(--space-3) + var(--inset-top)) calc(var(--space-5) + var(--inset-right))
+    var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-base);
   position: sticky;
@@ -172,12 +201,19 @@
   cursor: pointer;
 }
 
+/*
+ * The scrolling page. Its bottom is the bottom of the screen on every layout
+ * that has no quick bar, so the last row of a long table has to be able to
+ * clear the gesture bar. The left inset is the sidebar's above 60rem, as with
+ * the header; the mobile block below takes it over.
+ */
 .content {
   flex: 1;
   width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
-  padding: var(--space-6) var(--space-5) var(--space-16);
+  padding: var(--space-6) calc(var(--space-5) + var(--inset-right))
+    calc(var(--space-16) + var(--inset-bottom)) var(--space-5);
 }
 
 .menuButton {
@@ -209,6 +245,10 @@
     transform: translateX(0);
   }
 
+  /*
+   * The scrim is meant to cover the screen, system bars included - it is a
+   * dimming layer, not content - so it takes no inset.
+   */
   .scrim {
     position: fixed;
     inset: 0;
@@ -217,9 +257,20 @@
     border: none;
   }
 
+  /* The sidebar is a drawer here, so the header does reach the left edge. */
+  .header {
+    padding-left: calc(var(--space-5) + var(--inset-left));
+  }
+
   .content {
-    /* Room for the quick-action bar. */
-    padding: var(--space-4) var(--space-4) calc(var(--space-16) + 3rem);
+    /*
+     * Room for the quick-action bar - which is itself taller than 3rem by the
+     * bottom inset, so the clearance has to grow with it or the last row hides
+     * behind the bar rather than behind the gesture area.
+     */
+    padding: var(--space-4) calc(var(--space-4) + var(--inset-right))
+      calc(var(--space-16) + 3rem + var(--inset-bottom))
+      calc(var(--space-4) + var(--inset-left));
   }
 }
 
@@ -236,8 +287,13 @@
     z-index: 20;
     display: flex;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+    /*
+     * Pinned to the bottom edge, so it sits over the gesture bar, and its
+     * buttons run the full width, so in landscape the outermost ones reach a
+     * curved edge or a cutout.
+     */
+    padding: var(--space-2) calc(var(--space-3) + var(--inset-right))
+      calc(var(--space-2) + var(--inset-bottom)) calc(var(--space-3) + var(--inset-left));
     background: var(--surface-raised);
     border-top: 1px solid var(--border-subtle);
   }

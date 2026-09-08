@@ -136,6 +136,31 @@
   --shadow-md: 0 2px 6px rgb(0 0 0 / 0.08), 0 6px 16px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.14), 0 2px 8px rgb(0 0 0 / 0.1);
 
+  /* ---- Safe-area insets --------------------------------------------------- */
+  /*
+   * index.html asks for `viewport-fit=cover`, so the page is drawn edge to edge
+   * and this application's own background reaches the corners instead of
+   * leaving black bands beside the phone's furniture. The bargain that buys is
+   * that every edge the page touches has to keep clear of that furniture
+   * itself - the clock and battery at the top, the gesture bar at the bottom, a
+   * display cutout or a curved screen at the sides. The browser reports how
+   * much room each one needs, and these are those four numbers.
+   *
+   * Named once, here, so that grepping for `--inset-` finds every place that
+   * honours one. Two rules at the point of use:
+   *
+   *   - Compose with calc(), never alone. `calc(var(--space-3) + var(--inset-top))`
+   *     keeps the existing spacing and adds to it. A bare `env()` in its place
+   *     would REPLACE that spacing, and since every one of these is 0px on a
+   *     desktop browser, the padding would silently collapse to nothing there.
+   *   - The 0px fallback is what keeps the desktop layout identical. It is not
+   *     decoration; it is the property this whole set rests on.
+   */
+  --inset-top: env(safe-area-inset-top, 0px);
+  --inset-right: env(safe-area-inset-right, 0px);
+  --inset-bottom: env(safe-area-inset-bottom, 0px);
+  --inset-left: env(safe-area-inset-left, 0px);
+
   /* ---- Layout ------------------------------------------------------------ */
   --sidebar-width: 15rem;
   --header-height: 3.5rem;
