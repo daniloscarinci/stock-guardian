@@ -541,6 +541,27 @@ export const ptBR: LocaleTree = {
       'Mostra o botão no cabeçalho. A caixa de perguntas só abre por ele, então desligar aqui remove os dois.',
     settingSpeak: 'Ler respostas em voz alta',
     settingSpeakHelp: 'Usa a voz do sistema. No Android, o botão de silencioso do aparelho tem prioridade.',
+    settingVoice: 'Qual voz',
+    settingVoiceHelp:
+      'As vozes que este aparelho já tem para o idioma da interface. Nada é baixado para preencher a lista, e a voz escolhida é usada até deixar de estar instalada.',
+    voiceAutomatic: 'A que este aparelho escolher',
+    voiceFemale: 'Feminina',
+    voiceMale: 'Masculina',
+    voiceGuessed:
+      'Feminina e masculina são deduzidas do nome de cada voz, porque o navegador não tem esse campo e não há como perguntar. Quando o nome não entrega nada, aparece o próprio nome — inclusive os identificadores que o Android usa, que não parecem nada e ainda assim são o rótulo mais verdadeiro que existe.',
+    voiceOnline: 'sintetizada pela internet',
+    voiceOnlineChosen:
+      'A voz escolhida é sintetizada num servidor, então toda frase lida em voz alta — e elas dizem o que há no seu estoque — é enviada para lá para ser falada. As vozes marcadas como deste aparelho não enviam nada.',
+    voiceOnlyOne: 'Este aparelho tem uma voz para este idioma: {name}. Não há entre o que escolher.',
+    voiceNone:
+      'Este aparelho não lista nenhuma voz para este idioma. As respostas continuam sendo lidas, com a voz que o sistema usar.',
+    voiceLooking: 'Perguntando ao aparelho quais vozes ele tem…',
+    voiceMissing: 'Voz escolhida — ausente neste aparelho',
+    voiceMissingHelp:
+      'A voz que esta opção nomeia não está mais instalada: um pacote de idioma removido, ou outro telefone. As respostas são lidas com a voz do sistema até você escolher outra.',
+    preview: 'Ouvir',
+    previewSentence: 'Você tem 12 latas de feijão.',
+    previewSilent: 'O botão de silencioso do telefone está ligado, então nada tocaria.',
     settingOfflineOnly: 'Transcrever só neste aparelho — nunca usar a internet',
     settingOfflineOnlyHelp: 'Desligado. Toda vez que você fala, o aparelho transcreve sozinho primeiro, e num telefone que tem o idioma instalado nada sai dele. Se essa tentativa falhar e o telefone tiver conexão, ele tenta mais uma vez pela internet: o reconhecedor do sistema envia sua voz gravada para isso — na maioria dos telefones, para o Google — e a resposta fica marcada como transcrita pela internet, para você ver quando aconteceu. Ligue isto e essa segunda tentativa nunca acontece. O que você fala nunca sai do telefone, e um idioma sem pacote off-line simplesmente não é transcrito.',
     availability: 'Reconhecimento de voz',

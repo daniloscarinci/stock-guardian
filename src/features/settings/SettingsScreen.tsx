@@ -9,12 +9,19 @@
  * where it is stored, whether the browser has promised to keep it, and whether
  * the file is intact.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { Alert, Button, Card, Loading } from '../../components/ui/primitives';
 import { OptionChip, SelectField, SwitchRow, TextField } from '../../components/ui/Field';
 import { selectRecognizer } from '../../services/speech/recognizer';
+import {
+  createSpeaker,
+  listVoices,
+  onVoicesChanged,
+  type VoiceChoice,
+} from '../../services/speech/speak';
+import { androidIsSilent } from '../../services/speech/ringer';
 import { LOCALE_TAGS } from '../../i18n/translate';
 import { BackupPanel } from './BackupPanel';
 import { requestPersistentStorage, storageEstimate } from '../../app/bootstrap';
@@ -67,6 +74,106 @@ export function SettingsScreen() {
   }, [settings.language, settings.voiceOfflineOnly]);
 
   const info = live.data ?? diagnostics;
+
+  /*
+   * The voices this device has, and the wait for them.
+   *
+   * `speechSynthesis.getVoices()` returns what has loaded so far, and on Chrome
+   * the first call after a page load returns nothing at all - the real list
+   * arrives with a `voiceschanged` event a few milliseconds later. `speak.ts`
+   * can shrug that off by naming no voice; a picker cannot. An empty menu is a
+   * broken control, and one that fills in underneath somebody's finger is
+   * worse.
+   *
+   * So the list is read once, the event is subscribed to, and `settled` decides
+   * what an empty list is allowed to mean: "still asking" before it, "this
+   * device has none" after. The timer is the third case and the reason it is
+   * here - a device with no voices that also never fires the event would say
+   * "still asking" forever, which is the broken control wearing a hat.
+   *
+   * Keyed on the interface language, because that is what is being spoken: the
+   * whole list is different, and any voice chosen for the old one is not
+   * offered for the new.
+   */
+  const voiceTag = LOCALE_TAGS[settings.language];
+  const [voices, setVoices] = useState<VoiceChoice[]>([]);
+  const [voicesSettled, setVoicesSettled] = useState(false);
+  const [previewNote, setPreviewNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    const first = listVoices(voiceTag);
+    setVoices(first);
+    setVoicesSettled(first.length > 0);
+
+    const unsubscribe = onVoicesChanged(() => {
+      setVoices(listVoices(voiceTag));
+      setVoicesSettled(true);
+    });
+    const giveUp = setTimeout(() => {
+      setVoicesSettled(true);
+    }, 1500);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(giveUp);
+    };
+  }, [voiceTag]);
+
+  /*
+   * The stored choice, found in the list the way `speak.ts` finds it - by
+   * `voiceURI` or by `name`, because an engine that renames one usually keeps
+   * the other. `undefined` once the list has settled means the voice is gone,
+   * which is a thing to say out loud rather than a value to quietly drop.
+   */
+  const chosenVoice = voices.find(
+    (voice) =>
+      voice.voiceURI === settings.speakingVoiceUri || voice.name === settings.speakingVoiceUri,
+  );
+  const voiceMissing =
+    settings.speakingVoiceUri !== '' && voicesSettled && chosenVoice === undefined;
+
+  /*
+   * A voice's label: the guess where there is one, and the platform's own name
+   * either way.
+   *
+   * Both, never only the guess. `Female` on its own would be this code's word
+   * for something the browser never said, and somebody with four voices needs
+   * to tell them apart. The region is shown when it is not the one asked for -
+   * a Brazilian offered `pt-PT` should see that before pressing anything - and
+   * a server-synthesised voice is marked, because choosing it sends the
+   * sentences away.
+   */
+  const voiceLabel = (voice: VoiceChoice) => {
+    const gender =
+      voice.gender === null
+        ? null
+        : t(voice.gender === 'female' ? 'voice.voiceFemale' : 'voice.voiceMale');
+    const named = gender === null ? voice.name : `${gender} — ${voice.name}`;
+    const region = voice.lang === voiceTag ? named : `${named} [${voice.lang}]`;
+    return voice.localService ? region : `${region} (${t('voice.voiceOnline')})`;
+  };
+
+  /*
+   * A real sentence, in the language the answers come in, and not "test test":
+   * the point is to hear the voice saying the kind of thing it will say.
+   *
+   * It speaks even when "read answers aloud" is off. The press IS the consent -
+   * somebody choosing a voice is on their way to switching that on, and a
+   * button that silently does nothing is the failure this whole screen is
+   * written against. The phone's silent switch still wins, and says so instead
+   * of leaving a dead press unexplained.
+   */
+  const previewVoice = async () => {
+    setPreviewNote(null);
+    if (await androidIsSilent()) {
+      setPreviewNote(t('voice.previewSilent'));
+      return;
+    }
+    await createSpeaker(
+      () => true,
+      () => settings.speakingVoiceUri,
+    ).say(t('voice.previewSentence'), voiceTag);
+  };
 
   const saveThreshold = () => {
     const value = Number(threshold);
@@ -322,6 +429,92 @@ export function SettingsScreen() {
             void updateSettings({ voiceSpeakAnswers: on });
           }}
         />
+
+        {/*
+          WHICH voice, and not a female/male toggle.
+
+          What was asked for was a choice between a woman's voice and a man's.
+          What the Web Speech API has is a list of names: no gender field, no
+          way to ask for one, and on a stock Android phone two Portuguese voices
+          called `pt-br-x-afm-local` and `pt-br-x-pte-network`. A two-way toggle
+          over that would be this application deciding which of them is the
+          woman and being wrong half the time, on the phones that have two - and
+          doing nothing at all on the many that ship one.
+
+          So the real voices are the control, `Female` and `Male` are labels
+          `inferVoiceGender` puts on the ones whose names admit it, and the note
+          under the list says that they are guesses. Where a device has one
+          voice, or none, there is no menu: a sentence saying so is the honest
+          version of a control with nothing in it.
+        */}
+        {(voices.length > 1 || settings.speakingVoiceUri !== '') && (
+          <div style={{ marginTop: 'var(--space-4)' }}>
+            <SelectField
+              label={t('voice.settingVoice')}
+              help={t('voice.settingVoiceHelp')}
+              value={chosenVoice?.voiceURI ?? settings.speakingVoiceUri}
+              onChange={(event) => {
+                void updateSettings({ speakingVoiceUri: event.target.value });
+              }}
+            >
+              <option value="">{t('voice.voiceAutomatic')}</option>
+              {voices.map((voice) => (
+                <option key={`${voice.voiceURI}|${voice.name}`} value={voice.voiceURI}>
+                  {voiceLabel(voice)}
+                </option>
+              ))}
+              {/*
+                A stored voice that is no longer installed still has to be the
+                selected option, or the menu would show the first voice in the
+                list while the setting says something else entirely.
+              */}
+              {voiceMissing && (
+                <option value={settings.speakingVoiceUri}>{t('voice.voiceMissing')}</option>
+              )}
+            </SelectField>
+            <p className={screens.pageSubtitle}>{t('voice.voiceGuessed')}</p>
+          </div>
+        )}
+
+        {voices.length === 0 && (
+          <p className={screens.pageSubtitle} style={{ marginTop: 'var(--space-3)' }}>
+            {voicesSettled ? t('voice.voiceNone') : t('voice.voiceLooking')}
+          </p>
+        )}
+
+        {voices.length === 1 && voices[0] !== undefined && (
+          <p className={screens.pageSubtitle} style={{ marginTop: 'var(--space-3)' }}>
+            {t('voice.voiceOnlyOne', { name: voiceLabel(voices[0]) })}
+          </p>
+        )}
+
+        {voiceMissing && (
+          <Alert tone="warning" title={t('voice.voiceMissing')}>
+            {t('voice.voiceMissingHelp')}
+          </Alert>
+        )}
+
+        {/*
+          A chosen voice that is synthesised on a server is the user's decision
+          and is honoured - but the sentences read aloud name what is in
+          somebody's pantry, and this application's claim is that it makes no
+          request of its own. So the decision is taken in front of the
+          consequence rather than behind it.
+        */}
+        {chosenVoice !== undefined && !chosenVoice.localService && (
+          <Alert tone="warning">{t('voice.voiceOnlineChosen')}</Alert>
+        )}
+
+        <div className={screens.pageActions} style={{ marginTop: 'var(--space-4)' }}>
+          <Button
+            onClick={() => {
+              void previewVoice();
+            }}
+          >
+            {t('voice.preview')}
+          </Button>
+          {previewNote !== null && <span className={screens.pageSubtitle}>{previewNote}</span>}
+        </div>
 
         {/*
           Settings already tells the truth about where the data is stored and

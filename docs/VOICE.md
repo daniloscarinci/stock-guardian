@@ -207,6 +207,99 @@ your language, the platform may still resolve to a remote one, and the API gives
 no way to refuse. On Android the system voice is on the phone. Switching the
 setting off is the only thing here that is certain.
 
+### Which voice reads them
+
+Settings offers a **Which voice** menu under **Read answers aloud**. It lists the
+voices this device already has for the interface language, and **Hear it** beside
+it reads one real sentence in that language — *"Você tem 12 latas de feijão."*,
+*"You have 12 cans of beans."*, *"Tienes 12 latas de frijoles."* — so you hear the
+voice saying the kind of thing it is going to say rather than the word "test".
+
+Nothing is downloaded to fill that list. It is `speechSynthesis.getVoices()`,
+filtered to the language, and the choice is stored as one `voiceURI` in
+`speakingVoiceUri`. The default is empty, which means what it always meant: no
+voice named, the language tag left to the platform, and an on-device voice
+preferred where one matches exactly.
+
+**Hear it** speaks even when *Read answers aloud* is switched off. The press is
+the consent — you are choosing a voice, and a preview button that silently does
+nothing is the failure this whole screen is written against. The phone's silent
+switch still wins, and says so rather than leaving a dead press unexplained.
+
+### Female and male are guessed, not known
+
+**The Web Speech API has no gender field.** `SpeechSynthesisVoice` gives a
+`name`, a `lang`, a `voiceURI`, a `localService` flag and a `default` flag.
+There is no way to ask whether a voice is a woman's or a man's, and no way for a
+platform to tell us. So this application does not store a gender and does not
+show a two-way toggle. It shows the voices that exist, labels the ones whose
+**names** admit to a gender, and says underneath the list that those labels are
+guesses.
+
+`inferVoiceGender` in `src/services/speech/speak.ts` reads three patterns, worth
+progressively less:
+
+| Pattern | Example | Worth |
+| --- | --- | --- |
+| `#female` / `#male` in the identifier | `pt-br-x-afm#female_1-local` | The engine said so. |
+| The word written out, in English, Portuguese or Spanish | `Português (Brasil) - Feminino`, `Spanish (Spain) Male` | Also said so, in prose. |
+| A given name from a short table of voices Apple, Microsoft and Android actually ship | `Luciana`, `Microsoft Daniel` | An inference about a name. The first of the three that can be wrong. |
+
+**What is deliberately not decoded is Google TTS's three-letter code** — the
+`afm` in `pt-br-x-afm-local`, the `pte` in `pt-br-x-pte-network`. Reading its
+last letter as a gender is tempting, and it falls apart on the rest of the set:
+`en-gb-x-gba`, `gbb`, `gbc` and `gbd` are four voices of mixed gender lettered in
+sequence, and `es-es-x-eea` and `eef` are the same story. Any rule that produces
+an answer for `afm` produces a wrong one for those, and a coin flip presented as
+a fact is worse than saying nothing. Those voices are listed under the device's
+own name for them, which looks like nothing and is still the truest label there
+is.
+
+Names that ship as both are also left alone. Apple's `Eddy`, `Flo`, `Reed`,
+`Rocko`, `Sandy` and `Shelley` now come in male and female variants under one
+name, so they are in neither table and infer nothing.
+
+### On a phone with one voice, or none
+
+**A phone with one Portuguese voice gets no menu.** It gets a sentence naming the
+voice it has and saying there is nothing to choose between — and the **Hear it**
+button, which still does something. A dead control that pretends to offer a
+choice is exactly what this feature was built to avoid; this is that case stated
+rather than hidden. A phone that lists no voice at all says so too, and answers
+are still read aloud in whatever voice the system falls back to.
+
+Where more than one voice exists but the interface language is `en` or `es`,
+matching is on the primary subtag: an `en` interface is offered `en-GB` and
+`en-US` voices, and a `pt-BR` one is offered a `pt-PT` voice below its Brazilian
+ones, with the region shown in the label so nobody is handed European Portuguese
+without being told.
+
+### Two things that would otherwise break it
+
+**`getVoices()` is empty on the first call.** It returns what has loaded so far,
+and in Chrome that is nothing at all until the platform fires `voiceschanged` a
+few milliseconds later. `speak.ts` can shrug that off by naming no voice; a menu
+cannot. So SettingsScreen reads the list once, subscribes with `onVoicesChanged`,
+and holds a *settled* flag that decides what an empty list is allowed to mean —
+"still asking this device" before it, "this device has none" after. A 1.5-second
+timer settles it regardless, because a device with no voices that also never
+fires the event would otherwise say "still asking" forever.
+
+**A chosen voice can vanish.** A language pack is uninstalled, the interface
+language is switched to one the voice does not speak, a phone is restored from
+another phone's backup. When the stored voice is not among the ones the device
+lists, `speak.ts` falls through to exactly the local-first selection described
+above and speaks anyway — a choice that has gone missing must never mean silence
+— and Settings says the named voice is not installed rather than quietly
+selecting something else. The stored value is matched against both `voiceURI` and
+`name`, because some engines change one between releases and keep the other.
+
+One thing the choice does change: **a voice you pick is used even when it is
+synthesised on a server.** That is your decision, taken in front of a label
+saying so and a warning explaining that the sentences read aloud name what is in
+your stock. The automatic fallback still refuses remote voices; this is not the
+automatic fallback.
+
 On Android the phone's silent switch wins over the setting: `RingerPlugin`
 reads the ringer mode, which a WebView cannot see on its own. It is one method,
 `isSilent`, needing no permission and recording nothing;

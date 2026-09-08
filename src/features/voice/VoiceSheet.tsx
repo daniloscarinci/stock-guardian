@@ -69,8 +69,12 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
   const formRef = useRef<HTMLFormElement>(null);
 
   const speaker = useMemo(
-    () => createSpeaker(() => settings.voiceSpeakAnswers),
-    [settings.voiceSpeakAnswers],
+    () =>
+      createSpeaker(
+        () => settings.voiceSpeakAnswers,
+        () => settings.speakingVoiceUri,
+      ),
+    [settings.voiceSpeakAnswers, settings.speakingVoiceUri],
   );
 
   /**

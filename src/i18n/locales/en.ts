@@ -541,6 +541,27 @@ export const en = {
       'Shows the button in the header. The question box opens only from it, so switching this off removes both.',
     settingSpeak: 'Read answers aloud',
     settingSpeakHelp: "Uses the system voice. On Android the phone's silent switch wins over this.",
+    settingVoice: 'Which voice',
+    settingVoiceHelp:
+      'The voices this device already has for the interface language. Nothing is downloaded to fill the list, and a voice you pick is used until it is not installed any more.',
+    voiceAutomatic: 'Whatever this device chooses',
+    voiceFemale: 'Female',
+    voiceMale: 'Male',
+    voiceGuessed:
+      'Female and male are guessed from each voice’s own name, because the browser has no field for it and no way to be asked. Where the name gives nothing away, the name itself is shown instead — including the identifiers Android uses, which look like nothing at all and are still the truest label there is.',
+    voiceOnline: 'synthesised over the internet',
+    voiceOnlineChosen:
+      'The voice you chose is synthesised on a server, so every sentence read aloud — and they name what is in your stock — is sent there to be spoken. The voices marked as being on this device send nothing.',
+    voiceOnlyOne: 'This device has one voice for this language: {name}. There is nothing to choose between.',
+    voiceNone:
+      'This device lists no voice for this language. Answers are still read aloud, in whatever voice the system falls back to.',
+    voiceLooking: 'Asking this device which voices it has…',
+    voiceMissing: 'Chosen voice — not on this device',
+    voiceMissingHelp:
+      'The voice this setting names is not installed anymore: a language pack removed, or a different phone. Answers are read in the system voice until you choose another.',
+    preview: 'Hear it',
+    previewSentence: 'You have 12 cans of beans.',
+    previewSilent: 'The phone’s silent switch is on, so nothing would play.',
     settingOfflineOnly: 'Transcribe on this device only — never use the internet',
     settingOfflineOnlyHelp: 'Off. Every time you speak, this device transcribes on its own first, and on a phone that has the language installed nothing ever leaves it. If that attempt fails and the phone has a connection, it tries once more over the internet: the system recognizer sends your recorded speech away to do it — on most phones, to Google — and the answer is marked as transcribed online, so you can see when it happened. Switch this on and that second attempt never happens. What you say never leaves the phone, and a language with no offline pack will simply not transcribe.',
     availability: 'Speech recognition',
