@@ -24,6 +24,7 @@ export const ptBR: LocaleTree = {
     contacts: 'Contatos',
     reports: 'Relatórios',
     settings: 'Configurações',
+    phrasebook: 'Guia de frases',
     menu: 'Menu',
     close: 'Fechar menu',
   },

@@ -161,6 +161,16 @@ export const AskIcon = (props: IconProps) =>
  * On the one control that actually listens, inside the ask sheet. Drawn rather
  * than fetched, like the rest.
  */
+/** Two speech bubbles: the phrasebook is what to say, in more than one tongue. */
+export const PhrasebookIcon = (props: IconProps) =>
+  svg(
+    <>
+      <path d="M4 4h11a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H9l-4 3v-3H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+      <path d="M20 9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-1v3l-4-3h-3" />
+    </>,
+    props,
+  );
+
 export const MicIcon = (props: IconProps) =>
   svg(
     <>

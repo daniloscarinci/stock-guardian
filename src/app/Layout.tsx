@@ -22,6 +22,7 @@ import {
   MenuIcon,
   ReplenishIcon,
   ReportsIcon,
+  PhrasebookIcon,
   SettingsIcon,
   type IconComponent,
 } from '../components/ui/icons';
@@ -73,6 +74,7 @@ export function Layout({ attentionCount }: { readonly attentionCount: number }) 
     { to: '/categories', labelKey: 'nav.categories', Icon: CategoryIcon },
     { to: '/contacts', labelKey: 'nav.contacts', Icon: ContactsIcon },
     { to: '/reports', labelKey: 'nav.reports', Icon: ReportsIcon },
+    { to: '/phrasebook', labelKey: 'nav.phrasebook', Icon: PhrasebookIcon },
     { to: '/settings', labelKey: 'nav.settings', Icon: SettingsIcon },
   ];
 

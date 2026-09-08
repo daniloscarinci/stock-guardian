@@ -24,6 +24,7 @@ export const es: LocaleTree = {
     contacts: 'Contactos',
     reports: 'Informes',
     settings: 'Configuración',
+    phrasebook: 'Guía de frases',
     menu: 'Menú',
     close: 'Cerrar menú',
   },

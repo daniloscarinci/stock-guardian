@@ -29,6 +29,7 @@ export const en = {
     contacts: 'Contacts',
     reports: 'Reports',
     settings: 'Settings',
+    phrasebook: 'Phrasebook',
     menu: 'Menu',
     close: 'Close menu',
   },
