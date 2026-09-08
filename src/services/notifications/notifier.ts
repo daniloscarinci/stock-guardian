@@ -105,6 +105,8 @@ export type RefreshOutcome =
       /** Left out by the cap. Non-zero is worth saying out loud. */
       readonly dropped: number;
     }
+  /** The plan is identical to the one Android is already holding. See `applied`. */
+  | { readonly status: 'unchanged'; readonly scheduled: number }
   /** The plugin rejected. Reported rather than hidden - see the module note. */
   | { readonly status: 'failed'; readonly reason: string };
 
@@ -271,6 +273,44 @@ function toSchema(t: TranslateFn, notice: ExpiryNotice): LocalNotificationSchema
  */
 let inFlight: Promise<unknown> = Promise.resolve();
 
+/**
+ * The plan Android is already holding, as a string, or null for "unknown".
+ *
+ * This exists because the refresh is keyed to `revision`, and `revision` moves
+ * on EVERY write - including pressing `+` on a tin of beans, which changes a
+ * quantity and no expiry date at all. Without this, each of those presses would
+ * read the pending list, cancel forty alarms and register forty more, on a
+ * phone, for a plan that had not moved by a single character.
+ *
+ * It is deliberately process-local and deliberately not persisted. The failure
+ * this could cause is the worst one this feature has - a plan believed to be
+ * scheduled that is not - so the memory is thrown away every time the
+ * application starts, which on a phone is often, and the first refresh of every
+ * launch does the real work regardless. It is cleared on any outcome that is
+ * not a confirmed schedule, so a refusal or a rejection is retried rather than
+ * remembered.
+ *
+ * It is checked AFTER the permission, never before: a permission revoked in
+ * Android's settings has to be noticed on the next open, and a memo that
+ * short-circuited ahead of that check would hide it until something expired.
+ */
+let applied: string | null = null;
+
+/** The plan as Android would see it: what fires, when, and what it will say. */
+function signatureOf(notices: readonly ExpiryNotice[], t: TranslateFn): string {
+  return JSON.stringify(
+    notices.map((notice) => {
+      const { title, body } = renderExpiryNotice(t, notice);
+      return [notice.id, notice.at.getTime(), title, body];
+    }),
+  );
+}
+
+/** Forgets what is scheduled, so the next refresh does the work again. */
+export function forgetScheduledPlan(): void {
+  applied = null;
+}
+
 export function refreshExpiryNotices(input: RefreshInput): Promise<RefreshOutcome> {
   const next = inFlight.then(
     () => runRefresh(input),
@@ -292,6 +332,7 @@ async function runRefresh(input: RefreshInput): Promise<RefreshOutcome> {
    * still asks the person nothing.
    */
   if (!input.enabled) {
+    applied = null;
     return { status: 'off', cancelled: await cancelExpiryNotices() };
   }
 
@@ -301,6 +342,7 @@ async function runRefresh(input: RefreshInput): Promise<RefreshOutcome> {
     // granted this once; if Android has since taken it back, the way to ask
     // again is the switch, in front of the person, and not a dialog that
     // appears because the application was opened.
+    applied = null;
     return {
       status: 'refused',
       reason: permission === 'blocked' ? 'permission-blocked' : 'permission-denied',
@@ -313,9 +355,15 @@ async function runRefresh(input: RefreshInput): Promise<RefreshOutcome> {
     time: input.time,
   });
 
+  const signature = signatureOf(plan.notices, input.t);
+  if (signature === applied) {
+    return { status: 'unchanged', scheduled: plan.notices.length };
+  }
+
   const cancelled = await cancelExpiryNotices();
 
   if (plan.notices.length === 0) {
+    applied = signature;
     return { status: 'scheduled', cancelled, scheduled: 0, dropped: plan.dropped };
   }
 
@@ -325,9 +373,11 @@ async function runRefresh(input: RefreshInput): Promise<RefreshOutcome> {
       notifications: plan.notices.map((notice) => toSchema(input.t, notice)),
     });
   } catch (cause) {
+    applied = null;
     return { status: 'failed', reason: messageOf(cause) };
   }
 
+  applied = signature;
   return { status: 'scheduled', cancelled, scheduled: plan.notices.length, dropped: plan.dropped };
 }
 

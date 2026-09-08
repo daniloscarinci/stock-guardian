@@ -60,6 +60,7 @@ vi.mock('@capacitor/local-notifications', () => ({
 
 const {
   cancelExpiryNotices,
+  forgetScheduledPlan,
   notificationPermission,
   onExpiryNoticeTapped,
   refreshExpiryNotices,
@@ -86,6 +87,11 @@ function refresh(overrides: Partial<Parameters<typeof refreshExpiryNotices>[0]> 
 }
 
 beforeEach(() => {
+  // The module remembers the plan it last handed to Android so that pressing
+  // `+` on a tin does not reschedule forty alarms. It is process-local, and a
+  // test file is one process.
+  forgetScheduledPlan();
+
   bridge.native = true;
   bridge.platform = 'android';
   bridge.pending = [];
@@ -254,15 +260,81 @@ describe('refreshExpiryNotices', () => {
      * first, would leave a phone holding one copy per visit - and the person
      * would get eleven identical notifications on the morning of the eleventh
      * opening.
+     *
+     * Driven through a real change and back again rather than by calling twice
+     * with the same input, because the same input short-circuits on the memo
+     * below and would prove nothing about the cancel.
      */
-    it('does not leave two of everything when it runs twice', async () => {
+    it('does not leave two of everything when the plan is rebuilt', async () => {
       await refresh();
       const afterFirst = [...bridge.pending];
 
+      await refresh({ items: [MILK, BREAD, { id: 'c', name: 'Rice', expirationDate: '2026-06-01' }] });
+      expect(bridge.pending).toHaveLength(6);
+
       const outcome = await refresh();
 
-      expect(outcome).toEqual({ status: 'scheduled', cancelled: 4, scheduled: 4, dropped: 0 });
+      expect(outcome).toEqual({ status: 'scheduled', cancelled: 6, scheduled: 4, dropped: 0 });
       expect(bridge.pending).toEqual(afterFirst);
+    });
+
+    /*
+     * The refresh runs on every write, and most writes are a quantity going up
+     * by one. Reading the pending list, cancelling forty alarms and registering
+     * forty more for a plan that has not moved is work a phone can feel.
+     */
+    it('does not touch the alarm manager when the plan has not moved', async () => {
+      await refresh();
+      bridge.getPending.mockClear();
+      bridge.cancel.mockClear();
+      bridge.schedule.mockClear();
+
+      expect(await refresh()).toEqual({ status: 'unchanged', scheduled: 4 });
+      expect(bridge.getPending).not.toHaveBeenCalled();
+      expect(bridge.cancel).not.toHaveBeenCalled();
+      expect(bridge.schedule).not.toHaveBeenCalled();
+    });
+
+    it('reschedules when only the words changed', async () => {
+      await refresh();
+      bridge.schedule.mockClear();
+
+      const pt = (key: string, values?: Record<string, string | number>) =>
+        translate('pt-BR', key, values);
+      expect((await refresh({ t: pt })).status).toBe('scheduled');
+
+      const sent = bridge.schedule.mock.calls[0]?.[0] as { notifications: FakePending[] };
+      expect(sent.notifications[0]?.title).toBe('1 item vence em 7 dias');
+    });
+
+    /*
+     * A memo that survived a refusal would hide it: the permission is checked
+     * first, and a plan believed scheduled but never accepted is the worst
+     * failure this feature has.
+     */
+    it('forgets what it scheduled when Android refuses, so the next open retries', async () => {
+      await refresh();
+
+      bridge.schedule.mockRejectedValueOnce(new Error('Notifications not enabled'));
+      expect((await refresh({ items: [MILK] })).status).toBe('failed');
+
+      bridge.schedule.mockClear();
+      expect((await refresh({ items: [MILK] })).status).toBe('scheduled');
+      expect(bridge.schedule).toHaveBeenCalledTimes(1);
+    });
+
+    it('forgets it when the setting goes off, and again when the permission does', async () => {
+      await refresh();
+      await refresh({ enabled: false });
+      expect((await refresh()).status).toBe('scheduled');
+
+      bridge.display = 'denied';
+      expect((await refresh()).status).toBe('refused');
+
+      bridge.display = 'granted';
+      bridge.schedule.mockClear();
+      expect((await refresh()).status).toBe('scheduled');
+      expect(bridge.schedule).toHaveBeenCalledTimes(1);
     });
 
     /*
@@ -279,12 +351,16 @@ describe('refreshExpiryNotices', () => {
       expect(bridge.pending).toEqual([{ id: 42, title: 'Someone else', body: '' }]);
     });
 
+    /*
+     * Scheduling first would leave both sets pending for the length of a bridge
+     * call, and a failure in between would leave them there.
+     */
     it('cancels before it schedules, never after', async () => {
       await refresh();
       bridge.cancel.mockClear();
       bridge.schedule.mockClear();
 
-      await refresh();
+      await refresh({ items: [MILK] });
 
       expect(bridge.cancel.mock.invocationCallOrder[0]).toBeLessThan(
         bridge.schedule.mock.invocationCallOrder[0] ?? Infinity,
