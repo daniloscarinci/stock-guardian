@@ -14,11 +14,18 @@
  * itself until somebody has actually asked to speak, and then it explains
  * itself completely.
  *
- * `selectRecognizer` is called once per language and per online opt-in rather
+ * `selectRecognizer` is called once per language and per refusal setting rather
  * than once per press, because both change the honest answer to "can this
  * device transcribe" - availability is per-language, and a device with no local
- * model for a language can still transcribe once its owner has allowed the
- * audio to leave.
+ * model for a language can still transcribe over the network unless its owner
+ * has forbidden that.
+ *
+ * ONE PRESS CAN BE TWO ATTEMPTS, AND THIS COMPONENT DOES NOT KNOW IT. The
+ * on-device attempt and the network retry are inside `listen`, where they can
+ * be tested without a device; what comes back here is one transcript and
+ * whether it was made on the phone. That flag is handed on with the sentence,
+ * because the sheet marks the exchange and a person has to be able to see when
+ * audio left.
  *
  * WHY THE FAILURE IS KEPT AS A CODE. This component knows what went wrong;
  * `MicNotice` knows what to show for it. A recognizer has no business choosing
@@ -43,8 +50,14 @@ export function MicButton({
   onTypeInstead,
   busy,
 }: {
-  /** One utterance, handed over exactly once. This component keeps no transcript. */
-  readonly onHeard: (transcript: string) => void;
+  /**
+   * One utterance, handed over exactly once, with where it was transcribed.
+   *
+   * This component keeps no transcript. `online` is true when the on-device
+   * attempt failed and the network answered instead, and the sheet says so on
+   * the exchange.
+   */
+  readonly onHeard: (transcript: string, online: boolean) => void;
   /** The panel's way out: clear it, and put the cursor where typing works. */
   readonly onTypeInstead: () => void;
   /** Something else in the sheet is already working. */
@@ -57,18 +70,18 @@ export function MicButton({
   const [listening, setListening] = useState(false);
 
   /**
-   * What the caller permits for one utterance.
+   * What the caller forbids for one utterance.
    *
-   * Absent means no, everywhere below this. The default path is unchanged by
-   * the existence of the other one: while the setting is off, this object says
-   * `allowOnline: false` and every implementation keeps the audio on the phone.
+   * Only the refusal travels. Whether to transcribe on the device is not a
+   * setting and never was: it is what every listen does first. This says
+   * whether the failed one may be tried again over the network.
    */
   const options = useMemo(
-    () => ({ allowOnline: settings.voiceAllowOnline }),
-    [settings.voiceAllowOnline],
+    () => ({ offlineOnly: settings.voiceOfflineOnly }),
+    [settings.voiceOfflineOnly],
   );
 
-  // Probed again when the language or the opt-in changes, because both change
+  // Probed again when the language or the refusal changes, because both change
   // the answer. Flipping the switch on the panel therefore takes effect on the
   // next press rather than on the next reload.
   const speech = useAsyncData(async () => {
@@ -92,7 +105,8 @@ export function MicButton({
     setFailure(null);
     setListening(true);
     try {
-      onHeard(await state.recognizer.listen(tag, options));
+      const heard = await state.recognizer.listen(tag, options);
+      onHeard(heard.text, heard.online);
     } catch (cause) {
       // Every reason, named. The bug this replaces read anything it did not
       // recognise as a cancellation, and answered a cancellation with silence.

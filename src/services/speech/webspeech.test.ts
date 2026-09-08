@@ -31,6 +31,22 @@ function onDevice(state: string): void {
   );
 }
 
+/** What `navigator.onLine` says. Only the retry reads it. */
+function connectivity(online: boolean): void {
+  vi.stubGlobal('navigator', { onLine: online });
+}
+
+/** Waits for the nth recognizer to be constructed, then hands it over. */
+async function nth(index: number): Promise<FakeRecognition> {
+  await vi.waitFor(() => expect(FakeRecognition.instances[index]).toBeDefined());
+  return FakeRecognition.instances[index] as FakeRecognition;
+}
+
+/** Every `processLocally` a recognizer was started with, in order. */
+function modes(): boolean[] {
+  return FakeRecognition.instances.filter((i) => i.started).map((i) => i.processLocally);
+}
+
 describe('webspeech recognizer', () => {
   beforeEach(() => {
     FakeRecognition.instances = [];
@@ -38,6 +54,7 @@ describe('webspeech recognizer', () => {
     // happens to run before the tests that install the static.
     delete (FakeRecognition as unknown as Record<string, unknown>).availableOnDevice;
     vi.stubGlobal('SpeechRecognition', FakeRecognition);
+    connectivity(true);
   });
 
   afterEach(() => {
@@ -71,42 +88,91 @@ describe('webspeech recognizer', () => {
     onDevice('available');
     const recognizer = createWebSpeechRecognizer();
     void recognizer.listen('pt-BR');
-    await vi.waitFor(() => expect(FakeRecognition.instances[0]).toBeDefined());
 
-    const instance = FakeRecognition.instances[0];
-    expect(instance).toBeDefined();
-    expect(instance?.processLocally).toBe(true);
-    expect(instance?.started).toBe(true);
+    const instance = await nth(0);
+    expect(instance.processLocally).toBe(true);
+    expect(instance.started).toBe(true);
   });
 
   /*
    * The guarantee, and the shape it now has.
    *
-   * It used to read "NEVER starts when the language is not available
-   * on-device", full stop. There is now exactly one way past it, and these
-   * three tests are the whole of it: absent means no, an empty options object
-   * means no, and only `allowOnline: true` opens the other path. If someone
-   * weakens the default, the first two fail.
+   * It used to read "NEVER starts without processLocally", full stop, and on
+   * the phone this was written for - no offline Portuguese pack - that meant a
+   * microphone that refused every single press. The rule that replaces it is
+   * narrower than "sometimes online" and is pinned one clause at a time below:
+   *
+   *   the FIRST recognizer of every listen is always local;
+   *   a recognizer without processLocally is always a SECOND one;
+   *   and there is no second one after a cancel, under the user's refusal, or
+   *   with no network.
+   *
+   * If someone makes the first attempt networked, the first two fail. If
+   * someone widens what a retry is allowed after, the last three fail.
    */
-  describe('NEVER starts without processLocally unless the user has opted in', () => {
-    it('refuses, with no options at all', async () => {
+  describe('the first attempt is local, and only a retry is not', () => {
+    it('starts locally and stops there when the device can answer', async () => {
+      onDevice('available');
+      const recognizer = createWebSpeechRecognizer();
+      const heard = recognizer.listen('pt-BR');
+
+      (await nth(0)).onresult?.({ results: [[{ transcript: 'dez latas' }]] });
+
+      await expect(heard).resolves.toEqual({ text: 'dez latas', online: false });
+      expect(modes()).toEqual([true]);
+    });
+
+    it('never starts a networked recognizer first, even with no local model', async () => {
+      onDevice('unavailable');
+      const recognizer = createWebSpeechRecognizer();
+      const heard = recognizer.listen('pt-BR');
+
+      // The only recognizer this listen constructs is the retry, and it is
+      // reached through a failure rather than chosen up front.
+      const retry = await nth(0);
+      expect(retry.processLocally).toBe(false);
+      expect(FakeRecognition.instances).toHaveLength(1);
+      retry.onresult?.({ results: [[{ transcript: 'dez latas' }]] });
+
+      await expect(heard).resolves.toEqual({ text: 'dez latas', online: true });
+    });
+
+    it('retries a local attempt that failed, and marks the result as online', async () => {
+      onDevice('available');
+      const recognizer = createWebSpeechRecognizer();
+      const heard = recognizer.listen('pt-BR');
+
+      (await nth(0)).onerror?.({ error: 'language-not-supported' });
+      (await nth(1)).onresult?.({ results: [[{ transcript: 'dez latas' }]] });
+
+      await expect(heard).resolves.toEqual({ text: 'dez latas', online: true });
+      expect(modes()).toEqual([true, false]);
+    });
+
+    it('refuses, with no options at all, once the device is offline', async () => {
+      connectivity(false);
       onDevice('unavailable');
       const recognizer = createWebSpeechRecognizer();
 
       await expect(recognizer.listen('pt-BR')).rejects.toThrow(/on-device/i);
-      expect(FakeRecognition.instances.every((i) => !i.started)).toBe(true);
+      expect(FakeRecognition.instances).toHaveLength(0);
     });
 
-    it('refuses when the caller passes options that do not include the opt-in', async () => {
+    it('refuses whatever the connectivity when the caller forbids the network', async () => {
       onDevice('unavailable');
       const recognizer = createWebSpeechRecognizer();
 
-      await expect(recognizer.listen('pt-BR', {})).rejects.toThrow(/on-device/i);
-      await expect(recognizer.listen('pt-BR', { allowOnline: false })).rejects.toThrow(/on-device/i);
-      expect(FakeRecognition.instances.every((i) => !i.started)).toBe(true);
+      for (const online of [true, false]) {
+        connectivity(online);
+        await expect(recognizer.listen('pt-BR', { offlineOnly: true })).rejects.toThrow(
+          /on-device/i,
+        );
+      }
+      expect(FakeRecognition.instances).toHaveLength(0);
     });
 
     it('names the refusal, so the interface can explain it', async () => {
+      connectivity(false);
       onDevice('unavailable');
       const recognizer = createWebSpeechRecognizer();
       const failure = await recognizer
@@ -115,51 +181,89 @@ describe('webspeech recognizer', () => {
       expect(failure).toBe('no-offline-model');
     });
 
-    it('starts with processLocally false ONLY once the user has opted in', async () => {
-      onDevice('unavailable');
-      const recognizer = createWebSpeechRecognizer();
-      void recognizer.listen('pt-BR', { allowOnline: true });
-      await vi.waitFor(() => expect(FakeRecognition.instances[0]).toBeDefined());
-
-      const instance = FakeRecognition.instances[0];
-      expect(instance?.processLocally).toBe(false);
-      expect(instance?.started).toBe(true);
-    });
-
     /*
-     * The opt-in permits the network; it does not prefer it. A device that can
-     * transcribe locally still does, because sending audio away when the phone
-     * could have done the job itself would be a bug rather than a preference.
+     * Pressing back is not a failure to work around, and this is the clause
+     * that keeps the retry from turning "never mind" into a recording sent
+     * away.
      */
-    it('still transcribes locally when it can, even with the opt-in on', async () => {
+    it('never retries a deliberate cancel', async () => {
       onDevice('available');
       const recognizer = createWebSpeechRecognizer();
-      void recognizer.listen('pt-BR', { allowOnline: true });
-      await vi.waitFor(() => expect(FakeRecognition.instances[0]).toBeDefined());
+      const failure = recognizer
+        .listen('pt-BR')
+        .catch((cause: unknown) => speechFailureReason(cause));
 
-      expect(FakeRecognition.instances[0]?.processLocally).toBe(true);
+      (await nth(0)).onerror?.({ error: 'aborted' });
+
+      expect(await failure).toBe('cancelled');
+      expect(modes()).toEqual([true]);
+      expect(FakeRecognition.instances).toHaveLength(1);
+    });
+
+    it('never retries once the user has asked for on-device only', async () => {
+      onDevice('available');
+      const recognizer = createWebSpeechRecognizer();
+      const failure = recognizer
+        .listen('pt-BR', { offlineOnly: true })
+        .catch((cause: unknown) => speechFailureReason(cause));
+
+      (await nth(0)).onerror?.({ error: 'no-speech' });
+
+      expect(await failure).toBe('no-match');
+      expect(modes()).toEqual([true]);
+    });
+
+    it('never retries with no network, and reports the first failure', async () => {
+      connectivity(false);
+      onDevice('available');
+      const recognizer = createWebSpeechRecognizer();
+      const failure = recognizer
+        .listen('pt-BR')
+        .catch((cause: unknown) => speechFailureReason(cause));
+
+      (await nth(0)).onerror?.({ error: 'language-not-supported' });
+
+      expect(await failure).toBe('no-offline-model');
+      expect(modes()).toEqual([true]);
+    });
+
+    it('retries once and once only - a failing retry does not loop', async () => {
+      onDevice('available');
+      const recognizer = createWebSpeechRecognizer();
+      const failure = recognizer
+        .listen('pt-BR')
+        .catch((cause: unknown) => speechFailureReason(cause));
+
+      (await nth(0)).onerror?.({ error: 'language-not-supported' });
+      (await nth(1)).onerror?.({ error: 'network' });
+
+      // The first failure, because it is the one with install steps under it.
+      expect(await failure).toBe('no-offline-model');
+      expect(modes()).toEqual([true, false]);
+      expect(FakeRecognition.instances).toHaveLength(2);
     });
   });
 
-  describe('availability under the opt-in', () => {
-    it('stays unavailable for a language with no model, by default', async () => {
+  describe('availability under the refusal', () => {
+    it('is ready for a language with no model, because the retry can still transcribe', async () => {
       onDevice('unavailable');
       const recognizer = createWebSpeechRecognizer();
-      expect(await recognizer.availability('pt-BR')).toBe('unavailable');
-      expect(await recognizer.availability('pt-BR', { allowOnline: false })).toBe('unavailable');
+      expect(await recognizer.availability('pt-BR')).toBe('ready');
+      expect(await recognizer.availability('pt-BR', { offlineOnly: false })).toBe('ready');
     });
 
-    it('becomes ready for that language once the user has opted in', async () => {
+    it('goes back to unavailable for that language once the user refuses', async () => {
       onDevice('unavailable');
       const recognizer = createWebSpeechRecognizer();
-      expect(await recognizer.availability('pt-BR', { allowOnline: true })).toBe('ready');
+      expect(await recognizer.availability('pt-BR', { offlineOnly: true })).toBe('unavailable');
     });
 
     it('stays unavailable on a browser that cannot be asked about locality', async () => {
-      // Safari. The opt-in relaxes which mode a qualifying browser may use, not
-      // which browsers qualify.
+      // Safari. The retry relaxes what a qualifying browser does after a
+      // failure, not which browsers qualify.
       const recognizer = createWebSpeechRecognizer();
-      expect(await recognizer.availability('pt-BR', { allowOnline: true })).toBe('unavailable');
+      expect(await recognizer.availability('pt-BR')).toBe('unavailable');
+      expect(await recognizer.availability('pt-BR', { offlineOnly: true })).toBe('unavailable');
     });
   });
 
@@ -171,18 +275,21 @@ describe('webspeech recognizer', () => {
       ['language-not-supported', 'no-offline-model'],
       ['not-allowed', 'failed'],
     ])('reports %s as %s', async (error, expected) => {
+      // Offline, so the first failure is the one reported rather than the
+      // starting point of a retry.
+      connectivity(false);
       onDevice('available');
       const recognizer = createWebSpeechRecognizer();
       const failure = recognizer
         .listen('pt-BR')
         .catch((cause: unknown) => speechFailureReason(cause));
 
-      await vi.waitFor(() => expect(FakeRecognition.instances[0]).toBeDefined());
-      FakeRecognition.instances[0]?.onerror?.({ error });
+      (await nth(0)).onerror?.({ error });
       expect(await failure).toBe(expected);
     });
 
     it('reports a recognizer that is already listening as busy', async () => {
+      connectivity(false);
       onDevice('available');
       vi.spyOn(FakeRecognition.prototype, 'start').mockImplementation(() => {
         throw new Error('recognition already started');

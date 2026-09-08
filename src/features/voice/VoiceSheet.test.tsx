@@ -64,11 +64,18 @@ function recognizerFailing(reason: SpeechFailure): SpeechRecognizer {
   };
 }
 
-/** A device that hears one thing, however many times it is asked. */
-function recognizerHearing(phrase: string): SpeechRecognizer {
+/**
+ * A device that hears one thing, however many times it is asked.
+ *
+ * `online` is what a real recognizer reports when its on-device attempt failed
+ * and the retry transcribed instead. The two attempts themselves are pinned in
+ * capacitor.test.ts and webspeech.test.ts; what is checked here is that the
+ * sheet says which one answered.
+ */
+function recognizerHearing(phrase: string, online = false): SpeechRecognizer {
   return {
     availability: () => Promise.resolve('ready'),
-    listen: () => Promise.resolve(phrase),
+    listen: () => Promise.resolve({ text: phrase, online }),
   };
 }
 
@@ -511,7 +518,7 @@ describe('VoiceButton', () => {
     // The microphone is here, inside the sheet, and it has not been used.
     expect(screen.getByRole('button', { name: /speak instead of typing/i })).toBeTruthy();
     expect(screen.queryByRole('status')).toBeNull();
-    expect(screen.queryByText(/speech pack|offline model|internet recognition/i)).toBeNull();
+    expect(screen.queryByText(/speech pack|offline model|on this device only/i)).toBeNull();
   });
 });
 
@@ -587,56 +594,72 @@ describe('the microphone: why it produced nothing', () => {
 });
 
 /**
- * The switch, on the panel, and never flipped by anything but a person.
+ * The refusal, on the panel, and never flipped by anything but a person.
  *
- * The first version of this feature named the setting in a sentence and left
- * the reader to find it in Settings, after telling them their phone had no
- * "offline speech pack" - a term nobody outside this repository uses. The
- * switch is now on the panel that explains the failure, and the whole of what
- * it must never do is move on its own.
+ * The microphone tries the device first and falls back to the network once, so
+ * the missing-model panel now appears only where that fallback could not run -
+ * which is either "no connection" or "this person asked for on-device only".
+ * The switch that draws the line is on the panel for the same reason it was
+ * ever there: telling somebody their phone has no "offline speech pack" and
+ * then sending them to hunt through Settings is how this failed the first time.
  */
-describe('the microphone: the online opt-in', () => {
-  it('offers the switch on the failure panel, off, saying where the voice goes', async () => {
+describe('the microphone: the on-device-only refusal', () => {
+  it('says on the panel that the refusal is off, and offers the switch unchecked', async () => {
     vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('no-offline-model'));
     const { user, view } = await setup();
     view(<VoiceSheet open onClose={vi.fn()} />);
 
     await listen(user);
-    await screen.findByText(/no offline speech pack/i);
+    await screen.findByText(/the internet could not fill in either/i);
 
-    const opt = screen.getByRole('checkbox', { name: /internet recognition/i });
+    const opt = screen.getByRole('checkbox', { name: /transcribe on this device only/i });
     expect((opt as HTMLInputElement).checked).toBe(false);
-    // Labelled with what it does and who receives the audio, not with "online".
-    expect(screen.getByText(/your voice goes to Google/i)).toBeTruthy();
+    // Labelled with what it does and who would otherwise receive the audio.
+    expect(screen.getByText(/on most phones, to Google/i)).toBeTruthy();
   });
 
-  it('leaves it off through a failure that never gets a press', async () => {
+  it('blames the refusal, and only the refusal, when it is the reason', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('no-offline-model'));
+    const { user, view } = await setup({ voiceOfflineOnly: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/did not try the internet/i)).toBeTruthy();
+    const opt = screen.getByRole('checkbox', { name: /transcribe on this device only/i });
+    expect((opt as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('leaves it alone through a failure that never gets a press', async () => {
     vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('no-offline-model'));
     const store = createSettingsRepository(db);
+    const before = (await store.load()).settings.voiceOfflineOnly;
     const { user, view } = await setup();
     view(<VoiceSheet open onClose={vi.fn()} />);
 
     await listen(user);
-    await screen.findByText(/no offline speech pack/i);
+    await screen.findByText(/the internet could not fill in either/i);
 
+    // Read back rather than compared to a constant: what matters is that the
+    // failure changed nothing, not which way it was set beforehand.
     const { settings } = await store.load();
-    expect(settings.voiceAllowOnline).toBe(false);
+    expect(settings.voiceOfflineOnly).toBe(before);
   });
 
   it('writes the setting when, and only when, somebody presses it', async () => {
     vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('no-offline-model'));
     const store = createSettingsRepository(db);
-    const { user, view } = await setup();
+    const { user, view } = await setup({ voiceOfflineOnly: true });
     view(<VoiceSheet open onClose={vi.fn()} />);
 
     await listen(user);
-    await screen.findByText(/no offline speech pack/i);
+    await screen.findByText(/did not try the internet/i);
 
-    await user.click(screen.getByRole('checkbox', { name: /internet recognition/i }));
+    await user.click(screen.getByRole('checkbox', { name: /transcribe on this device only/i }));
 
     await vi.waitFor(async () => {
       const { settings } = await store.load();
-      expect(settings.voiceAllowOnline).toBe(true);
+      expect(settings.voiceOfflineOnly).toBe(false);
     });
   });
 });
@@ -679,6 +702,48 @@ describe('the microphone: a spoken question gets a spoken answer', () => {
 
     expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
     expect(spoken).not.toHaveBeenCalled();
+  });
+
+  /*
+   * The half of the fallback that makes it something offered rather than
+   * something done quietly. A press the phone answered itself says nothing
+   * extra - most presses are that one - and a press the network answered is
+   * marked, in the log, beside the marker naming the engine.
+   */
+  it('says nothing about the network when the phone did the transcribing', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerHearing('how much rice do i have'));
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    expect(screen.queryByText(/transcribed online/i)).toBeNull();
+  });
+
+  it('marks the exchange when the words came over the internet', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(
+      recognizerHearing('how much rice do i have', true),
+    );
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    expect(screen.getByText(/transcribed online/i)).toBeTruthy();
+    // Beside the marker that says which engine answered, not instead of it.
+    expect(screen.getByText(/answered on this device/i)).toBeTruthy();
+  });
+
+  it('keeps the mark on a typed question at nothing, because nothing was heard', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'how much rice do i have');
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    expect(screen.queryByText(/transcribed online/i)).toBeNull();
   });
 });
 

@@ -37,18 +37,26 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * no RECORD_AUDIO. The workflow at .github/workflows/android.yml fails the build
  * if any permission appears, so this property is checked rather than trusted.
  *
- * EXTRA_PREFER_OFFLINE asks the recognizer to stay on the device. IT IS SENT
- * UNLESS THE USER HAS SWITCHED ON THE OPT-IN, and it was once sent
- * unconditionally, which is the defect this file's history is really about: on
- * a phone with no offline Portuguese pack Google's recognizer simply refuses,
- * and the feature was unusable for the person it was built for. The opt-in
- * (`voiceAllowOnline`, off by default, described in docs/VOICE.md) is now
- * offered on the failure panel itself as well as in Settings, under a label
- * naming Google. Nothing switches it on but a person.
+ * EXTRA_PREFER_OFFLINE asks the recognizer to stay on the device, AND THIS
+ * CLASS NO LONGER DECIDES WHETHER TO SEND IT. `listen` takes `preferOffline`
+ * and does what it is told. The web layer calls it twice: once with true, which
+ * is every ordinary press and keeps the recording on the phone, and - only if
+ * that failed, and only where the policy in src/services/speech/online.ts
+ * allows - once with false, which lets the system recognizer use whatever
+ * service it has.
  *
- * What the request is worth still depends on the installed recognizer, which is
- * why the interface says on-device speech is a device capability rather than a
- * guarantee this application can make on the device's behalf.
+ * THE SEQUENCE LIVES IN TYPESCRIPT ON PURPOSE. It can be tested there without a
+ * device in the room, and this file's history is the argument for that: the
+ * extra was once sent unconditionally, on a phone with no offline Portuguese
+ * pack Google's recognizer simply refused, and the feature was unusable for the
+ * person it was built for. Twice. What replaces the absolute rule is a default
+ * that tries the device first, a fallback that is marked in the interface when
+ * it happens, and a setting (`voiceOfflineOnly`, off, described in
+ * docs/VOICE.md) that restores the absolute behaviour for anyone who wants it.
+ *
+ * What the offline request is worth still depends on the installed recognizer,
+ * which is why the interface says on-device speech is a device capability
+ * rather than a guarantee this application can make on the device's behalf.
  *
  * WHY THIS FILE REJECTS WITH CODES RATHER THAN SENTENCES
  *
@@ -169,45 +177,47 @@ public class SpeechPlugin extends Plugin {
     @PluginMethod
     public void listen(PluginCall call) {
         String tag = call.getString("lang", DEFAULT_LANGUAGE);
-        // Absent means offline-only. The opt-in has to be sent to be in effect.
-        boolean allowOnline = Boolean.TRUE.equals(call.getBoolean("allowOnline", false));
+        // Absent means offline, so a caller that forgets the argument gets the
+        // attempt that sends nothing anywhere. The web layer always sends it.
+        boolean preferOffline = !Boolean.FALSE.equals(call.getBoolean("preferOffline", true));
 
         if (!hasRecognizer()) {
             call.reject(CODE_NO_RECOGNIZER);
             return;
         }
 
-        if (allowOnline) {
-            // The user has said the audio may leave. There is nothing to
-            // pre-flight: a missing offline model is no longer a reason not to try.
-            start(call, tag, true, OnDevice.UNKNOWN);
+        if (!preferOffline) {
+            // The second attempt. There is nothing to pre-flight: a missing
+            // offline model is the reason this call was made.
+            start(call, tag, false, OnDevice.UNKNOWN);
             return;
         }
 
         onDeviceState(tag, (state) -> {
             if (state == OnDevice.MISSING) {
-                // Answered without opening the recognizer, so the user reads what
-                // is wrong instead of watching a screen flash past.
+                // Answered without opening the recognizer, so the failure comes
+                // back in milliseconds and the retry starts that much sooner
+                // instead of the user watching a screen flash past.
                 call.reject(CODE_NO_OFFLINE_MODEL);
                 return;
             }
-            start(call, tag, false, state);
+            start(call, tag, true, state);
         });
     }
 
-    private void start(PluginCall call, String tag, boolean allowOnline, OnDevice state) {
+    private void start(PluginCall call, String tag, boolean preferOffline, OnDevice state) {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(
             RecognizerIntent.EXTRA_LANGUAGE_MODEL,
             RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
         );
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, tag);
-        if (!allowOnline) {
+        if (preferOffline) {
             intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
         }
         intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
 
-        askedForOffline = !allowOnline;
+        askedForOffline = preferOffline;
         onDeviceAtStart = state;
         startedAt = SystemClock.elapsedRealtime();
 

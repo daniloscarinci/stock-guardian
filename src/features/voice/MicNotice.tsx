@@ -13,16 +13,23 @@
  * out loud here. Only `cancelled` stays silent, because a banner after "never
  * mind" teaches people to ignore banners.
  *
- * THE MISSING-MODEL CASE CARRIES THE SWITCH, AND THAT IS THE SECOND FIX. It
- * used to carry a sentence pointing at Settings, which is the failure repeating
- * itself one level up: somebody who has just been told a word they do not know
- * ("offline speech pack") is not going to go looking through a settings screen
- * for a row they have never seen. The switch is here, on the panel, next to the
- * explanation, labelled with what it does and who receives the audio.
+ * THE MISSING-MODEL PANEL IS RARER THAN IT WAS, AND IT SAYS SOMETHING DIFFERENT
+ * WHEN IT APPEARS. A listen that fails on the device is now tried once more
+ * over the internet, so there are only two ways to reach this panel: the phone
+ * had no connection to fall back on, or the user has asked for on-device
+ * transcription only. Those are different situations, so the sentence at the
+ * top is different for each.
+ *
+ * The switch is on the panel either way, and the line under it says which of
+ * the two this is. Showing it only when it is on would make it vanish under the
+ * finger that just turned it off; hiding what state it is in would leave
+ * somebody wondering whether turning it ON is the fix, when it is the opposite.
+ * So the switch stays and the panel says, in a sentence, what it is currently
+ * doing.
  *
  * IT NEVER FLIPS ITSELF. This component renders the switch and writes the
  * setting when - and only when - somebody presses it. There is no retry that
- * quietly enables it, no "we turned this on for you", and no path that reaches
+ * quietly changes it, no "we turned this off for you", and no path that reaches
  * `updateSettings` without a press. That is the whole difference between
  * offering a choice and making one on a person's behalf.
  */
@@ -84,7 +91,11 @@ export function MicNotice({
 
   return (
     <Alert tone="warning" role="status">
-      <p>{t('voice.noOfflineModel')}</p>
+      <p>
+        {t(
+          settings.voiceOfflineOnly ? 'voice.noOfflineModelOfflineOnly' : 'voice.noOfflineModel',
+        )}
+      </p>
 
       <div className={styles.noticeActions}>
         <Button
@@ -106,23 +117,23 @@ export function MicNotice({
       </p>
 
       {/*
-        The other way out, offered where the problem was met rather than named
-        in a sentence about a settings screen. It is the same setting and the
-        same words as the row in Settings, so a person who finds it twice reads
-        the same promise twice.
+        The restriction, offered where it is met rather than named in a
+        sentence about a settings screen. It is the same setting and the same
+        words as the row in Settings, so a person who finds it twice reads the
+        same promise twice. Nothing changes it without a press.
       */}
       <div className={styles.noticeSwitch}>
         <SwitchRow
-          label={t('voice.settingAllowOnline')}
-          help={t('voice.settingAllowOnlineHelp')}
-          checked={settings.voiceAllowOnline}
+          label={t('voice.settingOfflineOnly')}
+          help={t('voice.settingOfflineOnlyHelp')}
+          checked={settings.voiceOfflineOnly}
           onChange={(on) => {
-            void updateSettings({ voiceAllowOnline: on });
+            void updateSettings({ voiceOfflineOnly: on });
           }}
         />
       </div>
 
-      {settings.voiceAllowOnline && <p className={styles.hint}>{t('voice.allowOnlineOn')}</p>}
+      {!settings.voiceOfflineOnly && <p className={styles.hint}>{t('voice.offlineOnlyOff')}</p>}
     </Alert>
   );
 }

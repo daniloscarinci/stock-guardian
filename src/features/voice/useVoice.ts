@@ -15,6 +15,12 @@
  * the sheet says so, because the difference matters: one is exact, offline and
  * free, and the other is capable and costs money per question.
  *
+ * AND ONE THING THAT IS NEITHER ENGINE. An exchange also records whether the
+ * words reaching it were transcribed on the phone or over the network, because
+ * the microphone tries the device first and falls back once when it cannot. The
+ * sheet marks that beside the engine marker, for the same reason: a person is
+ * owed the ability to see which of their presses left the device.
+ *
  * WHAT NEITHER ENGINE MAY DO IS WRITE UNASKED. A proposal from Claude is
  * always `assumed` and always goes to a confirmation card, whatever its
  * certainty field says - see `commitProposal`, and the test that pins it. The
@@ -61,10 +67,31 @@ export interface Proposal {
   readonly done: string | null;
 }
 
-/** An exchange the twelve rules on this device answered. */
-export interface DeviceExchange {
-  readonly engine: 'device';
+/**
+ * What is true of every exchange, whichever engine answered it.
+ *
+ * `transcribedOnline` is a fact about how the words were captured rather than
+ * about how they were answered, which is why it sits beside `said` and not
+ * inside either arm: a spoken question and the sentence that comes back from it
+ * are one exchange.
+ */
+interface HeardExchange {
   readonly said: string;
+  /**
+   * The words came from the network rather than from this phone.
+   *
+   * True only when the microphone's on-device attempt failed and the retry
+   * transcribed it instead. False for everything typed, and false for every
+   * listen the phone answered itself, which is most of them. The sheet marks
+   * it, because audio must never leave without the person being able to see
+   * that it did.
+   */
+  readonly transcribedOnline: boolean;
+}
+
+/** An exchange the twelve rules on this device answered. */
+export interface DeviceExchange extends HeardExchange {
+  readonly engine: 'device';
   readonly outcome: Outcome;
   /** The sentence that was said, or null for an outcome that is not one. */
   readonly text: string | null;
@@ -87,9 +114,8 @@ export interface DeviceExchange {
 }
 
 /** An exchange Claude answered. */
-export interface ClaudeExchange {
+export interface ClaudeExchange extends HeardExchange {
   readonly engine: 'claude';
-  readonly said: string;
   readonly text: string;
   readonly proposals: readonly Proposal[];
   /**
@@ -117,7 +143,11 @@ export interface Voice {
   readonly examples: readonly string[];
   /** Where the next question would go. The sheet says so before it is asked. */
   readonly engine: Engine;
-  readonly run: (question: string) => Promise<void>;
+  /**
+   * One question. `transcribedOnline` is the microphone saying the words were
+   * captured over the network; a typed question leaves it out and is false.
+   */
+  readonly run: (question: string, transcribedOnline?: boolean) => Promise<void>;
   readonly confirm: (index: number) => Promise<void>;
   /** Confirms one of Claude's proposals. Nothing has been written before this. */
   readonly confirmProposal: (index: number, proposal: number) => Promise<void>;
@@ -380,7 +410,13 @@ export function useVoice(speak: Speak): Voice {
    * that is asking the same question twice.
    */
   const store = useCallback(
-    async (said: string, write: PendingWrite, index: number | null, undoable: boolean) => {
+    async (
+      said: string,
+      write: PendingWrite,
+      index: number | null,
+      undoable: boolean,
+      transcribedOnline: boolean,
+    ) => {
       const { receipt } = await commit(deps, write);
       // Every open list re-reads; the database stays the only source of truth.
       invalidate();
@@ -401,6 +437,7 @@ export function useVoice(speak: Speak): Voice {
         {
           engine: 'device',
           said,
+          transcribedOnline,
           outcome,
           text,
           receipt: undoable ? receipt : null,
@@ -431,6 +468,7 @@ export function useVoice(speak: Speak): Voice {
       intent: Intent,
       index: number | null,
       aiFailure: AiFailureReason | null,
+      transcribedOnline: boolean,
     ) => {
       setBusy(true);
       setError(null);
@@ -438,13 +476,22 @@ export function useVoice(speak: Speak): Voice {
         const outcome = withExamples(await execute(deps, intent));
 
         if (outcome.kind === 'pending' && outcome.write.certainty === 'explicit') {
-          await store(said, outcome.write, index, true);
+          await store(said, outcome.write, index, true, transcribedOnline);
           return;
         }
 
         const text = sentence(outcome);
         place(
-          { engine: 'device', said, outcome, text, receipt: null, undone: false, aiFailure },
+          {
+            engine: 'device',
+            said,
+            transcribedOnline,
+            outcome,
+            text,
+            receipt: null,
+            undone: false,
+            aiFailure,
+          },
           index,
         );
         // A card is not a fact, and `sentence` returns null for one. The card
@@ -461,8 +508,14 @@ export function useVoice(speak: Speak): Voice {
   );
 
   const askParser = useCallback(
-    async (question: string, aiFailure: AiFailureReason | null) => {
-      await turn(question, parse(grammar, question, { today: itemContext.today }), null, aiFailure);
+    async (question: string, aiFailure: AiFailureReason | null, transcribedOnline: boolean) => {
+      await turn(
+        question,
+        parse(grammar, question, { today: itemContext.today }),
+        null,
+        aiFailure,
+        transcribedOnline,
+      );
     },
     [grammar, itemContext.today, turn],
   );
@@ -476,7 +529,7 @@ export function useVoice(speak: Speak): Voice {
    * stopped answering.
    */
   const askClaude = useCallback(
-    async (question: string) => {
+    async (question: string, transcribedOnline: boolean) => {
       setBusy(true);
       setError(null);
 
@@ -487,13 +540,20 @@ export function useVoice(speak: Speak): Voice {
         // key or too many questions all still get an answer from the twelve
         // rules, which need none of those things.
         if (result.kind === 'failed') {
-          await askParser(question, result.reason);
+          await askParser(question, result.reason, transcribedOnline);
           return;
         }
 
         if (result.kind === 'refused') {
           place(
-            { engine: 'claude', said: question, text: t('ai.refused'), proposals: [], exhausted: false },
+            {
+              engine: 'claude',
+              said: question,
+              transcribedOnline,
+              text: t('ai.refused'),
+              proposals: [],
+              exhausted: false,
+            },
             null,
           );
           return;
@@ -509,6 +569,7 @@ export function useVoice(speak: Speak): Voice {
           {
             engine: 'claude',
             said: question,
+            transcribedOnline,
             text,
             proposals,
             exhausted: result.kind === 'exhausted',
@@ -530,9 +591,9 @@ export function useVoice(speak: Speak): Voice {
   );
 
   const run = useCallback(
-    async (question: string) => {
-      if (engine === 'claude') await askClaude(question);
-      else await askParser(question, null);
+    async (question: string, transcribedOnline = false) => {
+      if (engine === 'claude') await askClaude(question, transcribedOnline);
+      else await askParser(question, null, transcribedOnline);
     },
     [askClaude, askParser, engine],
   );
@@ -548,7 +609,7 @@ export function useVoice(speak: Speak): Voice {
       setBusy(true);
       setError(null);
       try {
-        await store(entry.said, write, index, false);
+        await store(entry.said, write, index, false, entry.transcribedOnline);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
@@ -663,7 +724,7 @@ export function useVoice(speak: Speak): Voice {
       if (entry.outcome.kind !== 'choice') return;
       const intent = aimedAt(entry.outcome.intent, item.name);
       if (intent === null) return;
-      await turn(entry.said, intent, index, entry.aiFailure);
+      await turn(entry.said, intent, index, entry.aiFailure, entry.transcribedOnline);
     },
     [history, turn],
   );
@@ -676,7 +737,7 @@ export function useVoice(speak: Speak): Voice {
       if (entry.outcome.kind !== 'notFound') return;
       const intent = creationFrom(entry.outcome.intent);
       if (intent === null) return;
-      await turn(entry.said, intent, index, entry.aiFailure);
+      await turn(entry.said, intent, index, entry.aiFailure, entry.transcribedOnline);
     },
     [history, turn],
   );

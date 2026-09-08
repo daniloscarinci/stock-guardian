@@ -82,30 +82,41 @@ export const settingsSchema = z.object({
   voiceSpeakAnswers: z.boolean().default(true),
 
   /**
-   * Whether recorded speech may leave the device.
+   * Keeps recorded speech on the device even when that means no transcription
+   * at all.
    *
-   * FALSE, AND EVERY PATH THAT READS IT TREATS ABSENT AS FALSE. This is the one
-   * setting in the application that can put a recording of somebody on a
-   * network, so it fails closed in three places rather than one: this default,
-   * `options.allowOnline` being absent-means-no across the speech seam, and the
-   * Android plugin sending EXTRA_PREFER_OFFLINE unless told not to.
+   * FALSE, WHICH IS NOT THE SAME AS THE MICROPHONE BEING ONLINE. Every listen
+   * still starts on the device, and on a phone with the language installed
+   * nothing ever leaves. What this governs is the second attempt: when the
+   * on-device one fails and the phone reports a connection, the recognizer is
+   * asked again without the offline requirement, and the sheet marks that
+   * exchange as transcribed over the internet. Switched on, that retry never
+   * happens - a language with no offline pack simply will not transcribe, which
+   * is exactly what somebody switching this on is asking for.
    *
-   * On, it lets the recognizer transcribe a language the device has no offline
-   * model for, which means the system recognizer may send the audio to
-   * whichever service it uses - on most phones, Google's.
+   * IT IS NAMED FOR THE RESTRICTION BECAUSE THAT IS WHAT IT IS. It replaces
+   * `voiceAllowOnline`, which was an opt-in to something exotic and defaulted
+   * to off - and, on a phone with no offline Portuguese pack, made the
+   * microphone refuse every single press. Twice. Offline is the standard here;
+   * the internet is what the standard falls back to, and this is how to refuse
+   * that fallback.
    *
-   * IT EXISTS BECAUSE THE ALTERNATIVE WAS A DEAD BUTTON. Offline was once
-   * demanded unconditionally, and on a phone with no Portuguese pack the
-   * recognizer refused every time. The application is never the one to switch
-   * this on: not after a failure, not as a retry, not on an upgrade. What a
-   * failure may do is put the switch in front of the person, which is what the
-   * panel in MicNotice does, because sending somebody to hunt through Settings
-   * after a failure they cannot interpret is how this failed the first time.
+   * WHAT HAPPENS TO A STORED `voiceAllowOnline` ROW: nothing reads it.
+   * `parseSettings` skips a key that is not in the schema, so the row stays in
+   * the table, is ignored forever, and this key falls back to its default of
+   * false. It is not migrated, and it deliberately is not: `seedDatabase`
+   * writes every default on first run, so a stored `voiceAllowOnline: false`
+   * means "this install has never been touched" far more often than it means "a
+   * person refused the network". Migrating it would restore the dead button for
+   * everybody who never had an opinion, which is the failure this release
+   * exists to end.
    *
-   * A stored row from the release that had no such setting simply does not
-   * exist, and this key falls back to the default, which is the private one.
+   * The application is never the one to switch this on or off: not after a
+   * failure, not as a retry, not on an upgrade. What a failure may do is put
+   * the switch in front of the person, which is what the panel in MicNotice
+   * does when this setting is why the microphone gave up.
    */
-  voiceAllowOnline: z.boolean().default(false),
+  voiceOfflineOnly: z.boolean().default(false),
 
   /**
    * Whether Claude may be asked anything at all.

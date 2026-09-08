@@ -1,5 +1,5 @@
 /**
- * Chrome, transcribing on the device unless a person has said otherwise.
+ * Chrome, transcribing on the device first and every time.
  *
  * THIS IS THE ONLY MODULE PERMITTED TO CONSTRUCT `SpeechRecognition`.
  * `scripts/audit-offline.mjs` fails the build if the identifier appears
@@ -7,28 +7,42 @@
  * Google's servers.
  *
  * `processLocally` is what governs that, and it fails CLOSED: with no local
- * model the call errors rather than quietly falling back to the network. It is
- * assigned first, on every path, and it is `true` unless BOTH of these hold:
+ * model the call errors rather than quietly falling back to the network. The
+ * shape of every listen here is therefore fixed, and there are exactly two
+ * steps to it:
  *
- *   - there is no on-device model for the language, and
- *   - `options.allowOnline` is true, which carries the `voiceAllowOnline`
- *     setting - off by default, switched on only by a person reading a label
- *     that names Google.
+ *   1. The on-device attempt. `processLocally = true`, assigned first and
+ *      before `start()`. A language the device has no model for does not even
+ *      get this far - it is refused before construction, because a recognizer
+ *      built for a language it cannot handle is one assignment away from being
+ *      the wrong kind.
+ *   2. If, and only if, that failed and online.ts permits a retry: one more
+ *      recognizer, with `processLocally = false`. That one sends the audio to
+ *      whichever service the browser uses.
  *
- * So the opt-in cannot be reached by accident and cannot be reached by a caller
- * that simply forgot the argument: `allowOnline` is absent-means-no, and a
- * device that CAN transcribe locally still does, opt-in or not. Sending audio
- * away when the phone could have done the job itself would be a bug, not a
- * preference.
+ * SO THE GUARANTEE IS NOT "NEVER WITHOUT `processLocally`" ANY MORE, AND IT IS
+ * WORTH STATING WHAT REPLACED IT. Every recognizer that starts without it is a
+ * retry: it never happens on the first attempt, never after a deliberate
+ * cancel, never while `offlineOnly` is set, and never while the device says it
+ * has no network. The tests in webspeech.test.ts pin each of those separately,
+ * which is a stronger statement than the old one - the old rule was absolute
+ * and, on a phone with no Portuguese pack, meant the microphone never worked at
+ * all.
  *
  * The seam is still refused to browsers that do not expose these controls at
  * all. Safari has `webkitSpeechRecognition` and no way to ask about locality;
- * this application does not use a recognizer it cannot question, and the opt-in
- * does not change which browsers qualify - only which mode a qualifying one may
- * use.
+ * this application does not use a recognizer it cannot question, and the retry
+ * does not change which browsers qualify - only what a qualifying one does
+ * after a failure.
  */
-import type { SpeechAvailability, SpeechOptions, SpeechRecognizer } from './recognizer';
-import { SpeechFailureError, type SpeechFailure } from './failure';
+import type {
+  SpeechAvailability,
+  SpeechOptions,
+  SpeechRecognizer,
+  Transcript,
+} from './recognizer';
+import { SpeechFailureError, asSpeechFailure, type SpeechFailure } from './failure';
+import { mayRetryOnline, reportedFailure } from './online';
 
 interface OnDeviceCapable {
   new (): SpeechRecognitionLike;
@@ -78,25 +92,94 @@ function reasonOf(event: unknown): SpeechFailure {
   return typeof name === 'string' ? (WEB_ERRORS[name] ?? 'failed') : 'failed';
 }
 
+/**
+ * One recognizer, one utterance, one mode.
+ *
+ * `processLocally` is assigned first and on every path. If the property does
+ * not exist the assignment is harmless; if a future engine makes it throw, the
+ * executor rejects and `start()` below is never reached - which is the outcome
+ * to want.
+ */
+function attempt(
+  Recognition: OnDeviceCapable,
+  tag: string,
+  processLocally: boolean,
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const recognition = new Recognition();
+    recognition.processLocally = processLocally;
+    recognition.lang = tag;
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    let settled = false;
+    recognition.onresult = (event) => {
+      settled = true;
+      const text = transcriptOf(event);
+      if (text === '') reject(new SpeechFailureError('no-match', 'Nothing was heard.'));
+      else resolve(text);
+    };
+    recognition.onerror = (event) => {
+      settled = true;
+      reject(new SpeechFailureError(reasonOf(event), 'Speech recognition failed.'));
+    };
+    recognition.onend = () => {
+      if (!settled) reject(new SpeechFailureError('no-match', 'Nothing was heard.'));
+    };
+
+    try {
+      recognition.start();
+    } catch (cause) {
+      // `start()` on a recognizer that is already running throws, and that is
+      // the one failure the API reports this way rather than through `onerror`.
+      settled = true;
+      reject(
+        new SpeechFailureError(
+          'busy',
+          cause instanceof Error ? cause.message : 'The recognizer is already listening.',
+        ),
+      );
+    }
+  });
+}
+
 export function createWebSpeechRecognizer(): SpeechRecognizer {
+  /**
+   * What the device itself can do, with no regard for what the user permits.
+   *
+   * Kept separate from `availability` because `listen` needs the plain fact:
+   * whether to attempt locally is not a question about anybody's settings.
+   */
+  async function onDeviceState(tag: string): Promise<SpeechAvailability> {
+    const Recognition = api();
+    if (Recognition === undefined) return 'unavailable';
+    // Without this static method the browser has only the networked mode and no
+    // way to be asked about locality, which this application does not use under
+    // any circumstance - including the retry.
+    if (typeof Recognition.availableOnDevice !== 'function') return 'unavailable';
+
+    const state = await Recognition.availableOnDevice(tag).catch(() => 'unavailable');
+    if (state === 'available') return 'ready';
+    if (state === 'downloadable' || state === 'downloading') return 'installable';
+    return 'unavailable';
+  }
+
   async function availability(
     tag = 'pt-BR',
     options?: SpeechOptions,
   ): Promise<SpeechAvailability> {
     const Recognition = api();
     if (Recognition === undefined) return 'unavailable';
-    // Without this static method the browser has only the networked mode and no
-    // way to be asked about locality, which this application does not use under
-    // any circumstance - including the opt-in.
     if (typeof Recognition.availableOnDevice !== 'function') return 'unavailable';
 
-    const state = await Recognition.availableOnDevice(tag).catch(() => 'unavailable');
-    if (state === 'available') return 'ready';
-    if (state === 'downloadable' || state === 'downloading') return 'installable';
+    const local = await onDeviceState(tag);
+    if (local !== 'unavailable') return local;
 
-    // No model, and none to download. Still ready if - and only if - the user
-    // has allowed the networked mode.
-    return options?.allowOnline === true ? 'ready' : 'unavailable';
+    // Nothing on the device and nothing to download, but a failed on-device
+    // attempt gets a second one over the network, so the honest answer to "can
+    // this device transcribe" is still `ready`. It goes back to `unavailable`
+    // the moment the user forbids that.
+    return options?.offlineOnly === true ? 'unavailable' : 'ready';
   }
 
   return {
@@ -108,65 +191,35 @@ export function createWebSpeechRecognizer(): SpeechRecognizer {
       return Recognition.installOnDevice(tag).catch(() => false);
     },
 
-    async listen(tag: string, options?: SpeechOptions): Promise<string> {
+    async listen(tag: string, options?: SpeechOptions): Promise<Transcript> {
       const Recognition = api();
       if (Recognition === undefined) {
         throw new SpeechFailureError('no-recognizer', 'Speech recognition is unavailable.');
       }
 
-      // Asked WITHOUT the option, so this is the true local state rather than
-      // what the user has permitted.
-      const onDevice = (await availability(tag)) === 'ready';
-      const allowOnline = options?.allowOnline === true;
-
-      // Checked before construction, so a device without the language never
-      // reaches `start()` and therefore never reaches a server - unless the
-      // user has asked for exactly that.
-      if (!onDevice && !allowOnline) {
-        throw new SpeechFailureError('no-offline-model', `No on-device speech model for ${tag}.`);
+      // Step one, always, and always local.
+      let first: SpeechFailureError;
+      if ((await onDeviceState(tag)) === 'ready') {
+        try {
+          return { text: await attempt(Recognition, tag, true), online: false };
+        } catch (cause) {
+          first = asSpeechFailure(cause);
+        }
+      } else {
+        // Checked before construction, so a device without the language never
+        // reaches `start()` in the local mode it could not have honoured.
+        first = new SpeechFailureError('no-offline-model', `No on-device speech model for ${tag}.`);
       }
 
-      return new Promise<string>((resolve, reject) => {
-        const recognition = new Recognition();
-        // First, and on every path. If the property does not exist the
-        // assignment is harmless; if a future engine makes it throw, the
-        // executor rejects and `start()` below is never reached - which is the
-        // outcome to want.
-        recognition.processLocally = onDevice;
-        recognition.lang = tag;
-        recognition.continuous = false;
-        recognition.interimResults = false;
+      if (!mayRetryOnline(first, options)) throw first;
 
-        let settled = false;
-        recognition.onresult = (event) => {
-          settled = true;
-          const text = transcriptOf(event);
-          if (text === '') reject(new SpeechFailureError('no-match', 'Nothing was heard.'));
-          else resolve(text);
-        };
-        recognition.onerror = (event) => {
-          settled = true;
-          reject(new SpeechFailureError(reasonOf(event), 'Speech recognition failed.'));
-        };
-        recognition.onend = () => {
-          if (!settled) reject(new SpeechFailureError('no-match', 'Nothing was heard.'));
-        };
-
-        try {
-          recognition.start();
-        } catch (cause) {
-          // `start()` on a recognizer that is already running throws, and that
-          // is the one failure the API reports this way rather than through
-          // `onerror`.
-          settled = true;
-          reject(
-            new SpeechFailureError(
-              'busy',
-              cause instanceof Error ? cause.message : 'The recognizer is already listening.',
-            ),
-          );
-        }
-      });
+      // Step two. Once, and the failure it reports is still the first one -
+      // see `reportedFailure`.
+      try {
+        return { text: await attempt(Recognition, tag, false), online: true };
+      } catch (again) {
+        throw reportedFailure(first, again);
+      }
     },
   };
 }

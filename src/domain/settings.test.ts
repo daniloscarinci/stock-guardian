@@ -9,18 +9,34 @@ describe('settings', () => {
     });
 
     /*
-     * The one setting that can send a recording of somebody anywhere. A default
-     * of `true` here would make the application's central claim false without
-     * anybody choosing it, so this is asserted on its own rather than folded
-     * into the test above.
+     * The refusal, off by default - which is not the same as the microphone
+     * being online. Every listen still starts on the device; what this permits
+     * is the second attempt after the device has failed, and the sheet marks
+     * the exchanges that took it. Asserted on its own because it is the one
+     * setting that governs whether a recording can ever leave.
      */
-    it('defaults the online opt-in OFF', () => {
-      expect(DEFAULT_SETTINGS.voiceAllowOnline).toBe(false);
+    it('defaults the on-device-only refusal OFF', () => {
+      expect(DEFAULT_SETTINGS.voiceOfflineOnly).toBe(false);
     });
 
     it('leaves it off for a database that predates the setting', () => {
       const { settings } = parseSettings([{ key: 'askEnabled', value: 'true' }]);
-      expect(settings.voiceAllowOnline).toBe(false);
+      expect(settings.voiceOfflineOnly).toBe(false);
+    });
+
+    /*
+     * `voiceAllowOnline` became `voiceOfflineOnly`, and the old row is not
+     * migrated in either direction. `seedDatabase` writes every default on
+     * first run, so a stored `voiceAllowOnline: false` says "this install was
+     * never touched" far more often than it says "somebody refused the
+     * network" - and reading it as the latter would restore the dead
+     * microphone for everyone who never had an opinion.
+     */
+    it('does not read a stored voiceAllowOnline into the refusal, either way', () => {
+      for (const value of ['false', 'true']) {
+        const { settings } = parseSettings([{ key: 'voiceAllowOnline', value }]);
+        expect(settings.voiceOfflineOnly).toBe(false);
+      }
     });
 
     /*
@@ -92,14 +108,14 @@ describe('settings', () => {
       expect(invalidKeys).toContain('askEnabled');
     });
 
-    // A corrupt value must fall back to the private behaviour, never to the
-    // one that sends audio away.
-    it('falls back to off when the online opt-in is corrupt', () => {
+    // A corrupt value must fall back to the behaviour a working microphone
+    // needs, and say that it was corrupt.
+    it('falls back to off when the refusal is corrupt', () => {
       const { settings, invalidKeys } = parseSettings([
-        { key: 'voiceAllowOnline', value: '"yes please"' },
+        { key: 'voiceOfflineOnly', value: '"yes please"' },
       ]);
-      expect(settings.voiceAllowOnline).toBe(false);
-      expect(invalidKeys).toContain('voiceAllowOnline');
+      expect(settings.voiceOfflineOnly).toBe(false);
+      expect(invalidKeys).toContain('voiceOfflineOnly');
     });
   });
 });

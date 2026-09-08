@@ -94,3 +94,19 @@ export function speechFailureReason(cause: unknown): SpeechFailure {
   }
   return 'failed';
 }
+
+/**
+ * The same rejection, as an error that carries its reason.
+ *
+ * A recognizer that means to try again has to hold on to what went wrong the
+ * first time, and a bare bridge rejection is not a shape worth carrying. This
+ * reads the reason once, at the boundary, and everything after it branches on
+ * a field rather than on a regular expression.
+ */
+export function asSpeechFailure(cause: unknown): SpeechFailureError {
+  if (cause instanceof SpeechFailureError) return cause;
+  return new SpeechFailureError(
+    speechFailureReason(cause),
+    cause instanceof Error ? cause.message : String(cause),
+  );
+}

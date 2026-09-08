@@ -10,11 +10,13 @@
  * TWO WAYS IN, AND NEITHER IS A FALLBACK. The box is on every platform and
  * always worked; the microphone is on the platforms that have a recognizer, and
  * it was removed once because Android refused every offline request on a phone
- * with no Portuguese pack. It is back, offline-first, and it says why when it
- * cannot - see `MicButton`, which owns the listening and hands over one
- * sentence at a time. A transcript goes to `run`, the same function the Send
- * button calls, so a spoken question and a typed one take exactly the same
- * path from here on.
+ * with no Portuguese pack. It is back, on-device first, and when the device
+ * cannot manage it tries once over the internet and says so - see `MicButton`,
+ * which owns the listening and hands over one sentence at a time. A transcript
+ * goes to `run`, the same function the Send button calls, so a spoken question
+ * and a typed one take exactly the same path from here on. What travels with it
+ * is one flag: whether the words were captured on the phone or over the
+ * network. The exchange is marked with it below.
  *
  * THE ANSWER IS READ BACK. `createSpeaker` for the setting, `androidIsSilent`
  * for the switch on the side of the phone. Speaking is not listening and asks
@@ -151,8 +153,8 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
         `MicButton`.
       */}
       <MicButton
-        onHeard={(transcript) => {
-          void run(transcript);
+        onHeard={(transcript, online) => {
+          void run(transcript, online);
         }}
         onTypeInstead={typeInstead}
         busy={voice.busy}
@@ -199,6 +201,22 @@ function Answered({ engine }: { readonly engine: 'claude' | 'device' }) {
   );
 }
 
+/**
+ * That the words came over the network, said in the same quiet place.
+ *
+ * Rendered only on the exchanges it is true of, which are the ones where the
+ * phone could not transcribe on its own. The microphone tries the device first
+ * every single time, so most exchanges never show this - and that is the point
+ * of showing it at all. A person can look at the log and tell which presses
+ * left the phone. Marking it is what makes the fallback something offered
+ * rather than something done quietly.
+ */
+function Transcription({ online }: { readonly online: boolean }) {
+  const { t } = useApp();
+  if (!online) return null;
+  return <p className={styles.engine}>{t('voice.transcribedOnline')}</p>;
+}
+
 /** One exchange, rendered according to what came of it. */
 function VoiceExchange({
   entry,
@@ -215,6 +233,7 @@ function VoiceExchange({
     return (
       <>
         <p className={styles.said}>{t('voice.heard', { transcript: entry.said })}</p>
+        <Transcription online={entry.transcribedOnline} />
         <Answered engine="claude" />
         <p className={styles.answer}>{entry.text}</p>
 
@@ -261,6 +280,7 @@ function VoiceExchange({
     return (
       <>
         <p className={styles.said}>{t('voice.heard', { transcript: entry.said })}</p>
+        <Transcription online={entry.transcribedOnline} />
         <p className={styles.answer}>{entry.text}</p>
       </>
     );
@@ -269,6 +289,7 @@ function VoiceExchange({
   return (
     <>
       <p className={styles.said}>{t('voice.heard', { transcript: entry.said })}</p>
+      <Transcription online={entry.transcribedOnline} />
 
       {/*
         Claude was asked and could not answer, so the twelve rules did. Said

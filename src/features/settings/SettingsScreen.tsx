@@ -58,13 +58,13 @@ export function SettingsScreen() {
    */
   const speech = useAsyncData(async () => {
     const tag = LOCALE_TAGS[settings.language];
-    // The opt-in changes the honest answer: a device with no local model for
-    // this language can transcribe after all, once its owner has allowed the
-    // audio to leave. Asked again when the switch moves, for that reason.
-    const options = { allowOnline: settings.voiceAllowOnline };
+    // The refusal changes the honest answer: a device with no local model for
+    // this language can still transcribe over the network, unless its owner has
+    // forbidden that. Asked again when the switch moves, for that reason.
+    const options = { offlineOnly: settings.voiceOfflineOnly };
     const recognizer = await selectRecognizer(tag, options);
     return { recognizer, tag, availability: await recognizer.availability(tag, options) };
-  }, [settings.language, settings.voiceAllowOnline]);
+  }, [settings.language, settings.voiceOfflineOnly]);
 
   const info = live.data ?? diagnostics;
 
@@ -361,11 +361,16 @@ export function SettingsScreen() {
           ))}
 
         {/*
-          The only control in this application that can send anything off the
-          device, so it says what leaves and to whom rather than saying
-          "online". It is last on purpose: a person reads what this device can
-          do, then how to make it do it locally, and only then the option that
-          gives something up.
+          The one control over whether recorded speech can ever leave, and it is
+          worded as the restriction it is rather than as a permission. Off, the
+          phone still transcribes on its own first and usually finishes there;
+          what it permits is the second attempt, over the internet, on the
+          presses the device could not manage - and the sheet marks those, so
+          nothing happens invisibly.
+
+          It is last on purpose: a person reads what this device can do, then
+          how to make it do more of it locally, and only then the switch that
+          trades a working microphone for an absolute promise.
 
           The same switch, in the same words, is on the panel that appears when
           a listen fails for want of a local model - which is where somebody
@@ -373,11 +378,11 @@ export function SettingsScreen() {
           without a press.
         */}
         <SwitchRow
-          label={t('voice.settingAllowOnline')}
-          help={t('voice.settingAllowOnlineHelp')}
-          checked={settings.voiceAllowOnline}
+          label={t('voice.settingOfflineOnly')}
+          help={t('voice.settingOfflineOnlyHelp')}
+          checked={settings.voiceOfflineOnly}
           onChange={(on) => {
-            void updateSettings({ voiceAllowOnline: on });
+            void updateSettings({ voiceOfflineOnly: on });
           }}
         />
       </Card>
