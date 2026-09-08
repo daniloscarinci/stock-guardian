@@ -125,12 +125,12 @@ jobs:
       # Proof, in the build log, of exactly what the artifact that came out
       # asks the operating system for. aapt2 is part of build-tools.
       #
-      # This step has been narrowed twice and deleted never, which is the point
-      # of it. It began by demanding zero permissions, and that was the
+      # This step has been narrowed three times and deleted never, which is the
+      # point of it. It began by demanding zero permissions, and that was the
       # strongest version. Each widening below is one line of this file, argued
       # for, rather than a permission that arrived unnoticed.
       #
-      # Three names pass, for three different reasons.
+      # Four names pass, for four different reasons.
       #
       # android.permission.INTERNET is what the AI assistant cannot work
       # without. A key the user pastes in themselves is useless unless the
@@ -148,6 +148,22 @@ jobs:
       # The user was asked and accepted the permission to have a microphone that
       # works. It is requested on the first press and never at startup.
       #
+      # android.permission.POST_NOTIFICATIONS is the expiry reminders, and it is
+      # the newest. From Android 13 nothing may post a notification without it.
+      # It is requested at runtime the first time somebody switches the
+      # reminders on in Settings, never at startup, and the switch ships off -
+      # so a person who does not want to be interrupted is never shown the
+      # dialog and this permission is never granted.
+      #
+      # @capacitor/local-notifications tried to bring three more with it, and
+      # this check is how that was noticed rather than shipped:
+      # SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED and WAKE_LOCK. All three
+      # are stripped at merge time by tools:node="remove" in
+      # AndroidManifest.xml, which sets out the cost of each. If somebody
+      # deletes those three lines, this step fails - which is exactly what it is
+      # for. Do not add them to the list below; take them back out of the
+      # manifest.
+      #
       # Anything under app.stockguardian.android. is not asked of anyone: it
       # belongs to this application. androidx declares
       # DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION so that other applications
@@ -155,13 +171,14 @@ jobs:
       # never shown to a user.
       #
       # Everything else still fails the build: CAMERA, ACCESS_FINE_LOCATION,
-      # READ_CONTACTS, the storage permissions, and whatever the next library
-      # arrives with. The check used to prove "this application asks the system
-      # for nothing". It now proves "this application asks for the network and
-      # the microphone and nothing else", which is a weaker sentence and still
+      # READ_CONTACTS, the storage permissions, the three named above, and
+      # whatever the next library arrives with. The check used to prove "this
+      # application asks the system for nothing". It now proves "this
+      # application asks for the network, the microphone and permission to
+      # notify you, and nothing else", which is a weaker sentence and still
       # worth running on every build, because the way this promise would
       # actually be lost is one dependency quietly merging one more permission.
-      - name: Check the APK asks for INTERNET and RECORD_AUDIO and nothing else
+      - name: Check the APK asks for three permissions and no others
         env:
           APK: ${{ steps.apk.outputs.name }}
         run: |
@@ -172,20 +189,26 @@ jobs:
           unexpected=$(grep '^uses-permission:' permissions.txt | cut -d"'" -f2 \
             | grep -v '^app\.stockguardian\.android\.' \
             | grep -vx 'android\.permission\.INTERNET' \
-            | grep -vx 'android\.permission\.RECORD_AUDIO' || true)
+            | grep -vx 'android\.permission\.RECORD_AUDIO' \
+            | grep -vx 'android\.permission\.POST_NOTIFICATIONS' || true)
 
           if [ -n "$unexpected" ]; then
             echo "The APK asks the operating system for:"
             echo "$unexpected"
-            echo "Two names are allowed here and no others."
-            echo "  INTERNET     - the AI assistant cannot reach api.anthropic.com without it."
-            echo "  RECORD_AUDIO - the microphone. The permission-free Intent it replaces is"
-            echo "                 not handled on the phone this is built for."
-            echo "Nothing else belongs in this APK. See docs/ANDROID.md."
+            echo "Three names are allowed here and no others."
+            echo "  INTERNET           - the AI assistant cannot reach api.anthropic.com without it."
+            echo "  RECORD_AUDIO       - the microphone. The permission-free Intent it replaces is"
+            echo "                       not handled on the phone this is built for."
+            echo "  POST_NOTIFICATIONS - the expiry reminders. Asked for when somebody switches"
+            echo "                       them on, never at startup, and off by default."
+            echo "Nothing else belongs in this APK. If one of SCHEDULE_EXACT_ALARM,"
+            echo "RECEIVE_BOOT_COMPLETED or WAKE_LOCK is listed above, the tools:node=\"remove\""
+            echo "lines in AndroidManifest.xml have been deleted. Put them back rather than"
+            echo "widening this list. See docs/ANDROID.md."
             exit 1
           fi
 
-          for expected in INTERNET RECORD_AUDIO; do
+          for expected in INTERNET RECORD_AUDIO POST_NOTIFICATIONS; do
             if grep -q "name='android.permission.$expected'" permissions.txt; then
               echo "The APK asks the operating system for $expected."
             else
@@ -216,7 +239,7 @@ jobs:
           is the expected prompt for an application that does not come from the
           Play Store, and it is asked once.
 
-          This build asks Android for two permissions and no others.
+          This build asks Android for three permissions and no others.
 
           INTERNET, so the AI assistant can reach api.anthropic.com with a key
           you paste in yourself. Leave the key blank and nothing is ever sent.
@@ -227,6 +250,13 @@ jobs:
           needed no such permission because speech went through Google's own
           voice search screen; that screen is not available on every phone, and
           on the one this was built for it never opened at all.
+
+          POST_NOTIFICATIONS, for the expiry reminders. They are off until you
+          switch them on in Settings, and that switch is the only thing that
+          ever raises the prompt. Switched on, the app works out what expires
+          and hands the reminders to Android in advance, so they arrive whether
+          or not you open the app - and the whole list is worked out again each
+          time you do.
 
           The stock database still never leaves the phone. Everything the app
           needs to run is inside the file, and it runs with the radio off.

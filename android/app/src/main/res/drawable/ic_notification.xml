@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The status bar icon for an expiry reminder.
+
+    Android tints a small notification icon a single colour and keeps only its
+    alpha, so this is a silhouette rather than artwork: the same shield as
+    ic_splash_mark, with the three lines cut out of it as holes through an
+    even-odd fill instead of painted over it in the background colour. Painted
+    over, they would vanish the moment the system tinted the whole shape and the
+    icon would be a solid blob.
+
+    Without this file the plugin falls back to android.R.drawable.ic_dialog_info,
+    which is Android's generic exclamation mark and belongs to no application.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M6.24,4.8L17.76,4.8L17.76,13.92L12,19.68L6.24,13.92ZM7.68,7.68L14.88,7.68L14.88,8.88L7.68,8.88ZM7.68,10.08L12.96,10.08L12.96,11.28L7.68,11.28ZM7.68,12.48L11.04,12.48L11.04,13.68L7.68,13.68Z" />
+</vector>

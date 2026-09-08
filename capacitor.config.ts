@@ -26,6 +26,30 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
   },
 
+  plugins: {
+    /*
+     * The expiry reminders. Two lines, and both of them are about what the
+     * notification looks like in the status bar rather than about what it does.
+     *
+     * `smallIcon` names android/app/src/main/res/drawable/ic_notification.xml.
+     * Without it the plugin falls back to android.R.drawable.ic_dialog_info -
+     * Android's own generic exclamation mark, which belongs to no application
+     * and tells nobody which one is talking to them.
+     *
+     * `iconColor` is the accent from src/styles/tokens.css, so the tinted dot
+     * beside the notification matches the application it came from.
+     *
+     * Everything else about a reminder - when it fires, what it says, in which
+     * language, and whether it may fire at all - is decided in
+     * src/services/notifications/ and never here. This file is copied into the
+     * Android project by `cap sync`; nothing in it can be changed per user.
+     */
+    LocalNotifications: {
+      smallIcon: 'ic_notification',
+      iconColor: '#6b83ff',
+    },
+  },
+
   android: {
     /*
      * Nothing is loaded over the network, so there is no mixed content to

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="false"
@@ -55,8 +56,8 @@
     </application>
 
     <!--
-        Permissions requested from the system: two, and this comment has been
-        wrong twice.
+        Permissions requested from the system: three, and this comment has been
+        wrong twice already.
 
         It once said none. That ended with the AI assistant: a person pastes
         their own Anthropic key into Settings and asks a question, and answering
@@ -93,15 +94,59 @@
         the microphone and never at startup, and a refusal is an outcome the
         interface handles rather than an error - see SpeechPlugin.
 
+        POST_NOTIFICATIONS, AND THE THREE THAT CAME WITH IT AND WERE SENT BACK
+
+        This application now schedules expiry reminders, and from Android 13
+        nothing may post a notification without POST_NOTIFICATIONS. It is asked
+        for at runtime the first time somebody switches the reminders ON, in
+        Settings, and never at startup - so a person who does not want to be
+        interrupted is never shown the dialog. The switch ships off. See
+        src/services/notifications/notifier.ts.
+
+        @capacitor/local-notifications merges FOUR permissions into this
+        manifest, not one. Three of them are removed above rather than
+        accepted, and each removal is a decision with a cost:
+
+          SCHEDULE_EXACT_ALARM. The plugin defaults every notification to an
+          exact alarm, and on Android 12 and later that opens the system's
+          "Alarms & reminders" screen the first time it schedules - a second
+          permission screen, for a daily digest about tinned food. Every notice
+          this application schedules sets isExactNotification false, so the
+          alarm is inexact and the permission is not needed. What it costs is
+          that a reminder set for 09:00 may arrive at 09:04. Nothing here needs
+          a stopwatch.
+
+          RECEIVE_BOOT_COMPLETED. The plugin registers a receiver that
+          re-registers pending alarms after a restart, because Android drops
+          every alarm on reboot. Without the permission that receiver never
+          runs, so a phone that restarts loses the reminders it was holding
+          until this application is next opened - which recomputes and
+          reschedules the lot. THIS IS THE ONE REAL COST OF KEEPING THE
+          PERMISSION LIST SHORT, and it is written down here and in
+          docs/ANDROID.md rather than discovered. The receiver stays in the
+          merged manifest and is simply never delivered to.
+
+          WAKE_LOCK. Nothing in the plugin's code takes a wake lock; the
+          declaration is inherited. RTC_WAKEUP alarms wake the device through
+          the alarm manager's own lock, not the application's, so removing this
+          changes nothing that can be observed.
+
+        The reminders still arrive on a sleeping phone: the schedule sets
+        allowWhileIdle, which fires during Doze and needs no permission of any
+        kind. The channel is created without vibration, which is why
+        android.permission.VIBRATE is not here either.
+
         WHAT IS STILL TRUE, AND STILL CHECKED
 
         The check in .github/workflows/android.yml was narrowed, not deleted. It
-        allows exactly android.permission.INTERNET and
-        android.permission.RECORD_AUDIO and still fails the build on every other
-        permission outside this application's own namespace: CAMERA, location,
-        contacts, storage, anything a later dependency drags in. It used to
-        prove "this application asks the system for nothing". It now proves
-        "this application asks for the network and the microphone and nothing
+        allows exactly android.permission.INTERNET,
+        android.permission.RECORD_AUDIO and
+        android.permission.POST_NOTIFICATIONS, and still fails the build on
+        every other permission outside this application's own namespace: CAMERA,
+        location, contacts, storage, the three removed above, and anything a
+        later dependency drags in. It used to prove "this application asks the
+        system for nothing". It now proves "this application asks for the
+        network, the microphone and permission to notify you, and nothing
         else", which is a weaker sentence and still worth checking on every
         build, because the way this promise would actually be lost is one
         library quietly merging one more permission.
@@ -138,6 +183,23 @@
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+        Merged in by @capacitor/local-notifications and taken back out. The
+        argument for each is in the block above; the short version is that an
+        inexact alarm needs no exact-alarm permission, nothing here takes a wake
+        lock, and losing the schedule across a reboot costs one recompute the
+        next time the application is opened.
+
+        tools:node="remove" acts at merge time, so these three never reach the
+        APK and the check in the workflow never sees them. Deleting these lines
+        would let all three back in silently, and the build would then fail -
+        which is the intended way to find out.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
 
     <!--
         Not a permission, and the only reason it is here.
