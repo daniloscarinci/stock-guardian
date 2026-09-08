@@ -330,9 +330,16 @@ So a missing model is established two other ways, in this order:
 2. **Below API 33, or when that cannot answer**, by how fast `RESULT_CANCELED`
    comes back. A refusal returns at once; a person deciding not to speak cannot
    open the dialog, read it and press back inside a second. **This one is a
-   heuristic**, and it is applied only while the question is genuinely open —
-   never when the pre-flight check answered — because being wrong the other way
-   means a banner after a deliberate cancellation.
+   heuristic.** It names *no offline model* only where the pre-flight did not
+   establish that the model is there, and any other instant `RESULT_CANCELED` is
+   reported as a plain failure rather than as a cancellation.
+
+   That last part matters more than it looks. `cancelled` renders as nothing
+   *and* stops the second attempt, so guessing it wrongly costs the whole
+   feature — which is what happened the first time. Guessing *failure* wrongly
+   costs one sentence. Both attempts pass through this, and an instant
+   `RESULT_CANCELED` on the second one is a recognizer refusing, not somebody
+   changing their mind inside a second.
 
 `android/.../SpeechPlugin.java` says the same thing at greater length, next to
 the code it describes.

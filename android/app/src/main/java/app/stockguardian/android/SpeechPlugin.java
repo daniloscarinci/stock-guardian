@@ -96,9 +96,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *      RESULT_CANCELED comes back. A refusal returns at once; a person deciding
  *      not to speak cannot open the dialog, read it and press back inside
  *      REFUSAL_MILLIS. This one is a heuristic, marked as such here and in
- *      docs/VOICE.md, and it is applied ONLY while the question is genuinely
- *      open - never when the pre-flight check answered - because being wrong the
- *      other way means a banner after a deliberate cancellation.
+ *      docs/VOICE.md, and it names no-offline-model only where the pre-flight
+ *      did not establish that the model is there. A fast RESULT_CANCELED it
+ *      cannot name that way is reported as `failed` rather than as a
+ *      cancellation: `cancelled` renders as nothing AND suppresses the retry,
+ *      so guessing it wrong costs the whole feature, while guessing `failed`
+ *      wrong costs one sentence.
  *
  * WHAT IS NOT IN HERE ANY MORE
  *
@@ -267,14 +270,33 @@ public class SpeechPlugin extends Plugin {
         }
 
         /*
-         * The heuristic, and the only guess in this file. Offline was asked for,
-         * nothing could establish whether the language is on the phone, and the
-         * screen came back faster than a person could dismiss it - which is a
-         * recognizer refusing, not somebody changing their mind.
+         * The heuristic, and the only guess in this file.
+         *
+         * The screen takes a moment to appear and prime the microphone, so a
+         * RESULT_CANCELED slower than REFUSAL_MILLIS is somebody who read it and
+         * pressed back. That is the one outcome the interface answers with
+         * silence, and it is the one outcome the web layer never retries.
          */
-        boolean refusedInstantly =
-            askedForOffline && onDeviceAtStart == OnDevice.UNKNOWN && elapsedMillis < REFUSAL_MILLIS;
-        return refusedInstantly ? CODE_NO_OFFLINE_MODEL : CODE_CANCELLED;
+        if (elapsedMillis >= REFUSAL_MILLIS) {
+            return CODE_CANCELLED;
+        }
+
+        /*
+         * Faster than a person could dismiss it, so the recognizer refused and
+         * the only question left is what to call the refusal.
+         *
+         * CANCELLED IS NEVER THE ANSWER HERE, AND THAT IS THE POINT. It renders
+         * as nothing, so naming a refusal that way is how this feature failed
+         * silently in the first place - and it would now also suppress the
+         * retry, which is the thing that makes the microphone work on a phone
+         * with no offline pack. Both attempts pass through this, and the second
+         * one refusing instantly is a failure to report rather than a mind
+         * changed in under a second.
+         */
+        if (askedForOffline && onDeviceAtStart != OnDevice.INSTALLED) {
+            return CODE_NO_OFFLINE_MODEL;
+        }
+        return CODE_FAILED;
     }
 
     private static String transcriptOf(Intent data) {
