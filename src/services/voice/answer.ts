@@ -36,10 +36,16 @@ export interface AnswerOptions {
  *
  * The count goes through `t` because "and 1 more" and "e mais 1" are different
  * sentences in a way this module must not know about.
+ *
+ * `total` exists for the answers whose list was cut by a page limit before it
+ * ever reached this module. A category holding eighty items arrives with fifty
+ * rows and a total of eighty, and "and 47 more" after three names would be a
+ * number that is simply wrong. It defaults to the length, so every caller with
+ * the whole list passes nothing.
  */
-function namesOf(t: TranslateFn, names: readonly string[]): string {
+function namesOf(t: TranslateFn, names: readonly string[], total = names.length): string {
   const shown = names.slice(0, MAX_NAMES).join(', ');
-  const rest = names.length - MAX_NAMES;
+  const rest = total - Math.min(MAX_NAMES, names.length);
   return rest <= 0 ? shown : `${shown} ${t('voice.andMore', { count: rest })}`;
 }
 
@@ -118,6 +124,95 @@ export function renderAnswer(t: TranslateFn, answer: Answer, options: AnswerOpti
             count: answer.items.length,
             names: namesOf(t, answer.items.map((item) => item.name)),
           });
+
+    case 'CATEGORY':
+      return answer.total === 0
+        ? t('voice.categoryNone', { category: answer.categoryName })
+        : t('voice.categorySome', {
+            category: answer.categoryName,
+            count: answer.total,
+            names: namesOf(t, answer.items.map((item) => item.name), answer.total),
+          });
+
+    /*
+     * The first match, whole, and the rest counted.
+     *
+     * A contact question has one useful answer - the number to call - and
+     * reading four of them to somebody who asked for the doctor's is worse
+     * than reading one and saying how many others matched. `contacts.search`
+     * orders by priority, so the first row is the one the user reaches for
+     * first in an emergency.
+     */
+    case 'CONTACT': {
+      const contact = answer.contacts[0];
+      if (contact === undefined) return t('voice.contactNone', { query: answer.query });
+
+      const rest = answer.contacts.length - 1;
+      const more = rest <= 0 ? '' : ` ${t('voice.contactMore', { count: rest })}`;
+
+      // A contact with no phone number is still an answer, and a truer one than
+      // a sentence with an empty space where the number should be.
+      if (contact.phone === null || contact.phone.trim() === '') {
+        return `${t('voice.contactNoPhone', { name: contact.name })}${more}`;
+      }
+
+      const line =
+        contact.relationship === null || contact.relationship.trim() === ''
+          ? t('voice.contactAnswer', { name: contact.name, phone: contact.phone })
+          : t('voice.contactAnswerWithRelationship', {
+              name: contact.name,
+              relationship: contact.relationship,
+              phone: contact.phone,
+            });
+      return `${line}${more}`;
+    }
+
+    /*
+     * Movements, newest first, each with what happened and when.
+     *
+     * The type goes through the same `transaction.*` keys the rest of the
+     * application uses for a history row, so "Comprado" is one word here and on
+     * the item screen rather than two translations of the same fact.
+     */
+    case 'HISTORY': {
+      if (answer.entries.length === 0) {
+        return t('voice.historyNone', { name: answer.item.name });
+      }
+
+      const entries = answer.entries.map((entry) =>
+        t('voice.historyEntry', {
+          type: t(`transaction.${entry.type}`),
+          quantity: quantityOf(options.language, entry.quantity),
+          unit: answer.item.unit,
+          date: formatCalendarDate(entry.on, options.dateFormat),
+        }),
+      );
+      return t('voice.history', {
+        name: answer.item.name,
+        count: entries.length,
+        entries: entries.join('; '),
+      });
+    }
+
+    /*
+     * The count first, because it is what was asked for, and the two shapes of
+     * it after - a number of items says nothing about whether they are spread
+     * across the household or piled in one box.
+     *
+     * Each of the three numbers needs its own plural, and a sentence gets one
+     * `count`, so the other two are rendered as phrases first - exactly as
+     * `dayWindow` is.
+     */
+    case 'TOTAL': {
+      const { totalItems, categoriesUsed, locationsUsed } = answer.stats;
+      if (totalItems === 0) return t('voice.totalNone');
+
+      return t('voice.total', {
+        count: totalItems,
+        categories: t('voice.categoryCount', { count: categoriesUsed }),
+        locations: t('voice.locationCount', { count: locationsUsed }),
+      });
+    }
 
     case 'EXPIRY_OF': {
       // `formatCalendarDate` returns '' for null and for anything it cannot

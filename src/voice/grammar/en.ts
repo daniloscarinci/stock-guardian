@@ -36,6 +36,16 @@ const FILLERS = ['the', 'a', 'an', 'of', 'some', 'any', 'more', 'my', 'our'];
  */
 const PARTITIVES = ['of'];
 
+/**
+ * Prepositions that introduce a PLACE: "i put [five cans of beans] IN the pantry".
+ *
+ * The same argument as the partitives above, about a different missing piece.
+ * A phrase that opens with one has lost the thing being put somewhere, not
+ * just the number - "put in the pantry" would otherwise add one of a product
+ * called "pantry", inventing a row named after the shelf it was going on.
+ */
+const LOCATIVES = ['in', 'into', 'on', 'onto', 'at', 'inside', 'to', 'over'];
+
 const UNITS = [
   'can', 'cans', 'box', 'boxes', 'bottle', 'bottles', 'bag', 'bags',
   'pack', 'packs', 'packet', 'packets', 'jar', 'jars', 'kg', 'kilo', 'kilos',
@@ -73,6 +83,10 @@ function cleanItemPhrase(phrase: string): string {
 const QUERY_WORDS = [
   'how', 'much', 'many', 'do', 'did', 'i', 'we', 'have', 'has', 'had', 'got',
   'is', 'are', 'there', 'still', 'left', 'remain', 'remains', 'remaining',
+  'only', 'just', 'any',
+  // "how many items of rice do i have" asks about rice, and the word for a
+  // stock line is never part of the name of one.
+  'items', 'item', 'things', 'stuff',
 ];
 
 function stripQueryWords(phrase: string): string {
@@ -147,15 +161,16 @@ function splitLeadingAmount(
  * this file failed to read it. Assuming one there would not fill a gap, it
  * would overrule the speaker.
  *
- *   A leading partitive: "take OF rice" is "take [two kilos] of rice" with the
- *   measure clipped off by the recognizer.
+ *   A leading partitive or locative: "take OF rice" is "take [two kilos] of
+ *   rice" and "put IN the pantry" is "put [the rice] in the pantry", both with
+ *   words clipped off by the recognizer.
  *   A numeral anywhere else in the phrase: "add fewer 2 eggs" says two, and no
  *   reading of "fewer" here is better than a guess.
  */
 function canAssumeOne(numbers: NumberWords, phrase: string): boolean {
   const tokens = phrase.split(' ').filter((token) => token !== '');
   const first = tokens[0];
-  if (first === undefined || PARTITIVES.includes(first)) return false;
+  if (first === undefined || PARTITIVES.includes(first) || LOCATIVES.includes(first)) return false;
   return tokens.every((token) => parseNumber(numbers, token) === null);
 }
 
@@ -214,26 +229,86 @@ function parseDatePhrase(
   return readSpokenDate(tools.dates, tools.numbers, stripped, context.today);
 }
 
+/**
+ * Leading articles taken off a contact phrase, and a possessive off the end.
+ *
+ * NOT `cleanItemPhrase`, which drops every filler wherever it stands. A contact
+ * is matched by `contacts.search`, which asks whether a stored field CONTAINS
+ * the phrase, so "mary of the clinic" has to survive with its "of" intact -
+ * `cleanItemPhrase` would hand over "mary the clinic", which is in nobody's
+ * address book. Only the words around it are noise: "the doctor" finds nothing
+ * and "doctor" finds the doctor, and "the doctor's" finds nothing either.
+ */
+function cleanContactPhrase(phrase: string): string {
+  return phrase
+    .replace(/^(?:the|a|an|my|our)(?:\s+|$)/, '')
+    .replace(/'?s$/, '')
+    .trim();
+}
+
+/**
+ * The window an "is anything expiring" question carried, in days.
+ *
+ * Two shapes, and both of them are things people say. "in the next 30 days"
+ * states the number; "this week" and "this month" state a period, and the
+ * number behind it is this application's own - seven and thirty, the same
+ * figures the expiry screen uses. A phrase with neither returns null and the
+ * caller falls back to the user's own first warning window.
+ */
+function readWindow(numbers: NumberWords, tail: string): number | null {
+  const stated = tail.match(/(?:in|within|over)\s+(?:the next\s+)?(.+?)\s+days?/);
+  if (stated?.[1] !== undefined) {
+    const value = parseNumber(numbers, stated[1]);
+    if (value !== null) return Math.round(value);
+  }
+
+  if (/\btoday\b/.test(tail)) return 0;
+  if (/\btomorrow\b/.test(tail)) return 1;
+  if (/\bthis week\b|\bthe week\b/.test(tail)) return 7;
+  if (/\bthis month\b|\bthe month\b/.test(tail)) return 30;
+  return null;
+}
+
 /** Verbs that add stock, mapped to why they added it. */
 const ADD_VERBS: Readonly<Record<string, 'add' | 'purchase'>> = {
-  add: 'add', adds: 'add', added: 'add', put: 'add', restock: 'add',
-  restocked: 'add', stocked: 'add',
+  add: 'add', adds: 'add', added: 'add', put: 'add', putting: 'add',
+  restock: 'add', restocked: 'add', stock: 'add', stocked: 'add',
+  stashed: 'add', stored: 'add', received: 'add', gained: 'add',
+  brought: 'add', topped: 'add', found: 'add',
   bought: 'purchase', purchased: 'purchase',
 };
 
 /** Verbs that remove stock, mapped to why. */
 const REMOVE_VERBS: Readonly<Record<string, 'remove' | 'consume'>> = {
   remove: 'remove', removed: 'remove', take: 'remove', took: 'remove',
-  discard: 'remove', discarded: 'remove',
+  taken: 'remove', discard: 'remove', discarded: 'remove', binned: 'remove',
+  threw: 'remove', tossed: 'remove', dumped: 'remove', lost: 'remove',
+  wasted: 'remove', grabbed: 'remove', broke: 'remove',
   use: 'consume', used: 'consume', ate: 'consume', eat: 'consume',
-  consumed: 'consume', drank: 'consume', opened: 'consume', finished: 'consume',
+  consumed: 'consume', drank: 'consume', drunk: 'consume', opened: 'consume',
+  finished: 'consume', cooked: 'consume',
 };
+
+/**
+ * Verbs that move an item from one place to another.
+ *
+ * Several of them - put, stored, stashed, took - also say that stock arrived
+ * or left, and three are in the maps above. That overlap is settled by rule
+ * ORDER and by the destination: MOVE_ITEM runs first and needs an "in the
+ * cellar" to match at all, so "i put the rice in the cellar" is a move and "i
+ * put 5 cans of beans" is five more cans. See the rule's own comment.
+ */
+const MOVE_VERBS = [
+  'move', 'moved', 'shift', 'shifted', 'transfer', 'transferred',
+  'relocate', 'relocated', 'put', 'place', 'placed', 'keep', 'kept',
+  'store', 'stored', 'stash', 'stashed', 'take', 'took',
+];
 
 const rules: readonly Rule[] = [
   {
     name: 'HELP',
     pattern:
-      /^(?:help|what can you do|what do you understand|what can i say|how does this work|how do i use this)$/,
+      /^(?:help|what can you do|what do you (?:understand|know)|what can i (?:say|ask)|what commands|how does this work|how do i use this)$/,
     build: (): Intent => ({ kind: 'HELP' }),
   },
 
@@ -241,7 +316,7 @@ const rules: readonly Rule[] = [
     // Before ADJUST, because "add a new item" also matches an add verb.
     name: 'CREATE_ITEM',
     pattern:
-      /^(?:create|add|new|register)\s+(?:an?\s+)?(?:new\s+)?(?:item|product|entry)\s*(?:called\s+)?:?\s*(.+)$/,
+      /^(?:create|add|new|register|track)\s+(?:an?\s+)?(?:new\s+)?(?:item|product|entry|thing)\s*(?:called\s+|named\s+)?:?\s*(.+)$/,
     build: (match, tools, context): Intent | null => {
       const body = match[1];
       if (body === undefined || body.trim() === '') return null;
@@ -285,24 +360,60 @@ const rules: readonly Rule[] = [
   },
 
   {
+    /*
+     * After CREATE_ITEM and before ADJUST_QUANTITY, and both halves matter.
+     *
+     * AFTER CREATE_ITEM, because "add an item: rice in the pantry" names a
+     * shelf too, and a creation read as a move would put nothing in the
+     * inventory at all.
+     *
+     * BEFORE ADJUST_QUANTITY, because several verbs below - put, stored, took -
+     * also say that stock arrived or left. The destination separates them: "i
+     * put the rice IN THE CELLAR" moves the row that exists, "i put 5 cans of
+     * beans" says five more cans are in the house. This rule cannot match the
+     * second, because there is no destination in it, so the sentence falls
+     * through to the adjustment it really is.
+     *
+     * A number in front of the item declines the match for the same reason. An
+     * item holds ONE location, so "put 2 kg of rice in the pantry" cannot be
+     * performed as a partial move, and two kilos arriving on a named shelf is
+     * much the likelier sentence.
+     */
+    name: 'MOVE_ITEM',
+    pattern:
+      /^(?:i\s+|we\s+)?([a-z]+)\s+(?:the\s+|an?\s+|my\s+|some\s+)?(.+?)\s+(?:to|into|in|onto|on|over to|inside)\s+(?:the\s+|an?\s+|my\s+)?(.+)$/,
+    build: (match, tools): Intent | null => {
+      const verb = match[1] ?? '';
+      if (!MOVE_VERBS.includes(verb)) return null;
+
+      const spoken = match[2] ?? '';
+      if (splitLeadingAmount(tools.numbers, spoken).amount !== null) return null;
+
+      const item = cleanItemPhrase(spoken);
+      const location = (match[3] ?? '').trim();
+      if (item === '' || location === '') return null;
+
+      return { kind: 'MOVE_ITEM', item, location };
+    },
+  },
+
+  {
     name: 'QUERY_MISSING',
     pattern:
-      /^(?:what (?:do|should) i (?:need|buy)(?: to buy)?|what am i (?:missing|out of)|what(?:s| is) (?:missing|running out|running low|low|almost gone)|what needs (?:buying|restocking)|shopping list|what to buy)$/,
+      /^(?:what (?:do|should) i (?:need|buy|restock|replace|get|pick up)(?: to (?:buy|restock|replace|get|pick up))?|what am i (?:missing|out of|low on|nearly out of|almost out of)|what(?:'?s| is) (?:missing|running out|running low|low|almost gone|out of stock|finished|gone|empty)|what have i run out of|what ran out|what needs (?:buying|restocking|replacing|topping up)|(?:the )?shopping list|what(?:'?s| is) on the shopping list|what to buy)$/,
     build: (): Intent => ({ kind: 'QUERY_MISSING' }),
   },
 
   {
     name: 'QUERY_EXPIRING',
     pattern:
-      /^(?:what|whats|which items?|which things)\s+(?:is\s+|are\s+|has\s+|have\s+|will\s+|already\s+|about to\s+|going to\s+)*(?:expiring|expired|expires|expire|going bad|gone bad|going off)\s*(.*)$/,
+      /^(?:what|what'?s|which items?|which things|anything|is anything|is there anything)\s+(?:is\s+|are\s+|has\s+|have\s+|will\s+|already\s+|about to\s+|going to\s+|due to\s+|close to\s+)*(?:expiring|expired|expires|expire|going bad|gone bad|go bad|going off|gone off|go off|spoiling|spoiled|spoil)\s*(.*)$/,
     build: (match, tools): Intent => {
       const tail = (match[1] ?? '').trim();
-      const expiredOnly = /\bexpired\b|\bgone bad\b/.test(match[0]);
-      const days = tail.match(/(?:in|within|over)\s+(?:the next\s+)?(.+?)\s+days?/);
-      const withinDays = days?.[1] !== undefined ? parseNumber(tools.numbers, days[1]) : null;
+      const expiredOnly = /\bexpired\b|\bgone bad\b|\bgone off\b|\bspoiled\b/.test(match[0]);
       return {
         kind: 'QUERY_EXPIRING',
-        withinDays: withinDays === null ? null : Math.round(withinDays),
+        withinDays: readWindow(tools.numbers, tail),
         expiredOnly,
       };
     },
@@ -311,8 +422,42 @@ const rules: readonly Rule[] = [
   {
     name: 'QUERY_SCORE',
     pattern:
-      /^(?:how prepared am i|how ready am i|what(?:s| is) my (?:preparedness|readiness)(?: score| level)?|what(?:s| is) my score|am i prepared)$/,
+      /^(?:how prepared am i|how ready am i|how prepared are we|what(?:'?s| is) my (?:preparedness|readiness)(?: score| level)?|what(?:'?s| is) my score|preparedness score|am i prepared|am i ready)$/,
     build: (): Intent => ({ kind: 'QUERY_SCORE' }),
+  },
+
+  {
+    /*
+     * Before QUERY_QUANTITY, which would read "how many items do i have" as a
+     * question about a product called "items" and answer, with confidence,
+     * that there is none of it.
+     *
+     * The `$` after a short list of tails is what keeps the two apart: "how
+     * many items OF RICE do i have" cannot reach the end of this pattern, so
+     * it falls through to the quantity rule that can answer it.
+     */
+    name: 'QUERY_TOTAL',
+    pattern:
+      /^(?:how many (?:items|things|products)(?:\s+(?:do (?:i|we) have|are there|do (?:i|we) own|have i got))?(?:\s+(?:in total|altogether|in my inventory|in stock))?|what(?:'?s| is) my total(?: item count)?|total items|how big is my (?:inventory|stock))$/,
+    build: (): Intent => ({ kind: 'QUERY_TOTAL' }),
+  },
+
+  {
+    /*
+     * A read that can never become a write: nothing below produces a contact
+     * and no branch of `commit` can store one.
+     *
+     * The phrase keeps its inner words - see `cleanContactPhrase`. Only the
+     * article in front and the possessive on the end come off, because
+     * `contacts.search` asks whether a stored field CONTAINS what was said.
+     */
+    name: 'QUERY_CONTACT',
+    pattern:
+      /^(?:what(?:'?s| is) (?:the )?(?:phone |cell |mobile )?(?:number|phone|contact)\s+(?:of|for)\s+(.+)|what(?:'?s| is) (.+?) (?:phone |cell |mobile )?(?:number|phone|contact)|(?:the )?(?:phone |cell )?(?:number|contact) for\s+(.+)|how do i (?:call|contact|reach)\s+(.+))$/,
+    build: (match): Intent | null => {
+      const query = cleanContactPhrase(match[1] ?? match[2] ?? match[3] ?? match[4] ?? '');
+      return query === '' ? null : { kind: 'QUERY_CONTACT', query };
+    },
   },
 
   {
@@ -328,7 +473,7 @@ const rules: readonly Rule[] = [
      */
     name: 'QUERY_EXPIRY_OF',
     pattern:
-      /^(?:when (?:does|do|will|is|are)\s+(.+?)\s+(?:expires|expiring|expire|go bad|go off)|what(?:s| is) the (?:expiry|expiration|use by) date (?:of|for)\s+(.+))$/,
+      /^(?:when (?:does|do|will|is|are|did)\s+(.+?)\s+(?:expires|expiring|expire|expired|go bad|go off|run out)|what(?:'?s| is) the (?:expiry|expiration|use by) date (?:of|for)\s+(.+))$/,
     build: (match): Intent | null => {
       const item = cleanItemPhrase(match[1] ?? match[2] ?? '');
       return item === '' ? null : { kind: 'QUERY_EXPIRY_OF', item };
@@ -336,33 +481,82 @@ const rules: readonly Rule[] = [
   },
 
   {
+    /*
+     * After QUERY_EXPIRY_OF and before SET_EXPIRY, which is the only place it
+     * can go.
+     *
+     * "when did i buy rice" opens like "when does the rice expire", so the
+     * expiry question is tried first and declines everything that is not about
+     * a date. And it has to come before SET_EXPIRY, whose loose leading
+     * capture would read a history question with a date in it as a write.
+     */
+    name: 'QUERY_HISTORY',
+    pattern:
+      /^(?:when did (?:i|we) (?:last )?(?:buy|bought|use|used|get|got|open|opened|restock|restocked)\s+(.+)|when was the last time (?:i|we) (?:bought|used|got|opened)\s+(.+)|(?:the )?history (?:of|for)\s+(.+)|(?:the )?last (?:purchase of|time i bought)\s+(.+))$/,
+    build: (match): Intent | null => {
+      const item = cleanItemPhrase(match[1] ?? match[2] ?? match[3] ?? match[4] ?? '');
+      return item === '' ? null : { kind: 'QUERY_HISTORY', item };
+    },
+  },
+
+  {
     // After QUERY_EXPIRY_OF, so "when does the milk expire" is not read as a
     // write. The spoken date is captured whole, preposition and all, because
     // "in march" and "in 10 days" only parse WITH it - see `parseDatePhrase`.
+    //
+    // The first alternative is the one QUERY_EXPIRY_OF deliberately does not
+    // claim: that rule reads "WHAT IS the expiry date of the milk" and stops
+    // there, so "the expiry date of the milk is october 10" arrives here as
+    // the statement it is.
     name: 'SET_EXPIRY',
     pattern:
-      /^(?:the\s+|an?\s+)?(.+?)\s+(?:expires|expire|goes bad|goes off|is good until)\s+(.+)$/,
+      /^(?:(?:the )?(?:expiry|expiration|use by) date (?:of|for)\s+(.+?)\s+is\s+(.+)|(?:the\s+|an?\s+)?(.+?)\s+(?:expires|expire|will expire|goes bad|goes off|is good until)\s+(.+))$/,
     build: (match, tools, context): Intent | null => {
-      const item = cleanItemPhrase(match[1] ?? '');
-      const date = parseDatePhrase(tools, context, match[2] ?? '');
+      const item = cleanItemPhrase(match[1] ?? match[3] ?? '');
+      const date = parseDatePhrase(tools, context, match[2] ?? match[4] ?? '');
       if (item === '' || date === null) return null;
       return { kind: 'SET_EXPIRY', item, expiresOn: date.date, dateAssumed: date.assumed };
     },
   },
 
   {
+    /*
+     * Before QUERY_WHERE_LOCATION, which would otherwise read "what's in the
+     * food category" as a place called "food category" and report that no such
+     * shelf exists.
+     *
+     * This rule is the half of the question that says which it means. The
+     * ambiguous half - "what's in food" - is left to the location rule below,
+     * which falls back to the category when no place fits. The comment on
+     * QUERY_WHERE in `services/voice/execute.ts` says why the place wins that
+     * race.
+     */
+    name: 'QUERY_CATEGORY',
+    pattern:
+      /^(?:(?:what|what'?s|which items?|which things)\s+(?:is\s+|are\s+|do i have\s+|have i got\s+)?in (?:the\s+)?(.+?)\s+category|(?:show|list)\s+(?:me\s+)?(?:the\s+)?(.+?)\s+category|category\s+(.+))$/,
+    build: (match): Intent | null => {
+      const category = cleanContactPhrase(match[1] ?? match[2] ?? match[3] ?? '');
+      return category === '' ? null : { kind: 'QUERY_CATEGORY', category };
+    },
+  },
+
+  {
     name: 'QUERY_WHERE_LOCATION',
     pattern:
-      /^(?:what(?:s| is| are)?|what do i have|what have i got)\s+(?:in|inside|on|at)\s+(?:the\s+|an?\s+|my\s+)?(.+)$/,
+      /^(?:(?:show|list)\s+me\s+)?(?:what(?:'?s| is| are)?|what do i (?:have|keep|store)|what have i got|what is stored|what(?:'?s| is) stored)\s+(?:in|inside|on|at)\s+(?:the\s+|an?\s+|my\s+)?(.+)$/,
     build: (match): Intent | null => {
-      const location = (match[1] ?? '').trim();
+      // A bare article is not a place. "whats in the" is a sentence the
+      // recognizer cut short, and asking the database for a shelf called "the"
+      // would answer a question nobody finished asking.
+      const location = (match[1] ?? '').replace(/^(?:the|a|an|my|our)$/, '').trim();
       return location === '' ? null : { kind: 'QUERY_WHERE', item: null, location };
     },
   },
 
   {
     name: 'QUERY_WHERE_ITEM',
-    pattern: /^(?:where (?:is|are|do i keep|did i put|can i find))\s+(.+)$/,
+    pattern:
+      /^(?:where (?:is|are|do i keep|do we keep|did i put|did i leave|can i find|do i store)|where'?s|where'?re)\s+(.+)$/,
     build: (match): Intent | null => {
       const item = cleanItemPhrase(match[1] ?? '');
       return item === '' ? null : { kind: 'QUERY_WHERE', item, location: null };
@@ -370,12 +564,93 @@ const rules: readonly Rule[] = [
   },
 
   {
-    // Before ADJUST and before QUERY_QUANTITY, both of which match "have".
+    /*
+     * SET_MINIMUM, SET_TARGET and SET_QUANTITY are three ways of saying "X is
+     * N", and they are tried from the most marked to the least.
+     *
+     * This one goes first because it is the only one carrying "minimum" or "at
+     * least", and because SET_TARGET's opener swallows it: "i want to keep at
+     * least 5 kg of rice" is a minimum, and a target rule reading it first
+     * would set the wrong field. (It would in fact decline - "at" is not a
+     * number - but relying on that would be relying on an accident.)
+     *
+     * A number is required and never assumed. There is no sensible default for
+     * a threshold nobody stated: not one, not the current quantity, not zero.
+     */
+    name: 'SET_MINIMUM',
+    pattern:
+      /^(?:(?:the\s+)?(?:minimum|min|minimum level|reorder level|low stock level)\s+(?:for|of)\s+(.+?)\s+is\s+(?:at least\s+)?(.+)|(?:(?:i\s+)?(?:want|need|like|have)\s+to\s+)?(?:keep|have|hold|stock)\s+at least\s+(.+))$/,
+    build: (match, tools): Intent | null => {
+      const named = match[1];
+      const spoken = match[2] ?? match[3] ?? '';
+      const { amount, rest } = splitLeadingAmount(tools.numbers, spoken);
+      // Zero is a legitimate minimum: it says "never warn me about this one".
+      if (amount === null || amount < 0) return null;
+
+      const item = cleanItemPhrase(named ?? rest);
+      if (item === '') return null;
+      return { kind: 'SET_MINIMUM', item, amount, unit: findUnit(spoken) };
+    },
+  },
+
+  {
+    /*
+     * After SET_MINIMUM for the reason given there, and before SET_QUANTITY
+     * because "i want 20 cans" and "now i have 20 cans" are different claims:
+     * one is the level being aimed at, the other is what is on the shelf right
+     * now. Neither opener can match the other's sentence, so the order is
+     * documentation rather than load-bearing - but it keeps the three "X is N"
+     * rules in one readable run.
+     */
+    name: 'SET_TARGET',
+    pattern:
+      /^(?:(?:the\s+)?(?:target|goal|ideal|ideal level|par level)\s+(?:for|of)\s+(.+?)\s+is\s+(.+)|(?:i\s+)?(?:want|would like|aim)(?:\s+to\s+(?:have|keep|hold|stock|get to))?\s+(.+))$/,
+    build: (match, tools): Intent | null => {
+      const named = match[1];
+      const spoken = match[2] ?? match[3] ?? '';
+      const { amount, rest } = splitLeadingAmount(tools.numbers, spoken);
+      if (amount === null || amount < 0) return null;
+
+      const item = cleanItemPhrase(named ?? rest);
+      if (item === '') return null;
+      return { kind: 'SET_TARGET', item, amount, unit: findUnit(spoken) };
+    },
+  },
+
+  {
+    /*
+     * Before ADJUST and before QUERY_QUANTITY, both of which match "have".
+     *
+     * Three shapes, and two of them are here because they are what people
+     * actually say when a number changes to a number:
+     *
+     *   "now i have 12 cans" states the new count outright.
+     *   "i ran out of rice" states it as zero. Read as a removal it would take
+     *   one bag off a shelf that is already empty, which is both wrong and
+     *   useless; the speaker is saying the rice is gone.
+     *   "there are only 2 eggs left" states what is left rather than what went.
+     *
+     * The emptying shape declines when a number was spoken - "i finished 2
+     * eggs" is two eggs eaten, not an empty shelf - and the last shape
+     * declines when one was not, which is what lets a question about what is
+     * left fall through to the rule that answers questions.
+     */
     name: 'SET_QUANTITY',
     pattern:
-      /^(?:(?:now|actually|correction)\s+(?:i\s+|we\s+|there\s+)?(?:have|has|is|are|got)|i (?:now|actually) have)\s+(.+)$/,
+      /^(?:(?:(?:now|actually|correction)\s+(?:i\s+|we\s+|there\s+)?(?:have|has|is|are|got)|i (?:now|actually) have)\s+(.+)|(?:i\s+|we\s+)?(?:'ve\s+)?(?:ran out of|run out of|used up|used all|ate all|drank all|finished|out of)\s+(?:the\s+|my\s+|all\s+the\s+)?(.+)|(?:there(?:'?s| is| are)\s+)?only\s+(.+?)\s+left|there(?:'?s| is| are)\s+(.+?)\s+left)$/,
     build: (match, tools): Intent | null => {
-      const { amount, rest } = splitLeadingAmount(tools.numbers, match[1] ?? '');
+      const emptied = match[2];
+      if (emptied !== undefined) {
+        // A number here means the sentence is about what was used, not about
+        // an empty shelf: "i finished 2 eggs" is an adjustment, and declining
+        // hands it to the rule that performs one.
+        if (splitLeadingAmount(tools.numbers, emptied).amount !== null) return null;
+        const item = cleanItemPhrase(emptied);
+        return item === '' ? null : { kind: 'SET_QUANTITY', item, amount: 0, unit: null };
+      }
+
+      const spoken = match[1] ?? match[3] ?? match[4] ?? '';
+      const { amount, rest } = splitLeadingAmount(tools.numbers, spoken);
       const item = cleanItemPhrase(rest);
       // Zero is a legitimate correction here - "now i have zero eggs" is the
       // whole point of a rule that sets rather than adjusts.
@@ -397,14 +672,15 @@ const rules: readonly Rule[] = [
 
       // English says "add 2 more eggs" rather than "add more 2 eggs", so most
       // of this is done by "more" being a filler; the strip below covers the
-      // other order. Either way the word carries no arithmetic of its own - the
-      // verb already said which way the stock moves, so "take more 2" removes
-      // two more rather than adding them.
+      // other order and the particles that belong to a phrasal verb - "threw
+      // OUT 2 eggs", "topped UP 3 cans". Either way the word carries no
+      // arithmetic of its own: the verb already said which way the stock moves,
+      // so "take more 2" removes two more rather than adding them.
       //
       // "less" and "fewer" are deliberately NOT stripped. "add fewer 2 eggs"
       // has no settled meaning, and the verb says add, so every reading of it
       // is a guess at a write. It stays UNKNOWN.
-      const spoken = (match[2] ?? '').replace(/^more\s+/, '');
+      const spoken = (match[2] ?? '').replace(/^(?:more|out|away|up)\s+/, '');
 
       const leading = splitLeadingAmount(tools.numbers, spoken);
       // A missing number means one - see `canAssumeOne`, which says when it may
@@ -440,12 +716,27 @@ const rules: readonly Rule[] = [
     // verb. Whatever still leaks through is taken off the item by
     // `stripQueryWords`, which is what keeps the search from looking for a
     // product called "rice do i have".
+    //
+    // The openers now include the clipped forms - "any rice left", "got any
+    // rice" - and a courtesy opening, because "tell me how much rice is left"
+    // is the same question with the manners left in.
     name: 'QUERY_QUANTITY',
     pattern:
-      /^(?:how much|how many|do i have|do we have|is there|are there)\s+(?:(?:do|did) i (?:have|got)\s+)?(?:of\s+)?(.+?)(?:\s+(?:do i have|do we have|do i still have|is left|are left|is there|are there|is remaining|are remaining|remains|remain|left|have i got))?$/,
-    build: (match): Intent | null => {
+      /^(?:(?:tell|show)\s+me\s+)?(?:how much|how many|do i (?:still )?have|do we have|have i got|got any|got|is there|are there|any|what(?:'?s| is) left of|how(?:'?s| is) my)\s+(?:(?:do|did) i (?:have|got)\s+)?(?:of\s+|any\s+)?(.+?)(?:\s+(?:do i have|do we have|do i still have|is left|are left|is there|are there|is remaining|are remaining|remains|remain|left|have i got))?$/,
+    build: (match, tools): Intent | null => {
       const item = stripQueryWords(cleanItemPhrase(match[1] ?? ''));
-      return item === '' ? null : { kind: 'QUERY_QUANTITY', item };
+      if (item === '') return null;
+      /*
+       * An item phrase that opens with a number is not an item.
+       *
+       * "only 2 left" is a sentence with the noun clipped off, and "got 3 cans
+       * of beans" is a statement of stock rather than a question about it. The
+       * openers above are loose enough to catch both. Answering would send "2"
+       * or "3 beans" to the search, find nothing, and tell the user with
+       * confidence that they have none of it.
+       */
+      if (splitLeadingAmount(tools.numbers, item).amount !== null) return null;
+      return { kind: 'QUERY_QUANTITY', item };
     },
   },
 ];
@@ -464,5 +755,8 @@ export const enGrammar: Grammar = {
     'add five cans of beans',
     'i used 3 eggs',
     'where is the rice?',
+    'how many items do i have?',
+    'the minimum for rice is 5 kg',
+    'move the rice to the cellar',
   ],
 };

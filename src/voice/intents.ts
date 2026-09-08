@@ -93,6 +93,70 @@ export interface SetExpiry {
   readonly dateAssumed: boolean;
 }
 
+export interface QueryCategory {
+  readonly kind: 'QUERY_CATEGORY';
+  /** The category as spoken and folded: "alimentos", not "food". */
+  readonly category: string;
+}
+
+/**
+ * A phone number, a relationship, a name - whatever the speaker had.
+ *
+ * One loose phrase rather than a set of slots, because `contacts.search` looks
+ * in every field already: "o telefone do medico" and "o numero da Ana" are the
+ * same question with a different handle on the same row.
+ */
+export interface QueryContact {
+  readonly kind: 'QUERY_CONTACT';
+  readonly query: string;
+}
+
+/** "quando comprei arroz" - the last few movements of one item. */
+export interface QueryHistory {
+  readonly kind: 'QUERY_HISTORY';
+  readonly item: string;
+}
+
+/** "quantos itens eu tenho" - the whole inventory, counted. */
+export interface QueryTotal {
+  readonly kind: 'QUERY_TOTAL';
+}
+
+/**
+ * "move o arroz para o porao".
+ *
+ * `location` is required and never null. A move with no destination is not a
+ * move, and the rule that builds this declines rather than producing one - an
+ * item sent nowhere would be an item quietly unplaced.
+ */
+export interface MoveItem {
+  readonly kind: 'MOVE_ITEM';
+  readonly item: string;
+  readonly location: string;
+}
+
+/**
+ * "o minimo de arroz e 5 quilos" - the level the replenishment list watches.
+ *
+ * The unit is carried but not stored. A threshold is a number in the row's own
+ * unit, so there is nowhere else for it to go; it is here because the phrase
+ * said it and the layers above may want to show it back.
+ */
+export interface SetMinimum {
+  readonly kind: 'SET_MINIMUM';
+  readonly item: string;
+  readonly amount: number;
+  readonly unit: string | null;
+}
+
+/** "quero ter 20 latas de feijao" - the level the user is stocking towards. */
+export interface SetTarget {
+  readonly kind: 'SET_TARGET';
+  readonly item: string;
+  readonly amount: number;
+  readonly unit: string | null;
+}
+
 export interface Help {
   readonly kind: 'HELP';
 }
@@ -108,12 +172,35 @@ export interface Unknown {
 
 export type Intent =
   | QueryQuantity | QueryExpiring | QueryMissing | QueryWhere
-  | QueryExpiryOf | QueryScore | AdjustQuantity | SetQuantity
-  | CreateItem | SetExpiry | Help | Unknown;
+  | QueryExpiryOf | QueryScore | QueryCategory | QueryContact
+  | QueryHistory | QueryTotal | AdjustQuantity | SetQuantity
+  | CreateItem | SetExpiry | MoveItem | SetMinimum | SetTarget
+  | Help | Unknown;
 
 export type IntentKind = Intent['kind'];
 
 /** Intents that would change data. Used to route to the confirmation card. */
 export const WRITING_INTENTS: readonly IntentKind[] = [
+  'ADJUST_QUANTITY', 'SET_QUANTITY', 'CREATE_ITEM', 'SET_EXPIRY',
+  'MOVE_ITEM', 'SET_MINIMUM', 'SET_TARGET',
+];
+
+/**
+ * Writing intents whose missing item is worth offering to create.
+ *
+ * A subset of `WRITING_INTENTS` rather than the same list, because "I did not
+ * find it" means different things to different writes. "comprei arroz" against
+ * an empty pantry is the first bag of rice, and creating it is the obvious next
+ * step. The three below are not:
+ *
+ *   MOVE_ITEM can fail on the DESTINATION as easily as on the item, and the
+ *   phrase that reaches the interface names whichever failed. A Create button
+ *   under "I did not find o porao" would offer to invent an item called the
+ *   cellar.
+ *   SET_MINIMUM and SET_TARGET set a level on stock that is supposed to exist.
+ *   Creating a row to hold a threshold would put an item nobody mentioned into
+ *   the inventory, with a quantity nobody said.
+ */
+export const CREATABLE_INTENTS: readonly IntentKind[] = [
   'ADJUST_QUANTITY', 'SET_QUANTITY', 'CREATE_ITEM', 'SET_EXPIRY',
 ];

@@ -29,10 +29,20 @@ import type { DateFormat, Language } from '../../domain/settings';
 import type { TranslateFn } from '../../i18n/translate';
 import styles from './Voice.module.css';
 
-/** The three writes, reduced to the four things the card shows. */
+/** Every write, reduced to the five things the card shows. */
 interface Described {
   readonly name: string;
   readonly location: string | null;
+  /**
+   * Which field is changing, where the card would otherwise not say.
+   *
+   * A quantity needs no label: "12 kg becomes 17 kg" under an item's name can
+   * only be the quantity. A minimum and a target read identically without one -
+   * two numbers, the same unit, the same arrow - and they are different
+   * settings with different consequences. Null wherever the change speaks for
+   * itself.
+   */
+  readonly field: string | null;
   /** null when there is no old value, which is only true of a creation. */
   readonly before: string | null;
   readonly after: string;
@@ -60,7 +70,49 @@ function describe(
       return {
         name: write.item.name,
         location: write.item.locationName,
+        field: null,
         before: `${quantity(language, write.item.quantity)} ${write.item.unit}`,
+        after: `${quantity(language, write.after)} ${write.item.unit}`,
+      };
+
+    /*
+     * The location is the change here, so it is not repeated as context above
+     * it. Every other card shows where the item is; this one shows where it is
+     * going, and a "Location: Pantry" line over "Pantry becomes Cellar" reads
+     * as though two different places were involved.
+     */
+    case 'MOVE':
+      return {
+        name: write.item.name,
+        location: null,
+        field: t('common.location'),
+        before: write.fromLocationName ?? t('common.none'),
+        after: write.toLocationName,
+      };
+
+    case 'MINIMUM':
+      return {
+        name: write.item.name,
+        location: write.item.locationName,
+        field: t('voice.fieldMinimum'),
+        // Never set is not the same as set to zero: one leaves the global
+        // threshold in charge and the other silences the item.
+        before:
+          write.before === null
+            ? t('common.none')
+            : `${quantity(language, write.before)} ${write.item.unit}`,
+        after: `${quantity(language, write.after)} ${write.item.unit}`,
+      };
+
+    case 'TARGET':
+      return {
+        name: write.item.name,
+        location: write.item.locationName,
+        field: t('voice.fieldTarget'),
+        before:
+          write.before === null
+            ? t('common.none')
+            : `${quantity(language, write.before)} ${write.item.unit}`,
         after: `${quantity(language, write.after)} ${write.item.unit}`,
       };
 
@@ -69,6 +121,7 @@ function describe(
       return {
         name: write.item.name,
         location: write.item.locationName,
+        field: null,
         // An item with no date has no old value to strike through, but "None"
         // is the true one and reads better than an empty space.
         before: before === '' ? t('common.none') : before,
@@ -80,6 +133,7 @@ function describe(
       return {
         name: write.name,
         location: write.locationName,
+        field: null,
         before: null,
         after: `${quantity(language, write.quantity)} ${write.unit}`,
       };
@@ -110,6 +164,7 @@ function assumed(
         ? write.quantity
         : 0;
   const date = write.kind === 'EXPIRY' ? formatCalendarDate(write.after, dateFormat) : '';
+  const place = write.kind === 'MOVE' ? write.toLocationName : '';
 
   return write.assumptions.map((reason) => {
     switch (reason) {
@@ -123,6 +178,11 @@ function assumed(
         return t('voice.assumedDate', { date });
       case 'newItem':
         return t('voice.assumedNewItem', { name });
+      // Only a MOVE produces this, and it names the shelf that was matched
+      // rather than the words that were said - the reader has to check that
+      // the two are the same place.
+      case 'location':
+        return t('voice.assumedLocation', { location: place });
       // Names who chose, rather than borrowing `item`'s "you did not say its
       // whole name" - which is a sentence about something the reader of an
       // assistant proposal never did.
@@ -154,13 +214,15 @@ export function ConfirmCard({
     confirmRef.current?.focus();
   }, []);
 
-  const { name, location, before, after } = describe(write, t, settings.language, settings.dateFormat);
+  const { name, location, field, before, after } =
+    describe(write, t, settings.language, settings.dateFormat);
   const guesses = assumed(write, t, settings.language, settings.dateFormat);
 
   // The button's name has to survive being read on its own, out of the visual
   // context that makes "Confirm" mean anything.
-  const detail =
-    before === null ? `${name}, ${after}` : `${name}, ${before} ${t('voice.becomes')} ${after}`;
+  const change =
+    before === null ? after : `${before} ${t('voice.becomes')} ${after}`;
+  const detail = field === null ? `${name}, ${change}` : `${name}, ${field}: ${change}`;
 
   return (
     <section className={styles.card} role="group" aria-labelledby={headingId}>
@@ -173,6 +235,8 @@ export function ConfirmCard({
           {t('common.location')}: {location}
         </p>
       )}
+
+      {field !== null && <p className={styles.cardMeta}>{field}</p>}
 
       <p className={styles.change}>
         {before !== null && (

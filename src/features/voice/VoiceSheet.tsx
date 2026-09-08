@@ -26,7 +26,7 @@ import { Alert, Button } from '../../components/ui/primitives';
 import { TextField } from '../../components/ui/Field';
 import { createSpeaker } from '../../services/speech/speak';
 import { androidIsSilent } from '../../services/speech/ringer';
-import { WRITING_INTENTS } from '../../voice/intents';
+import { CREATABLE_INTENTS } from '../../voice/intents';
 import { useVoice, type Exchange, type Voice } from './useVoice';
 import { ConfirmCard } from './ConfirmCard';
 import { ChoiceList } from './ChoiceList';
@@ -303,11 +303,13 @@ function VoiceExchange({
         <>
           <p className={styles.answer}>{t('voice.notFound', { phrase: outcome.phrase })}</p>
           {/*
-            Offered only for something that was going to be written anyway.
+            Offered only for a write whose missing item is worth creating.
             "Where is the rice?" finding no rice is an answer, not an invitation
-            to invent one.
+            to invent one - and neither is a move whose CELLAR was not found, or
+            a minimum set on stock that does not exist. `CREATABLE_INTENTS` says
+            which writes qualify and why.
           */}
-          {WRITING_INTENTS.includes(outcome.intent.kind) && (
+          {CREATABLE_INTENTS.includes(outcome.intent.kind) && (
             <div className={styles.actions}>
               <Button
                 variant="primary"

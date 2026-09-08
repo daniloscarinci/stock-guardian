@@ -20,6 +20,7 @@ import { createItemsRepository } from '../repositories/items.repository';
 import { createCategoriesRepository } from '../repositories/categories.repository';
 import { createLocationsRepository } from '../repositories/locations.repository';
 import { createCatalogRepository } from '../repositories/catalog.repository';
+import { createContactsRepository } from '../repositories/contacts.repository';
 import { createSettingsRepository } from '../repositories/settings.repository';
 import type { Settings } from '../domain/settings';
 
@@ -28,6 +29,7 @@ export interface Repositories {
   readonly categories: ReturnType<typeof createCategoriesRepository>;
   readonly locations: ReturnType<typeof createLocationsRepository>;
   readonly catalog: ReturnType<typeof createCatalogRepository>;
+  readonly contacts: ReturnType<typeof createContactsRepository>;
   readonly settings: ReturnType<typeof createSettingsRepository>;
 }
 
@@ -67,6 +69,7 @@ function buildRepositories(db: SqlDriver): Repositories {
     categories: createCategoriesRepository(db),
     locations: createLocationsRepository(db),
     catalog: createCatalogRepository(db),
+    contacts: createContactsRepository(db),
     settings: createSettingsRepository(db),
   };
 }

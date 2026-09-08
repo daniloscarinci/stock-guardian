@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { translate, type TranslateFn } from '../../i18n/translate';
 import type { DateFormat, Language } from '../../domain/settings';
 import type { ReplenishmentLine } from '../../domain/replenishment';
-import type { InventoryItemView } from '../../types/domain';
+import type { Contact, InventoryItemView } from '../../types/domain';
+import type { DashboardStats } from '../../repositories/items.repository';
 import type { Answer } from './execute';
 import { renderAnswer, type AnswerOptions } from './answer';
 
@@ -74,6 +75,39 @@ function line(name: string): ReplenishmentLine {
 
 const named = (count: number): InventoryItemView[] =>
   Array.from({ length: count }, (_, index) => view({ name: `Item ${index + 1}` }));
+
+function contact(over: Partial<Contact> & { name: string }): Contact {
+  return {
+    id: over.name,
+    relationship: null,
+    phone: null,
+    email: null,
+    location: null,
+    notes: null,
+    priority: 3,
+    createdAt: '2026-09-07T00:00:00.000Z',
+    updatedAt: '2026-09-07T00:00:00.000Z',
+    ...over,
+  };
+}
+
+function stats(over: Partial<DashboardStats> = {}): DashboardStats {
+  return {
+    totalItems: 0,
+    totalQuantity: 0,
+    categoriesUsed: 0,
+    locationsUsed: 0,
+    expired: 0,
+    expiringToday: 0,
+    expiringSoon: 0,
+    noExpiration: 0,
+    critical: 0,
+    low: 0,
+    archived: 0,
+    recentlyModified: 0,
+    ...over,
+  };
+}
 
 describe('renderAnswer', () => {
   it('states the name, the number and the unit', () => {
@@ -288,6 +322,112 @@ describe('renderAnswer', () => {
    * cheaper than remembering to check each one by hand. The sweep also refuses a
    * raw `YYYY-MM-DD`, which is what let one through last time.
    */
+  it('names a category and what it holds', () => {
+    expect(renderAnswer(pt, {
+      kind: 'CATEGORY', categoryName: 'Alimentos', items: named(2), total: 2,
+    }, ptOptions)).toBe('Alimentos tem 2 itens: Item 1, Item 2.');
+  });
+
+  it('says a category is empty rather than reading an empty list', () => {
+    expect(renderAnswer(pt, {
+      kind: 'CATEGORY', categoryName: 'Alimentos', items: [], total: 0,
+    }, ptOptions)).toBe('Não há nada em Alimentos.');
+  });
+
+  /**
+   * A category can hold more than the page that was read.
+   *
+   * The rows stop at the list limit and the total does not, so the remainder
+   * is counted from the TOTAL - "and 77 more", not the "and 47 more" a count
+   * of the rows would produce.
+   */
+  it('counts the remainder from the total rather than from the page', () => {
+    expect(renderAnswer(en, {
+      kind: 'CATEGORY', categoryName: 'Food', items: named(50), total: 80,
+    }, enOptions)).toBe('Food holds 80 items: Item 1, Item 2, Item 3 and 77 more.');
+  });
+
+  it('gives a contact its name, its number and its relationship', () => {
+    expect(renderAnswer(pt, {
+      kind: 'CONTACT',
+      query: 'medico',
+      contacts: [contact({ name: 'Dra. Silva', phone: '11 5555-0000', relationship: 'Médico' })],
+    }, ptOptions)).toBe('Dra. Silva, Médico: 11 5555-0000.');
+  });
+
+  it('leaves out a relationship a contact does not have', () => {
+    expect(renderAnswer(pt, {
+      kind: 'CONTACT',
+      query: 'ana',
+      contacts: [contact({ name: 'Ana', phone: '11 5555-0001' })],
+    }, ptOptions)).toBe('Ana: 11 5555-0001.');
+  });
+
+  /** A contact with no number is still an answer, and a truer one than a gap. */
+  it('says so when the contact has no phone number', () => {
+    expect(renderAnswer(pt, {
+      kind: 'CONTACT', query: 'ana', contacts: [contact({ name: 'Ana' })],
+    }, ptOptions)).toBe('Ana está nos seus contatos, sem telefone.');
+  });
+
+  it('reads the first match and counts the others', () => {
+    const sentence = renderAnswer(pt, {
+      kind: 'CONTACT',
+      query: 'silva',
+      contacts: [
+        contact({ name: 'Dra. Silva', phone: '11 5555-0000' }),
+        contact({ name: 'João Silva', phone: '11 5555-0002' }),
+        contact({ name: 'Ana Silva', phone: '11 5555-0003' }),
+      ],
+    }, ptOptions);
+    expect(sentence).toContain('Dra. Silva');
+    expect(sentence).toContain('2');
+    expect(sentence).not.toContain('João Silva');
+  });
+
+  it('says no contact matched, naming what was asked for', () => {
+    expect(renderAnswer(pt, {
+      kind: 'CONTACT', query: 'dentista', contacts: [],
+    }, ptOptions)).toBe('Não encontrei nenhum contato para "dentista".');
+  });
+
+  it('reads a history as a type, a number and a day', () => {
+    const sentence = renderAnswer(pt, {
+      kind: 'HISTORY',
+      item: view({ name: 'Arroz', unit: 'kg' }),
+      entries: [
+        { type: 'purchase', quantity: 5, on: '2026-09-05' },
+        { type: 'consume', quantity: 2, on: '2026-09-01' },
+      ],
+    }, ptOptions);
+    expect(sentence).toBe(
+      'Últimas 2 movimentações de Arroz: Comprado 5 kg em 05/09/2026; Usado 2 kg em 01/09/2026.',
+    );
+  });
+
+  it('says an item has never moved rather than reading an empty list', () => {
+    expect(renderAnswer(pt, {
+      kind: 'HISTORY', item: view({ name: 'Arroz' }), entries: [],
+    }, ptOptions)).toBe('Arroz não tem movimentações registradas.');
+  });
+
+  it('counts the whole inventory, with its categories and its places', () => {
+    expect(renderAnswer(pt, {
+      kind: 'TOTAL', stats: stats({ totalItems: 12, categoriesUsed: 4, locationsUsed: 3 }),
+    }, ptOptions)).toBe('Você tem 12 itens, em 4 categorias e 3 locais.');
+  });
+
+  it('gives every number in the count its own plural', () => {
+    expect(renderAnswer(en, {
+      kind: 'TOTAL', stats: stats({ totalItems: 1, categoriesUsed: 1, locationsUsed: 1 }),
+    }, enOptions)).toBe('You have 1 item, across 1 category and 1 location.');
+  });
+
+  it('says an empty inventory is empty rather than counting nothing', () => {
+    expect(renderAnswer(pt, { kind: 'TOTAL', stats: stats() }, ptOptions))
+      .toBe('Seu estoque está vazio.');
+  });
+
   it('leaves no placeholder unfilled, no undefined and no raw date in any language', () => {
     const answers: Answer[] = [
       { kind: 'QUANTITY', item: view({ name: 'Arroz', locationName: 'Despensa' }) },
@@ -309,6 +449,36 @@ describe('renderAnswer', () => {
       { kind: 'EXPIRY_OF', item: view({ name: 'Leite', expirationDate: '2026-09-12' }) },
       { kind: 'EXPIRY_OF', item: view({ name: 'Sal' }) },
       { kind: 'SCORE', score: 42 },
+      { kind: 'CATEGORY', categoryName: 'Alimentos', items: [], total: 0 },
+      { kind: 'CATEGORY', categoryName: 'Alimentos', items: named(1), total: 1 },
+      { kind: 'CATEGORY', categoryName: 'Alimentos', items: named(4), total: 9 },
+      { kind: 'CONTACT', query: 'medico', contacts: [] },
+      { kind: 'CONTACT', query: 'medico', contacts: [contact({ name: 'Ana' })] },
+      {
+        kind: 'CONTACT',
+        query: 'medico',
+        contacts: [
+          contact({ name: 'Ana', phone: '1', relationship: 'Médico' }),
+          contact({ name: 'João', phone: '2' }),
+        ],
+      },
+      { kind: 'HISTORY', item: view({ name: 'Arroz' }), entries: [] },
+      {
+        kind: 'HISTORY',
+        item: view({ name: 'Arroz' }),
+        entries: [{ type: 'transfer', quantity: 1, on: '2026-09-05' }],
+      },
+      {
+        kind: 'HISTORY',
+        item: view({ name: 'Arroz' }),
+        entries: [
+          { type: 'correction', quantity: 1, on: '2026-09-05' },
+          { type: 'remove', quantity: 2, on: '2026-09-04' },
+        ],
+      },
+      { kind: 'TOTAL', stats: stats() },
+      { kind: 'TOTAL', stats: stats({ totalItems: 1, categoriesUsed: 1, locationsUsed: 1 }) },
+      { kind: 'TOTAL', stats: stats({ totalItems: 9, categoriesUsed: 3, locationsUsed: 2 }) },
       { kind: 'HELP', examples: [] },
     ];
 

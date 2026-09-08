@@ -7,19 +7,42 @@
  * that no execution of any intent reaches the driver with an UPDATE or INSERT.
  */
 import type { Intent } from '../../voice/intents';
-import type { InventoryItemView, StockTransactionType } from '../../types/domain';
-import type { ItemContext, ItemsRepository } from '../../repositories/items.repository';
+import type { Contact, InventoryItemView, StockTransactionType } from '../../types/domain';
+import type {
+  DashboardStats,
+  ItemContext,
+  ItemsRepository,
+} from '../../repositories/items.repository';
 import type { LocationsRepository } from '../../repositories/locations.repository';
+import type { CategoriesRepository } from '../../repositories/categories.repository';
+import type { ContactsRepository } from '../../repositories/contacts.repository';
 import type { Language } from '../../domain/settings';
 import type { ReplenishmentLine } from '../../domain/replenishment';
 import { buildReplenishmentList } from '../../domain/replenishment';
 import { evaluatePreparedness } from '../../domain/preparedness';
 import { foldText } from '../../domain/normalize';
+import { toCalendarDate } from '../../domain/dates';
+import type { SqlRow } from '../../database/driver/types';
 import { resolveItem } from './resolve';
 
 export interface VoiceDeps {
   readonly items: ItemsRepository;
   readonly locations: LocationsRepository;
+  /**
+   * Needed to turn a spoken category into the id `items.list` filters on.
+   *
+   * Category names live in a side table, one row per language, so a phrase
+   * cannot be matched against anything the items themselves carry.
+   */
+  readonly categories: CategoriesRepository;
+  /**
+   * The emergency contacts, read and never written.
+   *
+   * A phone number is the one thing in this application somebody might need
+   * while holding the phone in the dark, so it is answerable by voice - but
+   * QUERY_CONTACT has no write path at all, here or in `commit.ts`.
+   */
+  readonly contacts: ContactsRepository;
   readonly context: ItemContext;
   readonly language: Language;
   /** From settings.preparednessCategoryIds. Empty means every category that holds an item. */
@@ -37,12 +60,30 @@ export interface VoiceDeps {
   readonly dismissedItemIds: readonly string[];
 }
 
+/**
+ * One movement of one item, as a sentence needs it.
+ *
+ * `items.history` returns raw rows - snake_case, and typed only as `SqlRow` -
+ * so they are mapped here rather than carried up. `occurredAt` is an instant
+ * in the table and a calendar date in every sentence anyone says about it.
+ */
+export interface HistoryEntry {
+  readonly type: StockTransactionType;
+  readonly quantity: number;
+  /** A calendar date, already cut down from the stored instant. */
+  readonly on: string;
+}
+
 export type Answer =
   | { readonly kind: 'QUANTITY'; readonly item: InventoryItemView }
   | { readonly kind: 'EXPIRING'; readonly items: readonly InventoryItemView[]; readonly withinDays: number; readonly expiredOnly: boolean }
   | { readonly kind: 'MISSING'; readonly lines: readonly ReplenishmentLine[] }
   | { readonly kind: 'WHERE_ITEM'; readonly item: InventoryItemView }
   | { readonly kind: 'WHERE_LOCATION'; readonly locationName: string; readonly items: readonly InventoryItemView[] }
+  | { readonly kind: 'CATEGORY'; readonly categoryName: string; readonly items: readonly InventoryItemView[]; readonly total: number }
+  | { readonly kind: 'CONTACT'; readonly query: string; readonly contacts: readonly Contact[] }
+  | { readonly kind: 'HISTORY'; readonly item: InventoryItemView; readonly entries: readonly HistoryEntry[] }
+  | { readonly kind: 'TOTAL'; readonly stats: DashboardStats }
   | { readonly kind: 'EXPIRY_OF'; readonly item: InventoryItemView }
   | { readonly kind: 'SCORE'; readonly score: number }
   | { readonly kind: 'HELP'; readonly examples: readonly string[] };
@@ -60,6 +101,15 @@ export type AssumptionReason =
   | 'unit'       // the spoken unit differed from the stored one
   | 'date'       // the date was derived rather than stated
   | 'newItem'    // the item does not exist yet
+  /**
+   * The destination matched a place by containing its name, not by being it.
+   *
+   * `findLocation` matches on CONTAINS, so "porao" finds "Porão dos fundos"
+   * and would find the wrong one of two cellars just as readily. A move is the
+   * one write whose whole content is a place, so a place matched loosely is
+   * exactly the part of it worth showing before it happens.
+   */
+  | 'location'
   /**
    * A model chose this row, not the parser and not the user.
    *
@@ -109,6 +159,36 @@ export type PendingWrite =
       readonly item: InventoryItemView;
       readonly before: string | null;
       readonly after: string;
+    })
+  | (Certainty & {
+      readonly kind: 'MOVE';
+      readonly item: InventoryItemView;
+      /** Both halves are recorded, because the undo restores the old shelf. */
+      readonly fromLocationId: string | null;
+      readonly fromLocationName: string | null;
+      readonly toLocationId: string;
+      readonly toLocationName: string;
+    })
+  /*
+   * The two thresholds are separate variants rather than one with a field
+   * naming the column. They are different numbers with different meanings -
+   * a minimum is the line below which the replenishment list speaks up, and a
+   * target is what the user is stocking towards - and a single variant would
+   * make every reader of `commit` and of the card check a discriminator to
+   * find out which. Separate variants let the compiler do it.
+   */
+  | (Certainty & {
+      readonly kind: 'MINIMUM';
+      readonly item: InventoryItemView;
+      /** null where the item never had one, which is not the same as zero. */
+      readonly before: number | null;
+      readonly after: number;
+    })
+  | (Certainty & {
+      readonly kind: 'TARGET';
+      readonly item: InventoryItemView;
+      readonly before: number | null;
+      readonly after: number;
     });
 
 export type Outcome =
@@ -123,6 +203,30 @@ const LIST_LIMIT = 50;
 
 /** The window used when the phrase carried no number and the user set none. */
 const FALLBACK_WINDOW_DAYS = 30;
+
+/**
+ * How many movements a history answer reads back.
+ *
+ * "When did I last buy rice" is a question about the recent past, and a
+ * sentence naming twenty purchases answers a question nobody asked. The row
+ * order is newest first, so these are the newest few.
+ */
+const HISTORY_LIMIT = 5;
+
+/**
+ * One raw transaction row, as the answer needs it.
+ *
+ * `items.history` is typed `SqlRow`, so every field is widened here rather than
+ * trusted. `occurred_at` is a full instant in the table and a calendar date in
+ * every sentence anyone says about it.
+ */
+function historyEntry(row: SqlRow): HistoryEntry {
+  return {
+    type: String(row.type) as StockTransactionType,
+    quantity: Number(row.quantity),
+    on: toCalendarDate(String(row.occurred_at)) ?? String(row.occurred_at).slice(0, 10),
+  };
+}
 
 /**
  * A resolution, flattened into "here is the item" or "here is the outcome".
@@ -179,6 +283,55 @@ async function findLocation(
     all.find((location) => foldText(location.name) === folded) ??
     all.find((location) => foldText(location.name).includes(folded));
   return match === undefined ? undefined : { id: match.id, name: match.name };
+}
+
+/**
+ * A category phrase to a category.
+ *
+ * Deliberately not the item search. A category is a short, fixed list the user
+ * can see on a screen, named per language in a side table, so the match is made
+ * against the name in the user's own language with the same English fallback
+ * `items.list` uses for display - a Portuguese interface whose category was
+ * only ever named in English still answers.
+ *
+ * Whole name first, then prefix, then contains, which is the order `resolve.ts`
+ * scores item names in. "alimento" finds Alimentos; "comida" finds nothing, and
+ * that is right - it is not the name of anything here, and guessing at the
+ * nearest category would list somebody the wrong shelf of their own pantry.
+ */
+async function findCategory(
+  deps: VoiceDeps,
+  phrase: string,
+): Promise<{ readonly id: string; readonly name: string } | undefined> {
+  const folded = foldText(phrase);
+  if (folded === '') return undefined;
+
+  const named = (await deps.categories.list()).map((category) => ({
+    id: category.id,
+    name: category.names[deps.language] ?? category.names.en ?? category.id,
+  }));
+
+  return (
+    named.find((category) => foldText(category.name) === folded) ??
+    named.find((category) => foldText(category.name).startsWith(folded)) ??
+    named.find((category) => foldText(category.name).includes(folded))
+  );
+}
+
+/** Everything filed under one category. */
+async function itemsInCategory(
+  deps: VoiceDeps,
+  categoryId: string,
+): Promise<{ readonly items: readonly InventoryItemView[]; readonly total: number }> {
+  const page = await deps.items.list(deps.context, {
+    filters: { categoryIds: [categoryId], archived: 'active' },
+    sort: { field: 'name', direction: 'asc' },
+    limit: LIST_LIMIT,
+    lang: deps.language,
+  });
+  // `total` is the count before the page limit, so a category holding eighty
+  // items says eighty rather than the fifty that were read.
+  return { items: page.rows, total: page.total };
 }
 
 /** Everything held in one location and everything below it. */
@@ -256,7 +409,38 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
       // place that could not be found rather than crashing.
       const phrase = intent.location ?? '';
       const location = await findLocation(deps, phrase);
-      if (location === undefined) return { kind: 'notFound', phrase, intent };
+
+      /*
+       * "o que tem em X" is two questions in one sentence, and only the
+       * database can tell them apart.
+       *
+       * X can be a place ("na despensa") or a category ("em alimentos"), and
+       * nothing in the words says which - the grammar cannot know what shelves
+       * this household has, and inventing a rule per preposition would only
+       * move the guess earlier. So the PLACE is tried first, and the category
+       * answers when no place fits.
+       *
+       * A place wins because it is the more concrete of the two and the more
+       * exclusive. Locations are things the user made and named themselves,
+       * one per shelf or room; categories are twenty fixed labels that come
+       * with the application and that most people never say out loud. Someone
+       * who named a shelf "Alimentos" means their shelf, and would be baffled
+       * to be read the category instead.
+       *
+       * Where neither matches, the phrase comes back as notFound rather than
+       * as an empty list. "There is nothing in the cellar" and "you have no
+       * cellar" are different sentences, and only one of them is true.
+       */
+      if (location === undefined) {
+        const category = await findCategory(deps, phrase);
+        if (category === undefined) return { kind: 'notFound', phrase, intent };
+
+        const held = await itemsInCategory(deps, category.id);
+        return {
+          kind: 'answer',
+          answer: { kind: 'CATEGORY', categoryName: category.name, ...held },
+        };
+      }
 
       return {
         kind: 'answer',
@@ -267,6 +451,64 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
         },
       };
     }
+
+    /*
+     * The unambiguous half of the same question: "o que tem NA CATEGORIA
+     * alimentos" names what it is asking about, so no fallback is wanted here.
+     * A category phrase that matches nothing is a category that does not
+     * exist, and saying so is more useful than reading out a shelf that
+     * happens to share a word with it.
+     */
+    case 'QUERY_CATEGORY': {
+      const category = await findCategory(deps, intent.category);
+      if (category === undefined) {
+        return { kind: 'notFound', phrase: intent.category, intent };
+      }
+
+      const held = await itemsInCategory(deps, category.id);
+      return {
+        kind: 'answer',
+        answer: { kind: 'CATEGORY', categoryName: category.name, ...held },
+      };
+    }
+
+    /*
+     * A read, and structurally nothing else. There is no `PendingWrite` that
+     * touches a contact and no branch of `commit` that could store one, so the
+     * worst a misheard contact question can do is read out the wrong phone
+     * number.
+     *
+     * An empty result is an answer rather than a notFound, for the same reason
+     * the interface offers to create a missing ITEM and must not offer to
+     * create a missing person: the Create button under notFound belongs to the
+     * inventory, and a question about the address book has no business
+     * reaching it.
+     */
+    case 'QUERY_CONTACT': {
+      const found = await deps.contacts.search(intent.query);
+      return {
+        kind: 'answer',
+        answer: { kind: 'CONTACT', query: intent.query, contacts: found },
+      };
+    }
+
+    case 'QUERY_HISTORY': {
+      const found = await one(deps, intent.item, intent);
+      if (!found.ok) return found.outcome;
+      const rows = await deps.items.history(found.item.id, HISTORY_LIMIT);
+      return {
+        kind: 'answer',
+        answer: { kind: 'HISTORY', item: found.item, entries: rows.map(historyEntry) },
+      };
+    }
+
+    // The same figures the dashboard shows, read from the same call, so the
+    // spoken count and the screen's count cannot drift apart.
+    case 'QUERY_TOTAL':
+      return {
+        kind: 'answer',
+        answer: { kind: 'TOTAL', stats: await deps.items.dashboardStats(deps.context) },
+      };
 
     // The same call the dashboard makes, with the same inputs, so the spoken
     // number is the number on the screen. A flat percentage of healthy items
@@ -325,6 +567,108 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
           before: found.item.expirationDate,
           after: intent.expiresOn,
           ...certaintyOf(assumptions),
+        },
+      };
+    }
+
+    /*
+     * A destination that does not exist stops the move.
+     *
+     * The same refusal CREATE_ITEM makes about a shelf it was told, and for
+     * the same reason - except that here it matters more. A creation that
+     * ignored the unknown shelf would leave a new item unplaced, which is
+     * visible on the item. A MOVE that ignored it would take an item off a
+     * shelf it really is on and put it nowhere, destroying the one fact the
+     * user was trying to change. So the phrase comes back as notFound and
+     * nothing is proposed.
+     */
+    case 'MOVE_ITEM': {
+      const found = await one(deps, intent.item, intent);
+      if (!found.ok) return found.outcome;
+
+      const destination = await findLocation(deps, intent.location);
+      if (destination === undefined) {
+        return { kind: 'notFound', phrase: intent.location, intent };
+      }
+
+      // Already there. Nothing to write, and `items.transfer` would still
+      // record a transfer row saying the item moved from a shelf to itself.
+      if (found.item.locationId === destination.id) {
+        return { kind: 'answer', answer: { kind: 'WHERE_ITEM', item: found.item } };
+      }
+
+      /*
+       * Explicit needs BOTH halves heard exactly. The item is checked by
+       * `resolve`; the place is checked here, because `findLocation` matches on
+       * contains and "porao" happily finds "Porão dos fundos".
+       */
+      const exactPlace = foldText(destination.name) === foldText(intent.location);
+      const assumptions: AssumptionReason[] = [];
+      if (!found.exact) assumptions.push('item');
+      if (!exactPlace) assumptions.push('location');
+
+      return {
+        kind: 'pending',
+        write: {
+          kind: 'MOVE',
+          item: found.item,
+          fromLocationId: found.item.locationId,
+          fromLocationName: found.item.locationName,
+          toLocationId: destination.id,
+          toLocationName: destination.name,
+          ...certaintyOf(assumptions),
+        },
+      };
+    }
+
+    /*
+     * The two thresholds, and the one thing that makes them different from
+     * every other write here: the number is always spoken.
+     *
+     * The rules that build them refuse a phrase without one, because a minimum
+     * nobody stated has no sensible default - not one, not the current
+     * quantity, not zero. So the only thing left to guess at is which item was
+     * meant, and an exact name makes the write explicit.
+     *
+     * The spoken UNIT is deliberately not treated as a guess, where an
+     * adjustment treats it as one. An adjustment adds its number to a stored
+     * count, so counting in the wrong unit silently changes what is stored.
+     * A threshold replaces a field that is only ever read against that same
+     * stored count, in the row's own unit; there is no second reading of it to
+     * ask the user about.
+     */
+    case 'SET_MINIMUM': {
+      const found = await one(deps, intent.item, intent);
+      if (!found.ok) return found.outcome;
+      if (found.item.minimumQuantity === intent.amount) {
+        return { kind: 'answer', answer: { kind: 'QUANTITY', item: found.item } };
+      }
+      return {
+        kind: 'pending',
+        write: {
+          kind: 'MINIMUM',
+          item: found.item,
+          before: found.item.minimumQuantity,
+          after: intent.amount,
+          ...certaintyOf(found.exact ? [] : ['item']),
+        },
+      };
+    }
+
+    case 'SET_TARGET': {
+      const found = await one(deps, intent.item, intent);
+      if (!found.ok) return found.outcome;
+      if (found.item.idealQuantity === intent.amount) {
+        return { kind: 'answer', answer: { kind: 'QUANTITY', item: found.item } };
+      }
+      return {
+        kind: 'pending',
+        write: {
+          kind: 'TARGET',
+          item: found.item,
+          before: found.item.idealQuantity,
+          after: intent.amount,
+          ...certaintyOf(found.exact ? [] : ['item']),
         },
       };
     }

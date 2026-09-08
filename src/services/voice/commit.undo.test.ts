@@ -14,6 +14,8 @@ import { migrate } from '../../database/migrations/runner';
 import { seedDatabase } from '../../database/seed/seed';
 import { createItemsRepository, type ItemContext } from '../../repositories/items.repository';
 import { createLocationsRepository } from '../../repositories/locations.repository';
+import { createCategoriesRepository } from '../../repositories/categories.repository';
+import { createContactsRepository } from '../../repositories/contacts.repository';
 import { execute, type PendingWrite, type VoiceDeps } from './execute';
 import { commit, undo } from './commit';
 
@@ -32,6 +34,8 @@ describe('undo', () => {
     await seedDatabase(db);
     const items = createItemsRepository(db);
     const locations = createLocationsRepository(db);
+    const categories = createCategoriesRepository(db);
+    const contacts = createContactsRepository(db);
     await locations.create({ name: 'Despensa' });
 
     const feijao = await items.create({
@@ -39,7 +43,10 @@ describe('undo', () => {
     });
     feijaoId = feijao.id;
 
-    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [] };
+    deps = {
+      items, locations, categories, contacts, context: CONTEXT, language: 'pt-BR',
+      trackedCategoryIds: [], dismissedItemIds: [],
+    };
   });
 
   afterEach(async () => {
@@ -51,6 +58,74 @@ describe('undo', () => {
     if (result.kind !== 'pending') throw new Error(`expected pending, got ${result.kind}`);
     return result.write;
   }
+
+  /**
+   * The value that was there, not the inverse of the change - the same rule the
+   * quantity follows, for a different reason. An item moved out of NOWHERE has
+   * no previous shelf, and an undo that could only move it back somewhere would
+   * have to invent one.
+   */
+  it('puts an item back on the shelf it came from', async () => {
+    const shelf = await deps.locations.findByName('Despensa');
+    const garage = await deps.locations.create({ name: 'Garagem' });
+    expect(shelf).toBeDefined();
+    if (shelf === undefined) return;
+    await deps.items.update(feijaoId, { locationId: shelf.id });
+
+    const saved = await commit(deps, await write(deps, { kind: 'MOVE_ITEM',
+      item: 'feijao preto', location: 'garagem' }));
+    expect(saved.item.locationId).toBe(garage.id);
+    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreLocation', to: shelf.id } });
+
+    await undo(deps, saved.receipt);
+    expect((await deps.items.getById(feijaoId))?.locationId).toBe(shelf.id);
+  });
+
+  it('puts an item back to having no shelf at all', async () => {
+    const saved = await commit(deps, await write(deps, { kind: 'MOVE_ITEM',
+      item: 'feijao preto', location: 'despensa' }));
+    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreLocation', to: null } });
+
+    await undo(deps, saved.receipt);
+    expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
+  });
+
+  /**
+   * `null` and `0` are different minimums and the undo must not confuse them:
+   * null leaves the global threshold in charge, zero silences the item. An undo
+   * that turned the first into the second would quietly stop a warning the user
+   * never asked to stop.
+   */
+  it('puts a minimum back to never having been set', async () => {
+    const saved = await commit(deps, await write(deps, { kind: 'SET_MINIMUM',
+      item: 'feijao preto', amount: 8, unit: null }));
+    expect(saved.item.minimumQuantity).toBe(8);
+    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreMinimum', to: null } });
+
+    await undo(deps, saved.receipt);
+    expect((await deps.items.getById(feijaoId))?.minimumQuantity).toBeNull();
+  });
+
+  it('puts a minimum back to the number it held', async () => {
+    await deps.items.update(feijaoId, { minimumQuantity: 4 });
+    const saved = await commit(deps, await write(deps, { kind: 'SET_MINIMUM',
+      item: 'feijao preto', amount: 8, unit: null }));
+    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreMinimum', to: 4 } });
+
+    await undo(deps, saved.receipt);
+    expect((await deps.items.getById(feijaoId))?.minimumQuantity).toBe(4);
+  });
+
+  it('puts a target back', async () => {
+    await deps.items.update(feijaoId, { idealQuantity: 15 });
+    const saved = await commit(deps, await write(deps, { kind: 'SET_TARGET',
+      item: 'feijao preto', amount: 30, unit: null }));
+    expect(saved.item.idealQuantity).toBe(30);
+    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreTarget', to: 15 } });
+
+    await undo(deps, saved.receipt);
+    expect((await deps.items.getById(feijaoId))?.idealQuantity).toBe(15);
+  });
 
   it('puts an added quantity back', async () => {
     const saved = await commit(deps, await write(deps, { kind: 'ADJUST_QUANTITY',

@@ -5,6 +5,8 @@ import { migrate } from '../../database/migrations/runner';
 import { seedDatabase } from '../../database/seed/seed';
 import { createItemsRepository, type ItemContext } from '../../repositories/items.repository';
 import { createLocationsRepository } from '../../repositories/locations.repository';
+import { createCategoriesRepository } from '../../repositories/categories.repository';
+import { createContactsRepository } from '../../repositories/contacts.repository';
 import { execute, type PendingWrite, type VoiceDeps } from './execute';
 import { commit } from './commit';
 
@@ -23,6 +25,8 @@ describe('execute: writes stay pending', () => {
     await seedDatabase(db);
     const items = createItemsRepository(db);
     const locations = createLocationsRepository(db);
+    const categories = createCategoriesRepository(db);
+    const contacts = createContactsRepository(db);
     await locations.create({ name: 'Despensa' });
 
     const feijao = await items.create({
@@ -30,7 +34,10 @@ describe('execute: writes stay pending', () => {
     });
     feijaoId = feijao.id;
 
-    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [] };
+    deps = {
+      items, locations, categories, contacts, context: CONTEXT, language: 'pt-BR',
+      trackedCategoryIds: [], dismissedItemIds: [],
+    };
   });
 
   afterEach(async () => {
@@ -55,6 +62,9 @@ describe('execute: writes stay pending', () => {
       expiresOn: '2027-01-01', dateAssumed: false });
     await execute(deps, { kind: 'CREATE_ITEM', name: 'quinoa', amount: 2, unit: 'kg',
       location: null, expiresOn: null });
+    await execute(deps, { kind: 'MOVE_ITEM', item: 'feijao preto', location: 'despensa' });
+    await execute(deps, { kind: 'SET_MINIMUM', item: 'feijao preto', amount: 12, unit: null });
+    await execute(deps, { kind: 'SET_TARGET', item: 'feijao preto', amount: 20, unit: null });
 
     const written = exec.mock.calls.filter(([sql]) =>
       /^\s*(?:insert|update|delete)/i.test(String(sql)),
@@ -136,6 +146,90 @@ describe('execute: writes stay pending', () => {
     expect(write).toMatchObject({ kind: 'ADJUST', delta: -1, after: 3, transaction: 'correction' });
   });
 
+  describe('a move', () => {
+    it('describes it, naming the shelf it comes from and the one it goes to', async () => {
+      const write = await pending(deps, { kind: 'MOVE_ITEM', item: 'feijao preto',
+        location: 'despensa' });
+
+      expect(write).toMatchObject({
+        kind: 'MOVE', fromLocationId: null, fromLocationName: null,
+        toLocationName: 'Despensa',
+      });
+      expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
+    });
+
+    /**
+     * A destination that does not exist stops the move.
+     *
+     * The same refusal a creation makes about a shelf it was told, and here it
+     * matters more: a move that ignored the unknown place would take the item
+     * off the shelf it really is on and put it nowhere, destroying the one
+     * fact the user was trying to change.
+     */
+    it('refuses rather than moving an item to nowhere', async () => {
+      const result = await execute(deps, { kind: 'MOVE_ITEM', item: 'feijao preto',
+        location: 'porao' });
+
+      expect(result).toMatchObject({ kind: 'notFound', phrase: 'porao' });
+      expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
+    });
+
+    /**
+     * Already there. `items.transfer` would still write a transfer row saying
+     * the item moved from a shelf to itself, so this answers with where the
+     * item is instead of proposing a change that is not one.
+     */
+    it('answers rather than proposing a move to the shelf it is already on', async () => {
+      const shelf = await deps.locations.findByName('Despensa');
+      expect(shelf).toBeDefined();
+      if (shelf === undefined) return;
+      await deps.items.update(feijaoId, { locationId: shelf.id });
+
+      const result = await execute(deps, { kind: 'MOVE_ITEM', item: 'feijao preto',
+        location: 'despensa' });
+      expect(result).toMatchObject({ kind: 'answer', answer: { kind: 'WHERE_ITEM' } });
+    });
+  });
+
+  describe('a threshold', () => {
+    it('describes a minimum and the value it replaces', async () => {
+      const write = await pending(deps, { kind: 'SET_MINIMUM', item: 'feijao preto',
+        amount: 12, unit: null });
+
+      expect(write).toMatchObject({ kind: 'MINIMUM', before: 10, after: 12 });
+      expect((await deps.items.getById(feijaoId))?.minimumQuantity).toBe(10);
+    });
+
+    /** Never set is not the same as zero, and the receipt has to keep them apart. */
+    it('records a null minimum as null rather than as zero', async () => {
+      await deps.items.update(feijaoId, { minimumQuantity: null });
+      const write = await pending(deps, { kind: 'SET_MINIMUM', item: 'feijao preto',
+        amount: 3, unit: null });
+
+      expect(write).toMatchObject({ kind: 'MINIMUM', before: null, after: 3 });
+    });
+
+    it('describes a target and the value it replaces', async () => {
+      const write = await pending(deps, { kind: 'SET_TARGET', item: 'feijao preto',
+        amount: 20, unit: null });
+
+      expect(write).toMatchObject({ kind: 'TARGET', before: null, after: 20 });
+      expect((await deps.items.getById(feijaoId))?.idealQuantity).toBeNull();
+    });
+
+    /**
+     * Setting a threshold to the value it already holds changes nothing, and a
+     * card asking to confirm nothing is worse than the true sentence about
+     * what the item holds.
+     */
+    it('answers rather than asking to confirm a minimum that is already set', async () => {
+      const result = await execute(deps, { kind: 'SET_MINIMUM', item: 'feijao preto',
+        amount: 10, unit: null });
+
+      expect(result).toMatchObject({ kind: 'answer', answer: { kind: 'QUANTITY' } });
+    });
+  });
+
   it('describes a new expiry date and the one it replaces', async () => {
     const write = await pending(deps, { kind: 'SET_EXPIRY', item: 'feijao preto',
       expiresOn: '2027-01-01', dateAssumed: false });
@@ -211,9 +305,14 @@ describe('commit', () => {
     await seedDatabase(db);
     const items = createItemsRepository(db);
     const locations = createLocationsRepository(db);
+    const categories = createCategoriesRepository(db);
+    const contacts = createContactsRepository(db);
     await locations.create({ name: 'Despensa' });
     await items.create({ name: 'Feijão Preto', quantity: 4, unit: 'kg' });
-    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [] };
+    deps = {
+      items, locations, categories, contacts, context: CONTEXT, language: 'pt-BR',
+      trackedCategoryIds: [], dismissedItemIds: [],
+    };
   });
 
   afterEach(async () => {
@@ -263,5 +362,40 @@ describe('commit', () => {
 
     const saved = await commit(deps, pendingWrite);
     expect(saved.item.expirationDate).toBe('2027-01-01');
+  });
+
+  /**
+   * A move goes through `items.transfer`, not through `items.update`.
+   *
+   * Both change the column; only one writes the transfer row. The repository's
+   * rule is the same rule the quantity follows - a location that changed with
+   * no record of the change makes the transaction log untrustworthy.
+   */
+  it('moves an item and records the move', async () => {
+    const pendingWrite = await write(deps, { kind: 'MOVE_ITEM', item: 'feijao preto',
+      location: 'despensa' });
+
+    const saved = await commit(deps, pendingWrite);
+    const shelf = await deps.locations.findByName('Despensa');
+    expect(saved.item.locationId).toBe(shelf?.id);
+
+    const history = await deps.items.history(saved.item.id);
+    expect(history[0]).toMatchObject({ type: 'transfer', notes: 'Por voz' });
+  });
+
+  it('sets a minimum, which is what the replenishment list reads', async () => {
+    const pendingWrite = await write(deps, { kind: 'SET_MINIMUM', item: 'feijao preto',
+      amount: 12, unit: null });
+
+    const saved = await commit(deps, pendingWrite);
+    expect(saved.item.minimumQuantity).toBe(12);
+  });
+
+  it('sets a target', async () => {
+    const pendingWrite = await write(deps, { kind: 'SET_TARGET', item: 'feijao preto',
+      amount: 20, unit: null });
+
+    const saved = await commit(deps, pendingWrite);
+    expect(saved.item.idealQuantity).toBe(20);
   });
 });

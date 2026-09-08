@@ -17,6 +17,8 @@ import { migrate } from '../../database/migrations/runner';
 import { seedDatabase } from '../../database/seed/seed';
 import { createItemsRepository, type ItemContext } from '../../repositories/items.repository';
 import { createLocationsRepository } from '../../repositories/locations.repository';
+import { createCategoriesRepository } from '../../repositories/categories.repository';
+import { createContactsRepository } from '../../repositories/contacts.repository';
 import { execute, type PendingWrite, type VoiceDeps } from './execute';
 
 const CONTEXT: ItemContext = {
@@ -33,12 +35,17 @@ describe('execute: certainty', () => {
     await seedDatabase(db);
     const items = createItemsRepository(db);
     const locations = createLocationsRepository(db);
+    const categories = createCategoriesRepository(db);
+    const contacts = createContactsRepository(db);
     await locations.create({ name: 'Despensa' });
 
     await items.create({ name: 'Feijão Preto', quantity: 4, unit: 'kg' });
     await items.create({ name: 'Milho Verde', quantity: 3, unit: 'latas' });
 
-    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [] };
+    deps = {
+      items, locations, categories, contacts, context: CONTEXT, language: 'pt-BR',
+      trackedCategoryIds: [], dismissedItemIds: [],
+    };
   });
 
   afterEach(async () => {
@@ -145,6 +152,75 @@ describe('execute: certainty', () => {
         expiresOn: '2027-03-31', dateAssumed: true });
 
       expect(write).toMatchObject({ certainty: 'assumed', assumptions: ['item', 'date'] });
+    });
+  });
+
+  describe('a move', () => {
+    it('is explicit when both the item and the destination were named exactly', async () => {
+      const write = await pending(deps, { kind: 'MOVE_ITEM', item: 'feijao preto',
+        location: 'despensa' });
+
+      expect(write).toMatchObject({ certainty: 'explicit', assumptions: [] });
+    });
+
+    /**
+     * `findLocation` matches on CONTAINS, so "despensa" happily finds
+     * "Despensa Principal" - and would find the wrong one of two pantries just
+     * as readily. A move is the one write whose whole content is a place, so a
+     * place matched loosely is exactly the part worth showing first.
+     */
+    it('is assumed when the destination was matched loosely', async () => {
+      await deps.locations.create({ name: 'Garagem dos Fundos' });
+      const write = await pending(deps, { kind: 'MOVE_ITEM', item: 'feijao preto',
+        location: 'garagem' });
+
+      expect(write).toMatchObject({ certainty: 'assumed', assumptions: ['location'] });
+    });
+
+    it('lists both when the item was a guess too', async () => {
+      await deps.locations.create({ name: 'Garagem dos Fundos' });
+      const write = await pending(deps, { kind: 'MOVE_ITEM', item: 'feijao',
+        location: 'garagem' });
+
+      expect(write).toMatchObject({ certainty: 'assumed', assumptions: ['item', 'location'] });
+    });
+  });
+
+  /**
+   * The thresholds have no assumed number to worry about: the rules that build
+   * them refuse a phrase without one, because there is no sensible default for
+   * a level nobody stated. So the only thing left to guess at is which item.
+   */
+  describe('a threshold', () => {
+    it('is explicit when the name was exact and the number was spoken', async () => {
+      expect(await pending(deps, { kind: 'SET_MINIMUM', item: 'feijao preto',
+        amount: 8, unit: null })).toMatchObject({ certainty: 'explicit', assumptions: [] });
+
+      expect(await pending(deps, { kind: 'SET_TARGET', item: 'feijao preto',
+        amount: 20, unit: null })).toMatchObject({ certainty: 'explicit', assumptions: [] });
+    });
+
+    it('is assumed when the item was matched by something looser than its name', async () => {
+      expect(await pending(deps, { kind: 'SET_MINIMUM', item: 'feijao',
+        amount: 8, unit: null })).toMatchObject({ certainty: 'assumed', assumptions: ['item'] });
+
+      expect(await pending(deps, { kind: 'SET_TARGET', item: 'feijao',
+        amount: 20, unit: null })).toMatchObject({ certainty: 'assumed', assumptions: ['item'] });
+    });
+
+    /**
+     * The spoken unit is NOT a guess here, where it is one for an adjustment.
+     *
+     * An adjustment adds its number to a stored count, so counting in the wrong
+     * unit silently changes what is stored. A threshold replaces a field that
+     * is only ever read against that same stored count, in the row's own unit;
+     * there is no second reading of it to ask the user about.
+     */
+    it('does not treat a differing unit as a guess', async () => {
+      const write = await pending(deps, { kind: 'SET_MINIMUM', item: 'milho verde',
+        amount: 8, unit: 'kg' });
+
+      expect(write).toMatchObject({ certainty: 'explicit', assumptions: [] });
     });
   });
 

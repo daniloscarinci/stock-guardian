@@ -28,6 +28,7 @@ import { createItemsRepository } from '../../repositories/items.repository';
 import { createCategoriesRepository } from '../../repositories/categories.repository';
 import { createLocationsRepository } from '../../repositories/locations.repository';
 import { createCatalogRepository } from '../../repositories/catalog.repository';
+import { createContactsRepository } from '../../repositories/contacts.repository';
 import { createSettingsRepository } from '../../repositories/settings.repository';
 import { AppProvider } from '../../app/AppContext';
 import type { AppContext } from '../../app/bootstrap';
@@ -144,6 +145,7 @@ async function setup(overrides: Partial<Settings> = {}) {
       categories: createCategoriesRepository(db),
       locations: createLocationsRepository(db),
       catalog: createCatalogRepository(db),
+      contacts: createContactsRepository(db),
       settings: createSettingsRepository(db),
     },
     diagnostics: DIAGNOSTICS,

@@ -41,7 +41,6 @@ import { commit, undo, type Receipt } from '../../services/voice/commit';
 import { renderAnswer, type AnswerOptions } from '../../services/voice/answer';
 import { converse, type AiFailureReason, type AiOptions } from '../../services/ai/converse';
 import type { AiDeps } from '../../services/ai/tools';
-import { createContactsRepository } from '../../repositories/contacts.repository';
 import { LOCALE_TAGS } from '../../i18n/translate';
 import type { Intent } from '../../voice/intents';
 import type { InventoryItemView } from '../../types/domain';
@@ -153,6 +152,14 @@ function aimedAt(intent: Intent, name: string): Intent | null {
       return { ...intent, item: name };
     case 'SET_EXPIRY':
       return { ...intent, item: name };
+    case 'QUERY_HISTORY':
+      return { ...intent, item: name };
+    case 'MOVE_ITEM':
+      return { ...intent, item: name };
+    case 'SET_MINIMUM':
+      return { ...intent, item: name };
+    case 'SET_TARGET':
+      return { ...intent, item: name };
     default:
       return null;
   }
@@ -206,9 +213,18 @@ function creationFrom(intent: Intent): Intent | null {
 /** What to ask the database once a write has landed, so the receipt is a fact. */
 function receiptIntent(write: PendingWrite): Intent {
   const name = write.kind === 'CREATE' ? write.name : write.item.name;
-  return write.kind === 'EXPIRY'
-    ? { kind: 'QUERY_EXPIRY_OF', item: name }
-    : { kind: 'QUERY_QUANTITY', item: name };
+
+  switch (write.kind) {
+    case 'EXPIRY':
+      return { kind: 'QUERY_EXPIRY_OF', item: name };
+    // A move changed where the thing is, so the sentence that confirms it has
+    // to be about where the thing is. Reading back its quantity would state a
+    // number nobody touched and leave the shelf unmentioned.
+    case 'MOVE':
+      return { kind: 'QUERY_WHERE', item: name, location: null };
+    default:
+      return { kind: 'QUERY_QUANTITY', item: name };
+  }
 }
 
 /**
@@ -222,7 +238,7 @@ function receiptIntent(write: PendingWrite): Intent {
 const UNDO_WINDOW_MS = 10_000;
 
 export function useVoice(speak: Speak): Voice {
-  const { db, repositories, itemContext, settings, t, invalidate } = useApp();
+  const { repositories, itemContext, settings, t, invalidate } = useApp();
   const [history, setHistory] = useState<readonly Exchange[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -243,6 +259,11 @@ export function useVoice(speak: Speak): Voice {
     () => ({
       items: repositories.items,
       locations: repositories.locations,
+      // Both read-only here. The categories turn a spoken "alimentos" into the
+      // id the item query filters on, and the contacts answer a question with
+      // no write path anywhere in this feature.
+      categories: repositories.categories,
+      contacts: repositories.contacts,
       context: itemContext,
       language: settings.language,
       trackedCategoryIds: settings.preparednessCategoryIds,
@@ -254,6 +275,8 @@ export function useVoice(speak: Speak): Voice {
     [
       repositories.items,
       repositories.locations,
+      repositories.categories,
+      repositories.contacts,
       itemContext,
       settings.language,
       settings.preparednessCategoryIds,
@@ -262,26 +285,16 @@ export function useVoice(speak: Speak): Voice {
   );
 
   /**
-   * The contacts, built here for the same reason ContactsScreen builds its
-   * own: the emergency list is not part of the start-up `Repositories` bundle,
-   * and adding it there for one caller would be a change to start-up.
-   */
-  const contacts = useMemo(() => createContactsRepository(db), [db]);
-
-  /**
-   * The same dependencies plus the three only the tools need: the categories,
-   * the contacts, and the reference catalog. The parser asks none of them -
-   * a spoken command never named a category, never asked who to call, and
-   * never wanted to know what a prepared household ought to hold.
+   * The same dependencies plus the one only the tools need: the reference
+   * catalog. The categories and the contacts moved into `VoiceDeps` when the
+   * parser learned to ask a category what it holds and a contact for its phone
+   * number, so both engines now read them from the same place - and the
+   * contacts repository comes from start-up rather than being built here,
+   * because it is no longer for one caller.
    */
   const aiDeps = useMemo<AiDeps>(
-    () => ({
-      ...deps,
-      categories: repositories.categories,
-      contacts,
-      catalog: repositories.catalog,
-    }),
-    [deps, repositories.categories, contacts, repositories.catalog],
+    () => ({ ...deps, catalog: repositories.catalog }),
+    [deps, repositories.catalog],
   );
 
   const aiOptions = useMemo<AiOptions>(

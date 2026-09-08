@@ -23,6 +23,27 @@ import type { VoiceDeps, PendingWrite } from './execute';
 export type UndoAction =
   | { readonly kind: 'restoreQuantity'; readonly to: number }
   | { readonly kind: 'restoreExpiry'; readonly to: string | null }
+  /*
+   * The shelf the item was on, by id, and null for "it was on none".
+   *
+   * The value again, not the inverse. There is no arithmetic to get wrong here,
+   * but there is a fact to lose: an item moved out of nowhere has no previous
+   * location, and an undo that could only say "move it back somewhere" would
+   * have to invent one. Recording null puts back null.
+   */
+  | { readonly kind: 'restoreLocation'; readonly to: string | null }
+  /*
+   * The thresholds, both of which are nullable and neither of which is zero
+   * when it is absent.
+   *
+   * `null` means the user never set a minimum, and the replenishment list then
+   * falls back to the global threshold; `0` means they set it to nothing and
+   * the list never speaks up about this item. An undo that turned the first
+   * into the second would silence a warning the user never asked to silence,
+   * so the previous value is recorded exactly as it was found.
+   */
+  | { readonly kind: 'restoreMinimum'; readonly to: number | null }
+  | { readonly kind: 'restoreTarget'; readonly to: number | null }
   | { readonly kind: 'deleteItem' };
 
 export interface Receipt {
@@ -64,6 +85,46 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
 
       const item = await deps.items.update(write.item.id, { expirationDate: write.after });
       return { item, receipt: { itemId: item.id, undo: { kind: 'restoreExpiry', to: before } } };
+    }
+
+    /*
+     * `items.transfer` rather than `items.update({ locationId })`.
+     *
+     * Both change the column. Only one of them writes the transfer row, and
+     * the repository's rule is the same rule the quantity follows: a location
+     * that changed with no record of the change makes the transaction log
+     * untrustworthy. The row it writes carries the shelf it came from and the
+     * shelf it went to, which is what makes "where was this before" answerable
+     * at all.
+     */
+    case 'MOVE': {
+      const current = await deps.items.getById(write.item.id);
+      const before = current === undefined ? write.fromLocationId : current.locationId;
+
+      const item = await deps.items.transfer(write.item.id, write.toLocationId, SPOKEN);
+      return { item, receipt: { itemId: item.id, undo: { kind: 'restoreLocation', to: before } } };
+    }
+
+    /*
+     * Read back before writing, exactly as ADJUST and EXPIRY do. The view on
+     * the write was built when the phrase was executed, and the Inventory
+     * screen can have edited the same field since; the receipt has to name the
+     * value this write actually replaced.
+     */
+    case 'MINIMUM': {
+      const current = await deps.items.getById(write.item.id);
+      const before = current === undefined ? write.before : current.minimumQuantity;
+
+      const item = await deps.items.update(write.item.id, { minimumQuantity: write.after });
+      return { item, receipt: { itemId: item.id, undo: { kind: 'restoreMinimum', to: before } } };
+    }
+
+    case 'TARGET': {
+      const current = await deps.items.getById(write.item.id);
+      const before = current === undefined ? write.before : current.idealQuantity;
+
+      const item = await deps.items.update(write.item.id, { idealQuantity: write.after });
+      return { item, receipt: { itemId: item.id, undo: { kind: 'restoreTarget', to: before } } };
     }
 
     case 'CREATE': {
@@ -118,6 +179,24 @@ export async function undo(deps: VoiceDeps, receipt: Receipt): Promise<void> {
 
     case 'restoreExpiry':
       await deps.items.update(receipt.itemId, { expirationDate: action.to });
+      return;
+
+    /*
+     * Another transfer, for the reason `restoreQuantity` gives about history:
+     * the way back from a recorded move is a recorded move, not a silent
+     * column edit that leaves the log claiming the item is still where it was
+     * sent.
+     */
+    case 'restoreLocation':
+      await deps.items.transfer(receipt.itemId, action.to, UNDONE);
+      return;
+
+    case 'restoreMinimum':
+      await deps.items.update(receipt.itemId, { minimumQuantity: action.to });
+      return;
+
+    case 'restoreTarget':
+      await deps.items.update(receipt.itemId, { idealQuantity: action.to });
       return;
 
     /*
