@@ -50,6 +50,60 @@ describe('settings', () => {
     });
   });
 
+  /*
+   * WHICH voice reads the answers, and the reason it is not a gender.
+   *
+   * `SpeechSynthesisVoice` has a name, a language tag and `localService`. There
+   * is no gender field and no way to ask for one, so a stored `'female'` would
+   * be a fact this application invented and then failed to honour on every
+   * phone that ships a single voice per language. What is stored is one voice
+   * out of the ones the device actually has.
+   */
+  describe('the speaking voice', () => {
+    it('defaults to empty, meaning whatever the platform picks', () => {
+      expect(DEFAULT_SETTINGS.speakingVoiceUri).toBe('');
+    });
+
+    it('stores a voiceURI rather than a gender', () => {
+      const { settings } = parseSettings([
+        { key: 'speakingVoiceUri', value: '"urn:moz-tts:speechd:Camila"' },
+      ]);
+      expect(settings.speakingVoiceUri).toBe('urn:moz-tts:speechd:Camila');
+    });
+
+    it('leaves it empty for a database that predates the setting', () => {
+      const { settings } = parseSettings([{ key: 'voiceSpeakAnswers', value: 'true' }]);
+      expect(settings.speakingVoiceUri).toBe('');
+    });
+
+    /*
+     * Empty is the behaviour that always worked - no voice named, the platform
+     * left to resolve `lang`, a local voice preferred where one matches. So a
+     * corrupt value falls back to it rather than to a voice nobody chose.
+     */
+    it('falls back to empty when the value is corrupt, and says so', () => {
+      const { settings, invalidKeys } = parseSettings([
+        { key: 'speakingVoiceUri', value: '{"gender":"female"}' },
+      ]);
+      expect(settings.speakingVoiceUri).toBe('');
+      expect(invalidKeys).toContain('speakingVoiceUri');
+    });
+
+    /*
+     * A voice that is not installed on this device is still a legitimate stored
+     * value - the setting cannot see the device, and `speak.ts` is where a
+     * missing voice falls back rather than falling silent. Validating it here
+     * would discard a choice that comes back when a language pack does.
+     */
+    it('keeps a voice this device may not have, because speak.ts is what falls back', () => {
+      const { settings, invalidKeys } = parseSettings([
+        { key: 'speakingVoiceUri', value: '"pt-br-x-afm-local"' },
+      ]);
+      expect(settings.speakingVoiceUri).toBe('pt-br-x-afm-local');
+      expect(invalidKeys).toEqual([]);
+    });
+  });
+
   describe('assistant defaults', () => {
     /*
      * Two switches, and the application sends nothing unless BOTH are set: the

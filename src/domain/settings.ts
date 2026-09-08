@@ -82,6 +82,35 @@ export const settingsSchema = z.object({
   voiceSpeakAnswers: z.boolean().default(true),
 
   /**
+   * WHICH voice reads them. Empty means whatever the platform picks.
+   *
+   * The request behind this was "a female or a male voice", and the Web Speech
+   * API has no gender field to answer it with - `SpeechSynthesisVoice` offers a
+   * name, a language tag, `localService`, `voiceURI` and nothing else. So this
+   * does not store a gender. It stores one voice, chosen from the ones this
+   * device actually has, and `speak.ts` guesses at male or female from the name
+   * only to label the list. Storing a gender would mean inventing a fact the
+   * platform never told us and then failing silently on the many phones that
+   * ship one voice per language.
+   *
+   * A `voiceURI`, not a `name`. Both identify a voice, and the spec makes
+   * `voiceURI` the identifier while `name` is a display string the platform is
+   * free to translate - a phone switched from English to Portuguese can rename
+   * `Portuguese (Brazil) Female` to `Portugues (Brasil) Feminino` and orphan
+   * anything keyed on it. `speak.ts` matches on either when reading, because
+   * some engines shuffle one and keep the other, and neither matching costs
+   * anything.
+   *
+   * EMPTY IS THE DEFAULT AND IS NOT A FAILURE STATE. It is the behaviour this
+   * application had before the setting existed: no voice named, `lang` left to
+   * the platform, and a local voice preferred where one matches exactly. A
+   * stored voice that is no longer installed falls back to precisely that
+   * rather than to silence - see `pickVoice` for why that matters more than
+   * honouring the stored value.
+   */
+  speakingVoiceUri: z.string().default(''),
+
+  /**
    * Keeps recorded speech on the device even when that means no transcription
    * at all.
    *
