@@ -130,7 +130,7 @@ release agree on what version they are.
 
 ## How the Android build differs from the website
 
-The application code is identical. Five things around it are not.
+The application code is identical. Six things around it are not.
 
 **No service worker.** On the web, a service worker makes the site work offline.
 Inside the APK every asset already sits on the device, so a second cache would
@@ -139,9 +139,9 @@ because a service worker updates on its own schedule. `VITE_TARGET=android`
 therefore drops it from the build. The APK is the offline mechanism on Android;
 the service worker is the offline mechanism on the web.
 
-**It asks the system for two permissions, and it used to ask for none.** Both
-changes are worth explaining rather than noticing, and both were made one at a
-time against a check that would otherwise have failed the build.
+**It asks the system for three permissions, and it used to ask for none.** Every
+one of the three is worth explaining rather than noticing, and each was added one
+at a time against a check that would otherwise have failed the build.
 
 `android.permission.INTERNET` is there because the AI assistant reaches
 `api.anthropic.com` with a key the user pastes into Settings. Android offers
@@ -157,15 +157,41 @@ at runtime on the first press of the microphone, never at startup, so somebody
 who opens this application to read what is in the pantry is never asked about
 it.
 
+`android.permission.POST_NOTIFICATIONS` is there because the expiry reminders
+are. From Android 13 nothing may post a notification without it. It is requested
+at runtime the first time somebody switches the reminders **on** in **Settings →
+Expiry reminders**, never at startup, and that switch ships off — so a person who
+does not want to be interrupted is never shown the prompt and never holds the
+permission.
+
+**Three more were merged in by the notifications plugin and taken back out**, and
+that is worth reading before deciding this list is short by luck.
+`@capacitor/local-notifications` declares four permissions in its own manifest,
+not one. `AndroidManifest.xml` strips three of them with `tools:node="remove"`:
+
+| Permission | Why it is not here | What it costs |
+|---|---|---|
+| `SCHEDULE_EXACT_ALARM` | Every reminder is scheduled as an **inexact** alarm (`isExactNotification: false`). Left at the plugin's default the first schedule would open Android's *Alarms & reminders* settings screen — a second permission screen, for a digest about tinned food. | A reminder set for 09:00 may arrive at 09:04. |
+| `RECEIVE_BOOT_COMPLETED` | The plugin registers a receiver that re-registers pending alarms after a restart. Without the permission it is never delivered to. | **A reboot loses the pending reminders until the app is next opened**, which recomputes and reschedules all of them. This is the one real cost of the short list. |
+| `WAKE_LOCK` | Nothing in the plugin takes a wake lock. `RTC_WAKEUP` alarms wake the device through the alarm manager's own lock. | Nothing observable. |
+
+`VIBRATE` is not merged in and is not wanted: the notification channel is created
+without vibration, because a buzz is not worth a fourth permission. Reminders
+still arrive on a sleeping phone — the schedule sets `allowWhileIdle`, which
+fires during Doze and needs no permission at all.
+
 The check that used to prove the APK asked for nothing was narrowed rather than
-deleted, twice. It allows `android.permission.INTERNET` and
-`android.permission.RECORD_AUDIO`, allows names in this application's own
-namespace, and fails the build on every other permission: `CAMERA`, location,
-contacts, storage, and whatever a future library brings with it. Open **Settings
-→ Apps → Stock Guardian → Permissions** and you should find the microphone, and
-nothing you did not expect. "It asks for the network and the microphone and
-nothing else" is a weaker sentence than the one it replaced, and it is still
-checked by a machine on every build rather than asserted here.
+deleted, three times. It allows `android.permission.INTERNET`,
+`android.permission.RECORD_AUDIO` and `android.permission.POST_NOTIFICATIONS`,
+allows names in this application's own namespace, and fails the build on every
+other permission: `CAMERA`, location, contacts, storage, the three stripped
+above, and whatever a future library brings with it. Delete those
+`tools:node="remove"` lines and the build fails, which is how they are kept
+honest. Open **Settings → Apps → Stock Guardian → Permissions** and you should
+find the microphone, notifications, and nothing you did not expect. "It asks for
+the network, the microphone and permission to notify you, and nothing else" is a
+weaker sentence than the one it replaced, and it is still checked by a machine on
+every build rather than asserted here.
 
 The namespaced entry is not a permission the application asks anyone for.
 androidx declares
@@ -286,6 +312,72 @@ Reading answers aloud uses `speechSynthesis`, which asks the system for nothing.
 `docs/VOICE.md` covers the ask box itself — both ways into it, and what it will
 not do.
 
+**Expiry reminders are scheduled ahead, and nothing runs in the background.**
+This is the difference between what this feature is and what people assume a
+reminder is, so it is set out rather than implied.
+
+A Capacitor WebView cannot wake up. There is no worker running while the
+application is closed, no weekly job, nothing that could look at the database on
+a Tuesday and decide what to say. So every notification's text is decided **in
+advance** — on a day the application happens to be open — and handed to Android's
+alarm manager with the date it should appear. `src/services/notifications/plan.ts`
+does the deciding and it is pure, which is why it can be tested without a phone.
+
+What follows from that, in both directions:
+
+- A phone left untouched for three months still delivers every reminder that was
+  planned on the last visit. The sentences were already written and the alarms
+  were already set.
+- An item added, or a date changed, on another device is invisible until this
+  application is opened. Opening it recomputes the whole plan from the current
+  inventory and replaces the pending set.
+- The plan is recomputed on start-up and after every write, because it is keyed
+  to the same "something changed" counter every screen re-reads on.
+
+Two notifications per expiry date at most: one at the user's **first** warning
+window (the smallest of `expiryWarningDays`, 7 by default) and one on the day
+itself. Everything sharing a date is one notification naming at most three items
+and counting the rest — the same rule a spoken answer follows, and literally the
+same function. At most **40** are pending at once; Android stops accepting
+alarms silently somewhere around fifty, so the cap is well under it and drops the
+furthest away, never the soonest.
+
+Ids live in a band of this application's own (`811000000` upward) so that
+rescheduling cancels exactly what it scheduled last time and nothing else. A
+reschedule cancels before it schedules, which is what stops eleven copies
+building up over eleven openings.
+
+### What can stop a reminder arriving
+
+Listed rather than left to be discovered, because a reminder that does not come
+looks identical to a reminder that was never set.
+
+- **The permission was refused, or revoked later.** Settings says so next to the
+  switch, and offers the app's own settings page once Android has stopped
+  asking. Nothing is scheduled meanwhile.
+- **Notifications are off for the app or for the channel.** Android lets someone
+  silence *Expiry reminders* on its own screen without touching this
+  application. The plugin refuses the schedule outright in that case and the
+  refusal is reported.
+- **The phone was restarted.** Pending alarms do not survive a reboot and this
+  build does not hold `RECEIVE_BOOT_COMPLETED` to restore them. Opening the
+  application reschedules everything.
+- **The application was force-stopped, or the launcher's battery optimiser put
+  it to sleep.** Android cancels alarms for a force-stopped package until the
+  application is opened again. Some manufacturer builds — Xiaomi, Oppo, Vivo and
+  Huawei in particular — are aggressive about this; their "autostart" or
+  "protected apps" list is where it is undone.
+- **It has been more than 40 notifications' worth of dates since the last
+  opening.** The cap keeps the soonest, so this only ever removes reminders far
+  in the future, and opening the application restores them.
+- **The delivery time already passed today.** A reminder is never scheduled for
+  a moment that has gone, because an alarm set in the past fires immediately.
+- **Doze delays it.** Inexact alarms are permitted to slip; `allowWhileIdle`
+  keeps that to minutes rather than hours, and it is the reason the exact-alarm
+  permission is not needed.
+- **The date changed on another device.** Nothing runs while the application is
+  closed. The plan is only as current as the last time it was opened.
+
 ---
 
 ## The signing key
@@ -310,7 +402,7 @@ cannot read fails in seconds with a clear message.
 ## What to check on the device
 
 No emulator and no phone took part in producing this project, so the first
-install is the first real test. Check ten things in order, because each one
+install is the first real test. Check eleven things in order, because each one
 tells you something different:
 
 1. **It opens.** A blank screen means the WebView could not start the
@@ -367,6 +459,32 @@ tells you something different:
    that" with examples - not a network error, and not a pause while something
    times out. Nothing should leave the phone until a key is stored and
    **Settings → Ask Claude** is switched on.
+11. **Nothing asks about notifications until you ask for them.** Open the
+   application, use it, close it. Android must never raise a notification
+   prompt on its own — the permission belongs to one switch.
+
+   Now turn it on: **Settings → Expiry reminders → Remind me before things
+   expire**. Android asks once. Allow it, and the line under the switch should
+   say how many reminders are set — one per warning day and one per expiry day,
+   so an inventory with three dated items and no duplicates says six. Add an
+   item expiring tomorrow with the delivery time set a few minutes ahead and
+   wait: the notification should carry the count and the deadline in your
+   language, and tapping it should land on the **expiration centre**, not the
+   dashboard.
+
+   Then check the refusal, which is a first-class outcome here as it is for the
+   microphone. Switch it off, revoke notifications in **Settings → Apps → Stock
+   Guardian → Notifications**, and switch it on again: Android asks, refuse, and
+   the panel should say the permission was not given and that switching it on
+   again will ask once more. Refuse until Android stops asking and the panel must
+   change to the one offering **Open app settings**, never a prompt that does not
+   appear.
+
+   Finally, the permissions screen should list the microphone and notifications
+   and nothing else — in particular no **Alarms & reminders** entry, which is
+   what the `SCHEDULE_EXACT_ALARM` removal above is for. Restart the phone and
+   the pending reminders are gone until you open the application again; that is
+   expected, and the table above says why.
 
 ---
 
@@ -387,8 +505,9 @@ artwork and automatic backup switched on. `generate:android-icons` replaces the
 artwork and deletes what it supersedes. The manifest, `MainActivity.java` and
 `app/build.gradle` carry the rest of those decisions and would have to come back
 from git — including the `queries` element, `allowBackup="false"`,
-`RECORD_AUDIO`, and the long comment explaining why those two permissions are
-here and no others. The template's own `INTERNET` line happens to be the one
+`RECORD_AUDIO`, `POST_NOTIFICATIONS`, the three `tools:node="remove"` lines and
+the `xmlns:tools` declaration they need, and the long comment explaining why
+those three permissions are here and no others. The template's own `INTERNET` line happens to be the one
 thing it gets right now, which is a poor reason to trust the rest of it.
 
 ---

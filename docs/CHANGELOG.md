@@ -1,5 +1,63 @@
 # Changelog
 
+## Unreleased
+
+### Notifications, and the thing they cannot be
+
+The list of what is not built has lost a line. It used to say notifications were
+not built and that the expiration centre served the same purpose *when the app is
+open*, which was the whole problem: the point of a preparedness store is that you
+do not open it for months, and food expires unwatched.
+
+The Android build now schedules expiry reminders. One at your first warning
+window before each expiry date, one on the day itself, in your own language and
+naming what it is about - *"3 itens vencem em 7 dias - Leite, Iogurte, Pao"*.
+Everything sharing a date is one notification naming at most three items and
+counting the rest, which is the same rule a spoken answer follows and literally
+the same function. Tapping it opens the expiration centre.
+
+**The switch ships off, and it is the only thing that asks for the permission.**
+A notification interrupts somebody, so it is chosen rather than discovered.
+Android 13 needs `POST_NOTIFICATIONS`, and it is requested at runtime the first
+time the switch is turned on - never at startup, never after a write, never as a
+retry. A refusal is an outcome and not an error: *denied* says the next press
+will ask again, *blocked* says Android has stopped asking and offers this
+application's own settings page, which is the shape `MicNotice` settled on for
+the microphone.
+
+**Nothing runs in the background, and the documentation says so.** A Capacitor
+WebView cannot wake up, so the text of every notification is decided in advance
+and handed to Android's alarm manager with the date it should appear. A phone
+left untouched for three months still delivers everything planned on the last
+visit; an item added elsewhere is invisible until this application is opened,
+which recomputes the whole plan and replaces the pending set. There is no
+watcher and no page here pretends there is one.
+
+At most 40 are pending at once, ordered soonest first, because Android stops
+accepting alarms silently somewhere around fifty. Ids live in a band of this
+application's own, so a reschedule cancels exactly what it scheduled last time
+and nothing else.
+
+**The permission gate narrowed again rather than opening.**
+`@capacitor/local-notifications` merges four permissions into the manifest, not
+one. `POST_NOTIFICATIONS` is kept and argued for; `SCHEDULE_EXACT_ALARM`,
+`RECEIVE_BOOT_COMPLETED` and `WAKE_LOCK` are stripped with `tools:node="remove"`
+and each removal is written down with its cost. Reminders are scheduled as
+inexact alarms with `allowWhileIdle`, which needs no exact-alarm permission and
+still fires in Doze. The one real cost is that a reboot loses the pending
+reminders until the application is next opened, and `docs/ANDROID.md` says so
+alongside everything else that can stop one arriving.
+
+The build gate now allows exactly `INTERNET`, `RECORD_AUDIO` and
+`POST_NOTIFICATIONS`, and was proved to still bite by adding `CAMERA`, watching
+it fail, and taking it back out.
+
+**No new network use.** Local notifications are an in-process call to a system
+service on the same phone: no push service, no token, no server deciding when to
+send one, and no row of the database anywhere but on the device. The offline
+audit passes unchanged, which is the check rather than the claim.
+
+
 ## 2.3.0
 
 ### The microphone asks for the microphone

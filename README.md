@@ -55,6 +55,29 @@ original application treated a blank date as *expired* and refused to save an
 item without one, so a hammer needed an invented date. Warning windows default to
 7, 30 and 90 days and are yours to change.
 
+**Reminders that arrive with the app shut.** *Android only, and off until you
+switch it on.* The expiration centre answers "what is running out" whenever you
+look. The point of a preparedness store is that you do not look for months, so
+the Android build can also tell you: one notification your first warning window
+before each expiry date, and one on the day itself, in your own language and
+naming what it is about — *"3 itens vencem em 7 dias — Leite, Iogurte, Pão"*.
+Ten things expiring on one date are one notification naming three of them and
+counting the rest, never ten buzzes. Tapping it opens the expiration centre.
+
+How it works is worth knowing, because it decides what it can and cannot do. A
+web view cannot wake up on its own, so nothing runs in the background here.
+Instead the whole schedule is worked out **in advance** — the text of every
+notification is decided and handed to Android with the date it should appear —
+and worked out again from scratch every time you open the app. So a phone left
+untouched for three months still delivers everything that was planned on your
+last visit, and picks up anything new the next time you open it. There is no
+watcher, and this page will not pretend there is one.
+
+Android asks for permission the first time you switch it on, in **Settings →
+Expiry reminders**, and never at startup. Refuse and nothing is scheduled and
+nothing asks again. `docs/ANDROID.md` lists the handful of things that can stop
+a notification arriving.
+
 **Stock levels.** Each item can carry a minimum and a target. Status is
 Critical, Low, Adequate or Surplus, and the replenishment list tells you how much
 to buy. Items with no minimum fall back to a global threshold, exactly as the
@@ -354,8 +377,11 @@ a "coming soon" panel — if it is not built, it is not shown.
 - **Barcode scanning.** A barcode can be typed in and is searchable. Scanning
   with a camera is not built.
 - **Application lock.** Not built.
-- **Notifications.** Not built. The expiration centre serves the same purpose
-  when the app is open.
+- **Reminders on the website.** The Android app schedules them; a browser tab
+  cannot. A page that is closed cannot be woken to work out what expired, and a
+  notification that only arrives while you are already looking at the app is not
+  a reminder. On the web the expiration centre is the answer, and it is the same
+  screen the Android notification opens.
 - **A released Android APK.** The Android project is complete and committed, and
   GitHub Actions builds and signs the APK when a version tag is pushed. That has
   not been done yet, and no phone has run this build. **No APK exists yet, and

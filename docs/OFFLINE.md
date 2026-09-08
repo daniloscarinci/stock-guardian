@@ -8,7 +8,8 @@ while debugging.
 
 Three things sit outside it. Each is set out in full below, none of them puts
 your database on a network, and **one of the three is on as it ships** — read
-that one even if you skip the others.
+that one even if you skip the others. Expiry reminders are not among them, for
+the reason given after the third.
 
 **Asking Claude.** *Off until you switch it on.* Paste your own Anthropic API
 key into Settings, switch the assistant on, and a question goes to
@@ -32,6 +33,18 @@ and what still holds it in.
 **Downloading a speech pack.** *A download you ask for.* Where the browser
 offers it, installing an on-device model for your language costs nothing of
 yours, and the point of it is to make the attempt above unnecessary.
+
+**Expiry reminders are not a fourth thing.** *Android only, off until you switch
+it on.* They add no network use of any kind, and this page says so rather than
+leaving it to be assumed. What they do is hand Android's own alarm manager a
+list of dates and sentences, which is an in-process call to a system service on
+the same phone. No server decides when to send one, nothing is registered with
+anybody, there is no push service, no token, no device id, and nothing about
+your inventory leaves the device — the text of every notification is composed on
+the phone from rows in the database on the phone. `@capacitor/local-notifications`
+opens no socket; the audit below reads the built bundle and finds nothing new to
+say about it, which is the check rather than the claim. `POST_NOTIFICATIONS` is a
+permission to interrupt you, not a permission to connect.
 
 The application itself still reaches nothing, on any platform, whatever you do
 with these: the audit and the Content-Security-Policy below hold that, and the

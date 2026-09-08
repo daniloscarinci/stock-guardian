@@ -45,6 +45,7 @@ silently diverge.
 | Voice execution | Every intent over a real database, and the write spy |
 | Speech | The seam's three implementations, `processLocally`, the speaker |
 | The ask sheet | Both ways in, end to end, against a real database |
+| Expiry notifications | The plan for a given today, grouping, the cap, and the plugin refusing |
 
 ### What the tests are actually for
 
@@ -159,6 +160,14 @@ Stated so nobody mistakes green for complete.
   purpose is a thing that must not happen, and because a microphone that failed
   in silence is a defect no layer below the interface can see. Every
   screen is exercised end to end by the smoke test instead, not unit tested.
+- **A notification actually arriving.** `notifier.test.ts` replaces the plugin
+  with a fake alarm manager - `schedule` writes rows into it and `getPending`
+  reads them back - so rescheduling twice is watched leaving one copy rather
+  than inferred from call counts, and a refused permission is watched being
+  returned rather than swallowed. What no test can reach is Android's own alarm
+  manager: whether a given phone honours an inexact alarm in Doze, and whether a
+  manufacturer's battery optimiser cancels it, are facts about that phone.
+  `docs/ANDROID.md` lists them, and has a step for each.
 - **Real speech.** No test speaks and no test listens. What is covered is
   everything around the microphone, and the two-attempt sequence in particular:
   `webspeech.test.ts` pins that the first recognizer of every listen sets

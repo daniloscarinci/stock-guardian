@@ -79,6 +79,7 @@ src/
   services/      backup, import, export, reports, download
     speech/      SpeechRecognizer contract and its three implementations
     voice/       Intent → Outcome: resolve, execute (reads), commit (writes)
+    notifications/  plan (pure: what to say and when) and notifier (the plugin)
   i18n/          three locales and the translation function
   hooks/  types/  styles/  data/  test/
 scripts/         catalog extraction, icons, offline audit, smoke test
@@ -251,13 +252,25 @@ file on the same device that answers in under a millisecond. TanStack Query and
 Zustand were both installed early and both removed once it was clear they were
 carrying nothing.
 
-Six runtime dependencies: `react`, `react-dom`, `react-router-dom`, `zod`,
-`@sqlite.org/sqlite-wasm`, and `@capacitor/core`. The last one arrived with
-voice control: `services/speech/capacitor.ts` needs `registerPlugin` to reach
-the Android speech plugin, so the package is now bundled into the web build as
-well, where `Capacitor.isNativePlatform()` answers false and nothing else in it
-runs. It was already a dependency of the Android build; what changed is that
-application source imports it.
+Seven runtime dependencies: `react`, `react-dom`, `react-router-dom`, `zod`,
+`@sqlite.org/sqlite-wasm`, `@capacitor/core` and
+`@capacitor/local-notifications`.
+
+`@capacitor/core` arrived with voice control: `services/speech/capacitor.ts`
+needs `registerPlugin` to reach the Android speech plugin, so the package is now
+bundled into the web build as well, where `Capacitor.isNativePlatform()` answers
+false and nothing else in it runs. It was already a dependency of the Android
+build; what changed is that application source imports it.
+
+`@capacitor/local-notifications` arrived with the expiry reminders, and it is
+reached from exactly one module, `services/notifications/notifier.ts`, which
+answers `unsupported` and asks the bridge nothing off Android. Its web
+implementation holds a `setTimeout` in the open page, which for a reminder that
+has to survive three months of the application being closed is the opposite of
+the feature, so it is never used. It is the first dependency here written in
+Kotlin; the plugin's own Gradle module carries the Kotlin plugin, so the
+application module still has no Kotlin toolchain and `MainActivity`, `SpeechPlugin`
+and `RingerPlugin` are still Java.
 
 ---
 
