@@ -182,6 +182,42 @@ export const settingsSchema = z.object({
   aiModel: z.string().default('claude-haiku-4-5'),
 
   /**
+   * WHETHER THIS APPLICATION MAY INTERRUPT SOMEBODY. Off, and it stays off
+   * until a person presses it.
+   *
+   * Every other default in this file is the behaviour somebody would choose
+   * anyway. This one is not: a notification arrives on a locked phone, at an
+   * hour of its own choosing, about food. That is worth having and it is not
+   * worth assuming, so it is the one feature here that ships switched off. The
+   * permission goes with it - Android 13 asks before anything can be posted,
+   * and the prompt is raised by this switch and by nothing else. Somebody who
+   * never wants reminders never sees a dialog about them.
+   *
+   * A stored `true` does not mean notifications will arrive: the permission can
+   * have been revoked in Android's settings since. `refreshExpiryNotices`
+   * checks and reports rather than assuming, and Settings says so.
+   */
+  expiryNotificationsEnabled: z.boolean().default(false),
+
+  /**
+   * The time of day a reminder is delivered, as `HH:MM` in the phone's own
+   * local time.
+   *
+   * A string rather than an hour and a minute, because it is what
+   * `<input type="time">` reads and writes, and splitting it would mean two
+   * settings that can disagree. Anything not of that shape falls back to the
+   * default the way every other setting does - `parseSettings` drops the row.
+   *
+   * 09:00 because a reminder is an instruction to do something about food, and
+   * the shops are open. It is not an alarm and nothing here will ever schedule
+   * one before it is asked to.
+   */
+  expiryNotificationTime: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .default('09:00'),
+
+  /**
    * Items the user has taken off the replenishment list.
    *
    * Dismissal is a decision ("I know, and I am not restocking it"), so it has to

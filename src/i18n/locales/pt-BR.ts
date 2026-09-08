@@ -594,6 +594,47 @@ export const ptBR: LocaleTree = {
     dayWindow_other: '{count} dias',
   },
 
+  notifications: {
+    title: 'Lembretes de validade',
+    subtitle: 'Um aviso antes de a comida vencer, num telefone que você não abriu',
+
+    settingEnabled: 'Me avisar antes de as coisas vencerem',
+    settingEnabledHelp:
+      'Desligado. É a única coisa aqui que interrompe você, então a escolha é sua e não uma descoberta. Ao ligar, o Android pergunta uma vez se este aplicativo pode mostrar notificações; se recusar, nada é agendado, e nada pergunta de novo até você ligar isto.',
+
+    time: 'Entregar às',
+    timeHelp:
+      'Pelo relógio do próprio telefone. 09:00 para começar, porque um lembrete sobre comida é algo para resolver com as lojas abertas.',
+
+    howItWorks:
+      'Um lembrete no seu primeiro prazo de aviso antes de cada vencimento, e outro no próprio dia. Itens que vencem na mesma data viram um lembrete só, que cita três e conta o resto, nunca um alerta para cada.',
+    scheduledAhead:
+      'São agendados com antecedência, e a lista inteira é refeita toda vez que você abre o aplicativo. Nada roda enquanto ele está fechado: um item adicionado em outro aparelho só entra na próxima vez que você abrir este — e os lembretes já agendados chegam mesmo assim, meses depois, abrindo o aplicativo ou não.',
+
+    scheduled_one: '{count} lembrete agendado.',
+    scheduled_other: '{count} lembretes agendados.',
+    scheduledNone: 'Nada vencendo, então nada foi agendado.',
+    capped_one: 'O mais distante ficou de fora: o telefone guarda só uma quantidade, e os mais próximos são os que ficam.',
+    capped_other:
+      'Os {count} mais distantes ficaram de fora: o telefone guarda só uma quantidade, e os mais próximos são os que ficam.',
+
+    permissionDenied:
+      'As notificações precisam da sua permissão, e ela não foi dada. Nada foi agendado. Ligue de novo para ser perguntado outra vez.',
+    permissionBlocked:
+      'As notificações foram recusadas de vez, então este telefone não vai perguntar mais. Abra as configurações do aplicativo, permita Notificações e ligue isto. O resto funciona de qualquer jeito.',
+    failed: 'O Android não aceitou os lembretes: {reason}',
+    unsupported:
+      'Os lembretes fazem parte do aplicativo Android. Um navegador não consegue acordar esta página fechada, então não há o que ligar aqui — a central de validade é o que um navegador tem a oferecer.',
+
+    channelName: 'Lembretes de validade',
+    channelDescription: 'O que está para acabar, e o que venceu hoje.',
+
+    warningTitle_one: '{count} item vence em {window}',
+    warningTitle_other: '{count} itens vencem em {window}',
+    dueTitle_one: '{count} item vence hoje',
+    dueTitle_other: '{count} itens vencem hoje',
+  },
+
   ai: {
     title: 'Perguntar ao Claude',
     subtitle: 'Perguntas em linguagem comum, respondidas com o estoque deste aparelho.',

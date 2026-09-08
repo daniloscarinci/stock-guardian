@@ -594,6 +594,55 @@ export const en = {
     dayWindow_other: '{count} days',
   },
 
+  /*
+   * The one part of this application that speaks first.
+   *
+   * Everything else waits to be opened. A reminder arrives on a locked phone,
+   * about food, at an hour it chose - so the title says how many and by when,
+   * which are the two facts that decide whether it is worth unlocking for, and
+   * the names go underneath where there is room for them.
+   */
+  notifications: {
+    title: 'Expiry reminders',
+    subtitle: 'A notice before the food goes off, on a phone you have not opened',
+
+    settingEnabled: 'Remind me before things expire',
+    settingEnabledHelp:
+      'Off. It is the one thing here that interrupts you, so it is yours to choose rather than yours to discover. Switched on, Android asks once whether this app may show notifications; refuse and nothing is scheduled, and nothing asks again until you switch it on.',
+
+    time: 'Deliver at',
+    timeHelp:
+      'This phone’s own clock. 09:00 to begin with, because a reminder about food is something to act on while the shops are open.',
+
+    howItWorks:
+      'One reminder at your first warning window before each expiry date, and one on the day itself. Items sharing a date become a single reminder that names three of them and counts the rest, never one buzz each.',
+    scheduledAhead:
+      'They are set in advance, and the whole list is worked out again every time you open the app. Nothing runs while it is closed: an item added on another device is picked up the next time you open this one — and the reminders already set still arrive, months later, whether you open it or not.',
+
+    scheduled_one: '{count} reminder is set.',
+    scheduled_other: '{count} reminders are set.',
+    scheduledNone: 'Nothing is expiring, so nothing is scheduled.',
+    capped_one: 'The furthest one was left out: a phone holds only so many, and the soonest are the ones kept.',
+    capped_other:
+      'The furthest {count} were left out: a phone holds only so many, and the soonest are the ones kept.',
+
+    permissionDenied:
+      'Notifications need your permission, and it was not given. Nothing is scheduled. Switch this on again to be asked once more.',
+    permissionBlocked:
+      'Notifications have been refused for good, so this phone will not ask again. Open this app’s settings, allow Notifications, and switch this on. Everything else works either way.',
+    failed: 'Android would not accept the reminders: {reason}',
+    unsupported:
+      'Reminders are part of the Android app. A browser cannot wake this page while it is closed, so there is nothing here to switch on — the expiration centre is what a browser can offer.',
+
+    channelName: 'Expiry reminders',
+    channelDescription: 'What is about to run out, and what has run out today.',
+
+    warningTitle_one: '{count} item expires in {window}',
+    warningTitle_other: '{count} items expire in {window}',
+    dueTitle_one: '{count} item expires today',
+    dueTitle_other: '{count} items expire today',
+  },
+
   ai: {
     title: 'Ask Claude',
     subtitle: 'Questions in ordinary language, answered from the stock on this phone.',

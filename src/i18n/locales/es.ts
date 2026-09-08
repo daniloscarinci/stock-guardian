@@ -595,6 +595,47 @@ export const es: LocaleTree = {
     dayWindow_other: '{count} días',
   },
 
+  notifications: {
+    title: 'Recordatorios de vencimiento',
+    subtitle: 'Un aviso antes de que la comida se venza, en un teléfono que no has abierto',
+
+    settingEnabled: 'Avisarme antes de que las cosas venzan',
+    settingEnabledHelp:
+      'Apagado. Es lo único aquí que te interrumpe, así que la decisión es tuya y no un hallazgo. Al encenderlo, Android pregunta una vez si esta aplicación puede mostrar notificaciones; si lo rechazas, no se programa nada, y no se vuelve a preguntar hasta que lo enciendas.',
+
+    time: 'Entregar a las',
+    timeHelp:
+      'Según el reloj del propio teléfono. 09:00 para empezar, porque un recordatorio sobre comida es algo que se resuelve con las tiendas abiertas.',
+
+    howItWorks:
+      'Un recordatorio en tu primer plazo de aviso antes de cada vencimiento, y otro el mismo día. Los ítems que vencen la misma fecha son un solo recordatorio que nombra tres y cuenta el resto, nunca uno por cada cosa.',
+    scheduledAhead:
+      'Se programan por adelantado, y la lista entera se rehace cada vez que abres la aplicación. Nada se ejecuta mientras está cerrada: un ítem añadido en otro aparato entra la próxima vez que abras este — y los recordatorios ya programados llegan igual, meses después, la abras o no.',
+
+    scheduled_one: '{count} recordatorio programado.',
+    scheduled_other: '{count} recordatorios programados.',
+    scheduledNone: 'No vence nada, así que no se programó nada.',
+    capped_one: 'El más lejano quedó fuera: un teléfono guarda solo una cantidad, y los más próximos son los que se quedan.',
+    capped_other:
+      'Los {count} más lejanos quedaron fuera: un teléfono guarda solo una cantidad, y los más próximos son los que se quedan.',
+
+    permissionDenied:
+      'Las notificaciones necesitan tu permiso, y no se dio. No se programó nada. Vuelve a encenderlo para que te lo pregunte otra vez.',
+    permissionBlocked:
+      'Las notificaciones se rechazaron definitivamente, así que este teléfono ya no lo preguntará. Abre los ajustes de la aplicación, permite Notificaciones y enciende esto. Lo demás funciona igual.',
+    failed: 'Android no aceptó los recordatorios: {reason}',
+    unsupported:
+      'Los recordatorios forman parte de la aplicación de Android. Un navegador no puede despertar esta página cuando está cerrada, así que no hay nada que encender aquí — la central de vencimientos es lo que un navegador puede ofrecer.',
+
+    channelName: 'Recordatorios de vencimiento',
+    channelDescription: 'Lo que está por acabarse, y lo que venció hoy.',
+
+    warningTitle_one: '{count} ítem vence en {window}',
+    warningTitle_other: '{count} ítems vencen en {window}',
+    dueTitle_one: '{count} ítem vence hoy',
+    dueTitle_other: '{count} ítems vencen hoy',
+  },
+
   ai: {
     title: 'Preguntar a Claude',
     subtitle: 'Preguntas en lenguaje corriente, respondidas con el stock de este teléfono.',

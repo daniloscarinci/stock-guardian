@@ -51,6 +51,50 @@ describe('settings', () => {
   });
 
   /*
+   * The one feature in this application that interrupts somebody.
+   *
+   * Every other default here is the behaviour a person would have chosen
+   * anyway. A notification is not: it arrives on a locked phone at an hour of
+   * its own choosing, and the permission that lets it is asked for by this
+   * switch and by nothing else. Off is the shipping default and the test is
+   * here so that a change to it has to be a deliberate one.
+   */
+  describe('expiry reminders', () => {
+    it('defaults OFF, and the time to 09:00', () => {
+      expect(DEFAULT_SETTINGS.expiryNotificationsEnabled).toBe(false);
+      expect(DEFAULT_SETTINGS.expiryNotificationTime).toBe('09:00');
+    });
+
+    it('leaves both at their defaults for a database that predates them', () => {
+      const { settings } = parseSettings([{ key: 'askEnabled', value: 'true' }]);
+      expect(settings.expiryNotificationsEnabled).toBe(false);
+      expect(settings.expiryNotificationTime).toBe('09:00');
+    });
+
+    it('keeps a stored time of day', () => {
+      const { settings } = parseSettings([
+        { key: 'expiryNotificationTime', value: '"21:30"' },
+      ]);
+      expect(settings.expiryNotificationTime).toBe('21:30');
+    });
+
+    /*
+     * A corrupt row must not be able to schedule a reminder at an hour nobody
+     * asked for, and must not stop the application starting either. It falls
+     * back like every other setting does.
+     */
+    it('falls back for anything that is not a time of day', () => {
+      for (const stored of ['"25:00"', '"9:00"', '"soon"', '"09:60"', '930']) {
+        const { settings, invalidKeys } = parseSettings([
+          { key: 'expiryNotificationTime', value: stored },
+        ]);
+        expect(settings.expiryNotificationTime, stored).toBe('09:00');
+        expect(invalidKeys, stored).toContain('expiryNotificationTime');
+      }
+    });
+  });
+
+  /*
    * WHICH voice reads the answers, and the reason it is not a gender.
    *
    * `SpeechSynthesisVoice` has a name, a language tag and `localService`. There
