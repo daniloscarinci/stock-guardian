@@ -23,6 +23,7 @@ import { LocationsScreen } from '../features/locations/LocationsScreen';
 import { CategoriesScreen } from '../features/categories/CategoriesScreen';
 import { ContactsScreen } from '../features/contacts/ContactsScreen';
 import { ReportsScreen } from '../features/reports/ReportsScreen';
+import { PhrasebookScreen } from '../features/phrasebook/PhrasebookScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 
 /** Wraps the routes so the navigation badge can read live counts. */
@@ -48,6 +49,7 @@ function Shell() {
         <Route path="categories" element={<CategoriesScreen />} />
         <Route path="contacts" element={<ContactsScreen />} />
         <Route path="reports" element={<ReportsScreen />} />
+        <Route path="phrasebook" element={<PhrasebookScreen />} />
         <Route path="settings" element={<SettingsScreen />} />
         {/* Any unknown route lands on the dashboard rather than a dead end. */}
         <Route path="*" element={<DashboardScreen />} />

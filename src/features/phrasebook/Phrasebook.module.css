@@ -1,0 +1,153 @@
+/*
+ * The phrasebook's own layout, and nothing else. The page frame, the cards and
+ * the headings are the ones every other screen uses - screens.module.css and
+ * the shared primitives - so this reads as a page OF the application rather
+ * than a page IN it.
+ *
+ * What is genuinely new here is one thing: three languages side by side.
+ */
+
+.entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.entry:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+/*
+ * The scanning target. Somebody looking for "how do I say I used three eggs"
+ * runs down these and stops; the phrases underneath are read only once the
+ * right row has been found.
+ */
+.entryLabel {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+/*
+ * Three columns on anything wide enough, one column below 60rem - the same
+ * breakpoint at which the application's tables become cards and its sidebar
+ * becomes a drawer.
+ *
+ * On a phone three columns would be three words wide each, so they stack
+ * instead. Which is why every column carries its own language name rather than
+ * relying on a heading row: stacked, position tells the reader nothing, and the
+ * reader's own language is rendered first so it is the one at the top.
+ */
+.columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-5);
+  align-items: start;
+}
+
+@media (max-width: 60rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.tag {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/*
+ * The interface language is emphasized rather than isolated. All three are
+ * always shown - seeing the same sentence three ways is the point - but the one
+ * the reader has chosen is the one in full-strength text.
+ */
+.primary .tag {
+  color: var(--accent);
+}
+
+.primary .phrase,
+.primary .example {
+  color: var(--text-primary);
+}
+
+.phrases {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phrase {
+  color: var(--text-secondary);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+}
+
+/* ---- The two notes -------------------------------------------------------- */
+
+.noteLanguages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.example {
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* ---- Asking and changing -------------------------------------------------- */
+
+/*
+ * The two sections are not the same kind of sentence, and the edge of the card
+ * says so before the hint under the heading has to. Colour is never the only
+ * signal: each section is titled, and its hint states what happens.
+ *
+ * An inset shadow rather than a border-left, deliberately. The card's own
+ * `border` shorthand would fight a `border-left` here, and which of the two won
+ * would depend on the order two CSS modules happened to land in the bundle.
+ * This cannot collide with anything, and follows the card's rounding for free.
+ */
+.asking {
+  box-shadow: inset 3px 0 0 var(--status-info);
+}
+
+.changing {
+  box-shadow: inset 3px 0 0 var(--status-warning);
+}
