@@ -24,10 +24,10 @@ that attempt fails and the phone reports a connection, the recognizer is asked
 once more without the offline requirement, and the system recognizer then sends
 what you said away to transcribe it — on most phones, to Google. The exchange is
 marked **Transcribed online** in the sheet, so you can see which presses left
-the device. It is never tried after you press back, never tried twice, and
-**Settings → Ask → Transcribe on this device only** stops it happening at all.
-*Speech* below sets out why the absolute rule was replaced and what still holds
-it in.
+the device. It is never tried after you press stop, never tried after a silence,
+never tried twice, and **Settings → Ask → Transcribe on this device only** stops
+it happening at all. *Speech* below sets out why the absolute rule was replaced
+and what still holds it in.
 
 **Downloading a speech pack.** *A download you ask for.* Where the browser
 offers it, installing an on-device model for your language costs nothing of
@@ -35,8 +35,10 @@ yours, and the point of it is to make the attempt above unnecessary.
 
 The application itself still reaches nothing, on any platform, whatever you do
 with these: the audit and the Content-Security-Policy below hold that, and the
-recording the second attempt sends is sent by the system recognizer rather than
-by this code. Your database is never uploaded either way — the assistant sends
+recording the second attempt sends is sent by the recognition service rather
+than by this code. That the application now holds `RECORD_AUDIO` changes what it
+may open, not where anything may go — *Speech* below says why the permission is
+there at all. Your database is never uploaded either way — the assistant sends
 the rows a question asked about and never the file they came from.
 
 ---
@@ -112,28 +114,40 @@ and the Android build ships no service worker at all. The first launch works
 with the radio off, the same as the thousandth. The audit above still runs over
 the same `dist/`, so the guarantee is enforced identically either way.
 
-**That APK now declares `INTERNET`, and it used to declare nothing.** The
-sentence it cost was a good one, so it is worth saying exactly what replaced it.
-A key the user pastes in is worth nothing unless the application can reach
-Anthropic with it, and Android has no permission narrower than `INTERNET`, no
-per-host form of it, and no way to hold it only while a feature is on. So it is
-declared once, in `AndroidManifest.xml`, with the reasoning beside it.
+**That APK now declares `INTERNET` and `RECORD_AUDIO`, and it used to declare
+nothing.** The sentence that cost was a good one, so it is worth saying exactly
+what replaced it, in the order the two were given up.
 
-The check in `.github/workflows/android.yml` was narrowed rather than deleted.
-It allows `android.permission.INTERNET` and the one permission androidx
-namespaces under this application's own id, and it fails the build on every
-other: `RECORD_AUDIO`, `CAMERA`, location, contacts, storage, and whatever a
-future dependency merges in. Run it yourself against a built APK — the command
-is in `docs/ANDROID.md` — and it prints `android.permission.INTERNET` and
-nothing else. That is a weaker sentence than "it asks for nothing", and it is
-still a sentence a machine checks on every build rather than one you have to
-believe.
+`INTERNET` went first. A key the user pastes in is worth nothing unless the
+application can reach Anthropic with it, and Android has no permission narrower
+than `INTERNET`, no per-host form of it, and no way to hold it only while a
+feature is on.
 
-The microphone needs none of this. The manifest carries a `<queries>` element so
-that `SpeechPlugin` can see the system recognizer at all — from Android 11 an
-application sees no other application it has not named — and that grants nothing
-and asks for nothing. There is still no `RECORD_AUDIO`, because the system's own
-recognizer holds the microphone. See `docs/ANDROID.md`.
+`RECORD_AUDIO` went second, and it is the microphone. Speech used to arrive
+through `ACTION_RECOGNIZE_SPEECH`: Google's own voice search screen opened, the
+system held the microphone, and this application recorded nothing. On the phone
+this project exists for that screen never opens — Android answers *"Voice search
+isn't available"* — while the keyboard's voice typing on the same phone works
+perfectly. The keyboard binds the speech service directly rather than firing the
+Intent, so `SpeechPlugin` does too, and binding it means recording here. The
+permission is requested on the first press of the microphone and never at
+startup; refuse it and typing is the same feature it always was. *Speech* below,
+and `docs/ANDROID.md`, carry the full argument.
+
+The check in `.github/workflows/android.yml` was narrowed rather than deleted,
+once for each. It allows `android.permission.INTERNET`,
+`android.permission.RECORD_AUDIO` and the one permission androidx namespaces
+under this application's own id, and it fails the build on every other:
+`CAMERA`, location, contacts, storage, and whatever a future dependency merges
+in. Run it yourself against a built APK — the command is in `docs/ANDROID.md` —
+and it prints those two names and nothing else. That is a weaker sentence than
+"it asks for nothing", and it is still a sentence a machine checks on every
+build rather than one you have to believe.
+
+The manifest also carries a `<queries>` element, so that
+`SpeechRecognizer.isRecognitionAvailable` can see the recognition service at all
+— from Android 11 an application sees no other application it has not named.
+That grants nothing and asks for nothing, and it is not `QUERY_ALL_PACKAGES`.
 
 ---
 
@@ -216,9 +230,9 @@ a `.src =` — the shapes that actually cause a request.
 not a request: nothing is fetched from that host, it appears in no reference
 format, and following it is a navigation the person chooses.
 
-**The Android permission gate.** The APK declares `INTERNET`; the workflow
-allows that one name and fails on every other permission. Set out above under
-*How it works*, and in `docs/ANDROID.md`.
+**The Android permission gate.** The APK declares `INTERNET` and `RECORD_AUDIO`;
+the workflow allows those two names and fails on every other permission. Set out
+above under *How it works*, and in `docs/ANDROID.md`.
 
 ### What it cannot promise
 
@@ -231,9 +245,10 @@ Stated rather than glossed, in the manner of the rest of this page.
 - **The audit is a text match.** The SDK reaches that host by default without
   being told to, so a second module that builds a client without naming a URL is
   invisible to the source rule. The Content-Security-Policy still binds the
-  whole page to one host and the Android gate to one permission, so the shape of
-  what could go wrong is "a second place in this codebase talks to Anthropic",
-  never "this application talks to somewhere else".
+  whole page to one host and the Android gate to two permissions, neither of
+  which is a network beyond `INTERNET`, so the shape of what could go wrong is
+  "a second place in this codebase talks to Anthropic", never "this application
+  talks to somewhere else".
 - **Your key sits at rest on the device**, in the settings table, alongside
   everything else. Anyone who can unlock the phone can reach it, and a debug
   build is readable over a cable. Revoking a key is done at Anthropic, not here.
@@ -249,20 +264,24 @@ because it did not work. It came back with an opt-in that nobody had switched on
 so it still did not work. What is here now is the third answer, and it changes
 the standard rather than the wording.
 
-Three recognizers sit behind one seam. Android's fires
-`ACTION_RECOGNIZE_SPEECH`, so the system holds the microphone and no
-`RECORD_AUDIO` is declared. Chrome's sets `processLocally` before every start,
-which fails closed. Everything else reports itself unavailable rather than
-falling back to the API's default mode, which streams the microphone to Google.
+Three recognizers sit behind one seam. Android's binds the recognition service
+through `SpeechRecognizer` — the on-device one where the phone has it, which
+cannot reach a network at all. Chrome's sets `processLocally` before every
+start, which fails closed. Everything else reports itself unavailable rather
+than falling back to the API's default mode, which streams the microphone to
+Google.
 
 ### Offline is the standard; the internet is what it falls back to
 
-Every listen starts on the device. The Android plugin sends
-`EXTRA_PREFER_OFFLINE` and Chrome's recognizer sets `processLocally = true`, and
-neither is a preference the recognizer may ignore quietly: with no model on the
-device for your language, that attempt fails rather than going to a server
-behind your back. On a phone that has the language, this is where every press
-ends, and nothing leaves.
+Every listen starts on the device. On Android that is
+`createOnDeviceSpeechRecognizer` where the phone has one — a service with no
+network of its own, so "offline" stops being a request that can be quietly
+ignored and becomes a property of what was bound — and `EXTRA_PREFER_OFFLINE`
+everywhere else. Chrome's recognizer sets `processLocally = true`. Neither is a
+preference the recognizer may ignore quietly: with no model on the device for
+your language, that attempt fails rather than going to a server behind your
+back. On a phone that has the language, this is where every press ends, and
+nothing leaves.
 
 **That failure is what removed this feature once, and dead-ended it twice.** On
 the Portuguese phone this was built for there is no offline pack. The recognizer
@@ -280,9 +299,11 @@ is tested on its own:
 
 - **It is second, never first.** The on-device attempt runs every time, and the
   retry exists only in the failure path of it.
-- **It never follows a cancel.** Press back and nothing further happens. Sending
-  a recording away because somebody changed their mind is the worst thing this
-  feature could do.
+- **It never follows a cancel, and never follows a silence.** Press stop and
+  nothing further happens; say nothing and nothing further happens either.
+  Sending a recording away because somebody changed their mind is the worst
+  thing this feature could do, and re-opening the microphone at somebody who has
+  already stopped talking is the second worst.
 - **It never runs without a connection.** `navigator.onLine` is read as a hint
   in one direction: a definite *no* stops it. A *yes* it cannot verify lets the
   attempt run and fail, which costs a second.
@@ -303,12 +324,21 @@ direction, because `seedDatabase` writes every default on first run and a stored
 `voiceAllowOnline: false` says *this install was never touched* far more often
 than it says *somebody refused the network*.
 
-**The retry is deliberately not aimed more precisely.** `ACTION_RECOGNIZE_SPEECH`
-returns no error extra, and the two Android constants that name a missing
-language pack are delivered only to a `RecognitionListener` — the API that needs
-`RECORD_AUDIO`, which this application does not hold. Below API 33 the diagnosis
-is a timing heuristic. A retry that waited for certainty would not fire on the
-phone this exists for, so it fires on any failure but a cancel.
+**The retry is now aimed, and it used to be sprayed.** It fired on any failure
+but a cancel, because `ACTION_RECOGNIZE_SPEECH` returned no error extra: the two
+Android constants that name a missing language pack are delivered only to a
+`RecognitionListener`, the API that records in this process, and the application
+did not hold `RECORD_AUDIO`. Below API 33 the diagnosis was a timing heuristic —
+a guess at whether `RESULT_CANCELED` came back faster than a person could press
+back. A retry that waited for certainty would not have fired on the phone this
+exists for.
+
+It holds `RECORD_AUDIO` now, so the constants arrive and the heuristic is
+deleted. The retry runs after a missing language pack, a network or server
+error, or a recognizer that could not bind at all. It does not run after a
+silence, a cancel, a refused microphone, or a device that transcribes nothing —
+a second attempt would help with none of those, and each one it skips is a
+recording that is not made.
 
 **Nothing in the application ever writes the setting.** Not a retry, not a
 failure, not an upgrade. A failure may put the switch in front of you — the
@@ -337,10 +367,21 @@ implementation that shipped audio somewhere itself would have nowhere to send
 it. What it cannot reach is the browser's own recognizer, which makes its calls
 outside the page — which is exactly why `processLocally` matters.
 
-**The APK still declares no `RECORD_AUDIO`.** It never has.
-`.github/workflows/android.yml` fails the build on that name along with every
-other permission but `INTERNET`, and the command to check a built APK yourself
-is in `docs/ANDROID.md`.
+**The APK declares `RECORD_AUDIO`, and this line used to say it never would.**
+That is the one guarantee on this page that was given up rather than tightened,
+and the paragraph above says why: the permission-free path could not work on the
+phone this was written for, while the keyboard's voice typing on the same phone
+could. `.github/workflows/android.yml` still fails the build on every permission
+but that one and `INTERNET`, and the command to check a built APK yourself is in
+`docs/ANDROID.md`.
+
+What the permission does not change: it lets this process open the microphone,
+and nothing more. There is no continuous listening and no wake word — one
+utterance per press, ended by the recognizer, by the stop button, or by closing
+the sheet, and the recognizer is destroyed on every one of those paths because a
+leaked one holds the microphone open. Audio is never written to storage and
+never passes through this application's own network code, which the
+Content-Security-Policy above would refuse anyway.
 
 **Failures are named rather than swallowed.** The plugin returns a stable code
 and the interface owns the wording; only a deliberate cancellation renders as

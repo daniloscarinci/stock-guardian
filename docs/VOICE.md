@@ -18,16 +18,24 @@ the same sheet, doing the same thing. Nothing about it is a fallback for
 anything, which is why it survived the release where the microphone did not.
 
 **The microphone tries your device first, every time, and the internet second.**
-It was built, shipped, and did not work on the phone it was built for: Android's
-recognizer refuses `EXTRA_PREFER_OFFLINE` when no offline Portuguese pack is
-installed, and answers *"Voice search isn't available"*. It was removed, brought
-back with an opt-in nobody had switched on, and said the same thing again. What
-is here now is on-device first as the standard and the network as the fallback:
-if the device cannot transcribe and the phone has a connection, the recognizer
-is asked once more without the offline requirement, and the exchange is marked
-**Transcribed online** so you can see it happened. **Settings → Ask → Transcribe
-on this device only** refuses that fallback outright. See *Speaking instead of
-typing*.
+It was built, shipped, and did not work on the phone it was built for. It was
+removed, brought back with an opt-in nobody had switched on, and did not work
+again. What is here now is on-device first as the standard and the network as
+the fallback: if the device cannot transcribe and the phone has a connection,
+the recognizer is asked once more without the offline requirement, and the
+exchange is marked **Transcribed online** so you can see it happened. **Settings
+→ Ask → Transcribe on this device only** refuses that fallback outright. See
+*Speaking instead of typing*.
+
+**Android asks you for the microphone now, and it did not use to.** For four
+releases this page said the application never requested that permission, and it
+was true: speech went through Google's own voice search screen, which held the
+microphone and handed back a sentence. On the phone this exists for that screen
+never opened — Android answered *"Voice search isn't available"* — while the
+keyboard's voice typing on the same phone worked perfectly. So the application
+now binds the speech service directly, the way the keyboard does, and that means
+it records and needs `RECORD_AUDIO`. See *The permission, and the design it
+replaced*.
 
 **Answers are read aloud.** Speaking is not listening: `speechSynthesis` opens
 no microphone, asks for no permission, and sends nothing anywhere. See *Reading
@@ -229,20 +237,27 @@ that does not is the same mistake wearing a hat.
 ### The device first, the internet second, and the second one is visible
 
 **The on-device attempt is not a preference — it is the request the recognizer
-is given, and it is given on every press.** On Android the plugin sends
-`EXTRA_PREFER_OFFLINE`; in Chrome the recognizer sets `processLocally = true`,
-which fails closed. With no model on the device for your language that attempt
-fails rather than quietly going looking for a network. On a phone that has the
-language, this is where it ends and nothing leaves.
+is given, and it is given on every press.** On Android with API 33 or later the
+plugin binds `createOnDeviceSpeechRecognizer`, the same on-device service the
+keyboard's voice typing uses, which has no network of its own; on older phones
+it binds the default service and sends `EXTRA_PREFER_OFFLINE`. In Chrome the
+recognizer sets `processLocally = true`, which fails closed. With no model on
+the device for your language that attempt fails rather than quietly going
+looking for a network. On a phone that has the language, this is where it ends
+and nothing leaves.
 
 **If it fails and the phone has a connection, the same call runs once more
 without the offline requirement.** The system recognizer then transcribes over
-the network, which on most phones means Google receives what you said. Four
+the network, which on most phones means Google receives what you said. Five
 rules bound it, and `src/services/speech/online.ts` is the whole of them:
 
 - **Second, never first.** The retry lives only in the failure path of the
   on-device attempt.
-- **Never after a cancel.** Press back and nothing else happens.
+- **Never after a cancel, and never after a silence.** Press stop and nothing
+  else happens. Say nothing and nothing else happens either: the retry is a
+  fresh recording, not a second look at the same audio, so it would open the
+  microphone again at somebody who has already stopped talking.
+- **Never after a refused microphone.** A second attempt is a second refusal.
 - **Never with no connection.** `navigator.onLine` is read as a hint in one
   direction: a definite *no* stops the retry; a *yes* it cannot verify lets the
   attempt run and fail, which costs a second.
@@ -252,11 +267,12 @@ rules bound it, and `src/services/speech/online.ts` is the whole of them:
 *Transcrito por internet* appears in the log beside the marker naming which
 engine answered. Most presses never show it, which is the point of showing it.
 
-**Why the retry is not aimed more precisely.** The Intent flow returns no error
-extra and the two constants that name a missing language pack never reach it
-(see *What Android actually tells you*), so a retry that waited for a diagnosis
-would not fire on the phone this exists for. It fires on any failure but a
-cancel. A wasted retry costs a second; a missed one is a dead button.
+**Why the retry is aimed, and used not to be.** It fired on any failure but a
+cancel, because the Intent flow returned no error and there was nothing to
+condition on. The plugin now reads the real error constants (see *What Android
+tells you now*), so the retry runs after a missing language pack, a network or
+server error, or a recognizer that could not bind — and after nothing else. Each
+failure it skips is a recording that is not made.
 
 **Settings → Ask → Transcribe on this device only** turns the second attempt off
 for good: what you say never leaves the phone, and a language with no offline
@@ -283,13 +299,23 @@ plugin cannot know which of three languages you read:
 
 | What happened | What you see |
 |---|---|
-| You pressed back | Nothing at all. It was deliberate. |
+| You pressed stop | Nothing at all. It was deliberate. |
 | No offline model for your language | The panel below |
 | Nothing on the device transcribes | *This device cannot transcribe speech on its own* |
 | The recognizer wanted a network | *The recognizer went looking for the internet and did not find it* |
 | It heard nothing it could read | *I did not hear anything. Try again, or type the command* |
 | Something else holds the microphone | *Something else is using the microphone* |
+| You refused the microphone | *The microphone needs your permission, and it was not given* — the next press asks again |
+| You refused it for good | A panel: *refused for good, so this phone will not ask again*, with **Open app settings** beside it |
 | Anything else | *The microphone could not be used. Typing works* |
+
+The last two are the permission, and they are separate on purpose. Refuse once
+and Android will still show its prompt on the next press, so the way forward is
+the microphone itself and a sentence is enough. Refuse twice and Android stops
+showing it — a press would raise no dialog at all — so the only way back is this
+application's own page in Settings, and the panel offers it. An application that
+kept prompting into that void would be a control with an animation and no
+effect.
 
 The missing-model case gets a panel rather than a sentence, because it is the
 only failure with something you can actually do about it — and it now reaches
@@ -306,63 +332,93 @@ your phone had no *offline speech pack* — a term nobody outside this repositor
 uses. Sending somebody hunting through a settings screen after a failure they
 cannot interpret is how this failed the first time.
 
-### What Android actually tells you, and what is guessed
+### The permission, and the design it replaced
 
-Less than you would like. `ACTION_RECOGNIZE_SPEECH` hands recording to the
-system, which is why this application declares no `RECORD_AUDIO` — but the
-result `Intent` carries no error extra. `EXTRA_RESULTS` and
-`EXTRA_CONFIDENCE_SCORES` are its whole documented contents, so the entire
-diagnosis is the activity result code. `RecognizerIntent` documents five beyond
-`RESULT_OK` and `RESULT_CANCELED`, and every one is mapped — but a recognizer is
-free to answer `RESULT_CANCELED` instead, and Google's commonly does. The two
-constants that name a missing offline model, `ERROR_LANGUAGE_UNAVAILABLE` and
-`ERROR_LANGUAGE_NOT_SUPPORTED`, arrive through `RecognitionListener`, which
-belongs to the API that needs the microphone permission. They never reach an
-`Intent` result.
+For four releases this application declared no `RECORD_AUDIO`, and the design
+behind that was not a technicality. `SpeechPlugin` fired
+`ACTION_RECOGNIZE_SPEECH`. Google's own voice search screen opened, the system
+held the microphone, and the application was handed a sentence it had never
+recorded. There was no audio stream here to ask permission for, and the check in
+`.github/workflows/android.yml` proved it on every build. On every axis but one,
+that is the better design.
 
-So a missing model is established two other ways, in this order:
+The axis it failed on was the phone. On a **moto g35 5G** — the phone this whole
+feature exists for — that Intent answers *"Voice search isn't available"*,
+because the component behind it, Google Voice Search, is not on the device. Four
+releases went into that wall. The last of them added a retry over the network,
+which knocked on the same door and got the same answer.
 
-1. **Before the dialog opens**, by asking `checkRecognitionSupport` which
-   languages are installed. That is API 33 and up, it records nothing, and it
-   needs no permission: it is a question about the recognizer, not a use of the
-   microphone. A definite *the installed list is not empty and your language is
-   not in it* rejects before anything opens.
-2. **Below API 33, or when that cannot answer**, by how fast `RESULT_CANCELED`
-   comes back. A refusal returns at once; a person deciding not to speak cannot
-   open the dialog, read it and press back inside a second. **This one is a
-   heuristic.** It names *no offline model* only where the pre-flight did not
-   establish that the model is there, and any other instant `RESULT_CANCELED` is
-   reported as a plain failure rather than as a cancellation.
+**What ended the argument was the keyboard.** Gboard's voice typing works
+perfectly on that phone. So the device can transcribe; it will not do it when
+asked that way. Gboard does not fire the Intent — it binds the recognition
+service directly, through `SpeechRecognizer`. That is what `SpeechPlugin` does
+now, and that API records in this process, which is what `RECORD_AUDIO` is for.
 
-   That last part matters more than it looks. `cancelled` renders as nothing
-   *and* stops the second attempt, so guessing it wrongly costs the whole
-   feature — which is what happened the first time. Guessing *failure* wrongly
-   costs one sentence. Both attempts pass through this, and an instant
-   `RESULT_CANCELED` on the second one is a recognizer refusing, not somebody
-   changing their mind inside a second.
+The permission is asked for **on the first press of the microphone and never at
+startup**, so somebody who opens the application to read what is in the pantry
+is never asked about it. Refusing it is an outcome the interface handles, in the
+two rows at the end of the table above. Typing is the same feature either way.
 
-`android/.../SpeechPlugin.java` says the same thing at greater length, next to
-the code it describes.
+The manifest still carries a `<queries>` element, naming
+`android.speech.RecognitionService`. From Android 11 an application sees no
+other application it has not named, so without it the recognition service cannot
+be found or bound and the microphone would report itself unavailable on every
+modern phone. It grants nothing and asks for nothing, and it is not
+`QUERY_ALL_PACKAGES`. The activity action
+`android.speech.action.RECOGNIZE_SPEECH` used to be in there too, and came out
+with the Intent that used it.
 
-### Package visibility, which is not a permission
+### What Android tells you now, and what is no longer guessed
 
-The manifest carries a `<queries>` element naming
-`android.speech.RecognitionService` and `android.speech.action.RECOGNIZE_SPEECH`.
-From Android 11 an application sees no other application it has not named, so
-without it `queryIntentActivities` returns an empty list and the microphone
-reports itself unavailable on every modern phone. It grants nothing and asks for
-nothing. It is not `QUERY_ALL_PACKAGES`, which is a permission and is not there.
+The error codes are what the permission bought. `RecognitionListener.onError`
+delivers the real constants, and `SpeechPlugin` maps every one of them:
+
+| Android says | This says | Retried? |
+|---|---|---|
+| `ERROR_LANGUAGE_UNAVAILABLE`, `ERROR_LANGUAGE_NOT_SUPPORTED` | no offline model | yes |
+| `ERROR_NETWORK`, `ERROR_NETWORK_TIMEOUT`, `ERROR_SERVER`, `ERROR_SERVER_DISCONNECTED` | network | yes |
+| `ERROR_CLIENT`, `ERROR_AUDIO`, anything unmapped | failed | yes |
+| `ERROR_NO_MATCH`, `ERROR_SPEECH_TIMEOUT` | nothing was heard | no |
+| `ERROR_RECOGNIZER_BUSY` | busy | no |
+| `ERROR_INSUFFICIENT_PERMISSIONS` | permission refused | no |
+
+The first two rows are the point of the rewrite: `ERROR_LANGUAGE_UNAVAILABLE`
+and `ERROR_LANGUAGE_NOT_SUPPORTED` are the two constants that name a missing
+offline model, and they could never reach an `Intent` result at all. `failed`
+is retried deliberately — an on-device recognizer that cannot bind reports
+`ERROR_CLIENT`, and that is exactly the phone this exists for.
+
+**The timing heuristic is deleted.** There used to be a guess in here: a
+`RESULT_CANCELED` that came back faster than a person could press back was read
+as a refusal rather than as a cancellation, because the Intent carried no error
+and that was the only signal available. It existed to work around a silence this
+API does not have. Nothing in the plugin guesses now.
+
+Two things about the plugin are worth knowing even though they never reach the
+screen. `SpeechRecognizer` must be created, started and destroyed on the main
+thread, and a Capacitor plugin method does not run there — getting that wrong
+produces a silent failure indistinguishable from the bug being fixed, so every
+touch of a recognizer goes through a main-looper handler. And one exit path
+destroys the recognizer on results, on errors, on a stop and on the activity
+going away, because a leaked one holds the microphone open.
+
+`android/.../SpeechPlugin.java` says all of this at greater length, next to the
+code it describes.
 
 ---
 
 ## What it will not do
 
-- **No wake word, and no continuous listening.** One utterance per press. The
-  Intent has no continuous mode, and an application that listens without being
-  asked is not one to build on a promise about what leaves the device.
-- **No `RECORD_AUDIO`, ever.** The system's recognizer holds the microphone and
-  this application is handed a sentence. The check in
-  `.github/workflows/android.yml` fails the build on that permission.
+- **No wake word, and no continuous listening.** One utterance per press, ended
+  by the recognizer, by the stop button beside *Ouvindo…*, or by closing the
+  sheet — and the recognizer is released on every one of those. An application
+  that listens without being asked is not one to build on a promise about what
+  leaves the device.
+- **No permission but the network and the microphone.** That list used to read
+  "no `RECORD_AUDIO`, ever", and *The permission, and the design it replaced*
+  above is the account of why it does not any more. The check in
+  `.github/workflows/android.yml` was narrowed to those two names and still
+  fails the build on camera, location, contacts, storage and anything else.
 - **No conversation.** The engine answers the forms in the tables above.
   Anything else is UNKNOWN with examples, not a guess. It has no memory between
   sentences: each one is parsed on its own, so "and two more" refers to nothing.

@@ -78,15 +78,25 @@ command rather than changing the machine's default:
 JAVA_HOME=/path/to/jdk-21 ./gradlew assembleDebug
 ```
 
-Then run the same check the workflow runs. It should print
-`android.permission.INTERNET`, on one line, and nothing else:
+Then run the same check the workflow runs. It should print exactly two lines,
+in this order, and nothing else:
 
 ```bash
 aapt2 dump permissions android/app/build/outputs/apk/debug/app-debug.apk   | grep '^uses-permission:' | cut -d"'" -f2 | grep -v '^app.stockguardian.android.'
 ```
 
-Any second line is a failure. The workflow allows that one name and rejects
-every other, and the section below says why there is one at all.
+```
+android.permission.INTERNET
+android.permission.RECORD_AUDIO
+```
+
+Any third line is a failure. The workflow allows those two names and rejects
+every other, and the section below says why there are two at all.
+
+To see the check bite, add `<uses-permission
+android:name="android.permission.CAMERA" />` to the manifest, rebuild, and run
+it again: `android.permission.CAMERA` appears, the workflow step exits 1. Then
+take it out.
 
 ---
 
@@ -129,25 +139,33 @@ because a service worker updates on its own schedule. `VITE_TARGET=android`
 therefore drops it from the build. The APK is the offline mechanism on Android;
 the service worker is the offline mechanism on the web.
 
-**It asks the system for one permission, and it used to ask for none.** That
-change is worth explaining rather than noticing.
+**It asks the system for two permissions, and it used to ask for none.** Both
+changes are worth explaining rather than noticing, and both were made one at a
+time against a check that would otherwise have failed the build.
 
-The application declares `android.permission.INTERNET`, and only because the AI
-assistant reaches `api.anthropic.com` with a key the user pastes into Settings.
-Android offers nothing narrower: no per-host permission, no way to hold one only
-while a feature is switched on, and no way for a WebView to make that one
-request without it. Leave the key blank and nothing uses it — the application
-still opens no connection, and the first launch still works with the radio off,
+`android.permission.INTERNET` is there because the AI assistant reaches
+`api.anthropic.com` with a key the user pastes into Settings. Android offers
+nothing narrower: no per-host permission, no way to hold one only while a
+feature is switched on, and no way for a WebView to make that one request
+without it. Leave the key blank and nothing uses it — the application still
+opens no connection, and the first launch still works with the radio off,
 because every asset is inside the package.
 
+`android.permission.RECORD_AUDIO` is there because the microphone is, and the
+paragraph below on the microphone is the whole argument for it. It is requested
+at runtime on the first press of the microphone, never at startup, so somebody
+who opens this application to read what is in the pantry is never asked about
+it.
+
 The check that used to prove the APK asked for nothing was narrowed rather than
-deleted. It allows `android.permission.INTERNET`, allows names in this
-application's own namespace, and fails the build on every other permission:
-`RECORD_AUDIO`, `CAMERA`, location, contacts, storage, and whatever a future
-library brings with it. Open **Settings → Apps → Stock Guardian → Permissions**
-and you should find that one entry. "It asks for the network and nothing else"
-is a weaker sentence than the one it replaced, and it is still checked by a
-machine on every build rather than asserted here.
+deleted, twice. It allows `android.permission.INTERNET` and
+`android.permission.RECORD_AUDIO`, allows names in this application's own
+namespace, and fails the build on every other permission: `CAMERA`, location,
+contacts, storage, and whatever a future library brings with it. Open **Settings
+→ Apps → Stock Guardian → Permissions** and you should find the microphone, and
+nothing you did not expect. "It asks for the network and the microphone and
+nothing else" is a weaker sentence than the one it replaced, and it is still
+checked by a machine on every build rather than asserted here.
 
 The namespaced entry is not a permission the application asks anyone for.
 androidx declares
@@ -175,38 +193,85 @@ it writes to the application's own external files directory instead, because the
 public Downloads folder would need a storage permission there and this
 application has none.
 
-**The microphone asks for no permission.** `SpeechPlugin` fires
-`ACTION_RECOGNIZE_SPEECH`: the system's own screen opens, the system holds the
-microphone, and this application is handed a sentence. It never opens an audio
-stream, so `RECORD_AUDIO` is not in the manifest and fails the build if anybody
-puts it there.
+**The microphone asks for `RECORD_AUDIO`, and this page used to promise it never
+would.** That promise was kept for four releases and it is worth setting out why
+it was made, because the reasoning was sound and the outcome was a dead button.
 
-**The plugin no longer decides whether to stay offline.** `listen` takes
+`SpeechPlugin` used to fire `ACTION_RECOGNIZE_SPEECH`. Google's own voice search
+screen opened, the system held the microphone, this application was handed a
+sentence, and no audio stream was ever opened here — so there was nothing to ask
+permission for, and the build's check proved it on every push. That is a better
+design than the one below on every axis except the one that matters.
+
+On a **moto g35 5G**, the phone this application is built for, that Intent
+answers *"Voice search isn't available"*. The component behind it — Google Voice
+Search — is not available on the device. Four releases went into that wall,
+including the online retry added in 2.2.1, which knocked on the same door.
+
+What ended the argument was the keyboard. **Gboard's voice typing works
+perfectly on the same phone**, which means the device can transcribe and is
+simply refusing the shape of the request. Gboard does not fire that Intent; it
+binds the recognition service directly, through `SpeechRecognizer`. So
+`SpeechPlugin` does that now — and `SpeechRecognizer` records in this process,
+which is what `RECORD_AUDIO` is for. The user was asked, and accepted the
+permission, in order to have a microphone that works.
+
+Three things follow, and all three are in the code rather than in this
+paragraph:
+
+- **It is asked for on the first press and never at startup.** Capacitor's
+  `requestPermissionForAlias` raises the system prompt from `listen` itself.
+- **A refusal is an outcome, not an error.** Refuse once and the sheet says the
+  permission was not given and the next press will ask again. Refuse twice and
+  Android stops asking, so the panel says so and offers this application's own
+  page in Settings, which is the only thing that can undo it. An application
+  that kept prompting into that void would be a control with an animation and no
+  effect.
+- **The error codes are the prize.** `RecognitionListener.onError` delivers the
+  real constants, including `ERROR_LANGUAGE_UNAVAILABLE` and
+  `ERROR_LANGUAGE_NOT_SUPPORTED` — the two that name a missing offline model and
+  could never reach an `Intent` result. The timing heuristic that used to guess
+  a refusal from how quickly `RESULT_CANCELED` came back is deleted.
+
+`SpeechRecognizer` must be created, started and destroyed on the main thread,
+and a Capacitor plugin method does not run there. Getting that wrong produces a
+silent failure indistinguishable from the bug above, so every touch of a
+recognizer in `SpeechPlugin` goes through a main-looper handler, and one exit
+path destroys it on results, on errors, on a cancel and on the activity going
+away. A leaked recognizer holds the microphone open.
+
+**The plugin still does not decide whether to stay offline.** `listen` takes
 `preferOffline` and does as it is told; the web layer owns the sequence, in
 `src/services/speech/capacitor.ts`, where it can be tested without a phone in
-the room. Every press calls it once with `true`, which sends
-`EXTRA_PREFER_OFFLINE` and keeps the recording on the device. If that fails and
-the phone reports a connection, it calls once more with `false`, the extra is
-omitted, and the system recognizer transcribes over the network — on most
-phones, through Google. The exchange is then marked *Transcribed online* in the
-sheet.
+the room. Every press calls it once with `true`: on API 33 and up that binds
+`createOnDeviceSpeechRecognizer` — the same on-device service the keyboard uses,
+which cannot reach a network at all — and elsewhere it is
+`createSpeechRecognizer` with `EXTRA_PREFER_OFFLINE`. If that fails and the
+phone reports a connection, it calls once more with `false`, and the default
+recognition service transcribes over the network — on most phones, through
+Google. The exchange is then marked *Transcribed online* in the sheet.
 
-That flag is why this feature was removed once and dead-ended twice: on a phone
-with no offline pack for the language Android's recognizer simply refuses, and
-it answered *"Voice search isn't available"* on the Portuguese phone this was
-built for. **Settings → Ask → Transcribe on this device only** restores the
-absolute behaviour for anyone who wants it, and is off as shipped.
-`docs/VOICE.md` sets out how each failure is named and what bounds the second
-attempt.
+The second attempt is now aimed rather than sprayed. It runs after a missing
+language pack, a network or server error, or a recognizer that could not bind;
+it does not run after a silence, a cancel, or a refused microphone, because a
+retry is a fresh recording and those are not failures a second service could
+fix. **Settings → Ask → Transcribe on this device only** removes it entirely,
+and is off as shipped. `docs/VOICE.md` sets out how each failure is named.
+
+**There is a stop button while it listens, and it replaces something the system
+used to provide.** The recognizer's screen had a back button. A bound service
+shows nothing at all, so without one a press made by mistake would hold a
+microphone this process is now the one holding.
 
 **The manifest carries a `<queries>` element, and it is not a permission.** From
 Android 11 an application sees no other application it has not named, so without
-it `queryIntentActivities` returns an empty list, and the microphone would
-report itself unavailable on every modern phone. It names
-`android.speech.RecognitionService` and `android.speech.action.RECOGNIZE_SPEECH`
-and nothing else. It grants no capability and is not `QUERY_ALL_PACKAGES`, which
-is a permission and is not there. The build's permission check still finds
-`INTERNET` alone.
+it `SpeechRecognizer.isRecognitionAvailable` reports nothing and the bind that
+follows would fail — the microphone would report itself unavailable on every
+modern phone. It names `android.speech.RecognitionService` and nothing else; the
+activity action `android.speech.action.RECOGNIZE_SPEECH` was in there too and
+came out with the Intent that used it. It grants no capability and is not
+`QUERY_ALL_PACKAGES`, which is a permission and is not there. The build's
+permission check still finds `INTERNET` and `RECORD_AUDIO` and nothing more.
 
 **`RingerPlugin` is the other half of the sound.** One method, `isSilent`,
 reading `AudioManager.getRingerMode` so that an answer read aloud does not talk
@@ -266,19 +331,33 @@ tells you something different:
    leave the application from the dashboard.
 7. **The ask button opens the box.** Tap the speech bubble in the header and
    type *"quanto arroz eu tenho?"*.
-8. **The microphone works.** Press it in the sheet and say the same thing. With
-   an offline Portuguese pack installed you get an answer and no marker, because
-   nothing left the phone. Without one, the recognizer's screen may appear twice
-   in quick succession — that is the second attempt — and the answer carries
-   *Transcrito pela internet*. Turn the radio off and try again: you should get
-   the panel naming the missing pack and the way to install it, never a button
-   that does nothing. Then switch **Settings → Ask → Transcribe on this device
-   only** on and confirm the second attempt stops happening. Either way, confirm
-   in **Settings → Apps → Stock Guardian → Permissions** that the microphone is
-   *not* among what this application holds: the system's recognizer holds it.
-   The one permission declared is the network, and only the assistant uses it:
-   the second attempt travels on the system recognizer's own connection, not on
-   this application's.
+8. **The microphone asks once, then works.** Press it in the sheet. The first
+   press of the first run raises Android's microphone prompt — that is the only
+   time it appears, and it must not appear at startup. Allow it and say the same
+   thing. With an offline Portuguese pack installed you get an answer and no
+   marker, because nothing left the phone. Without one there is a pause while
+   the second attempt runs, and the answer carries *Transcrito pela internet*.
+   No screen of Google's opens at any point now; the *Ouvindo…* line and the
+   stop button beside it are the whole of the interface while it listens.
+
+   Turn the radio off and try again: you should get the panel naming the missing
+   pack and the way to install it, never a button that does nothing. Then switch
+   **Settings → Ask → Transcribe on this device only** on and confirm the second
+   attempt stops happening.
+
+   Now check the refusal, because it is a first-class outcome and it is new.
+   Revoke the microphone in **Settings → Apps → Stock Guardian → Permissions**
+   and press it again: Android asks, refuse, and the sheet should say the
+   permission was not given and that the next press will ask once more. Refuse a
+   second time and Android stops asking — the sheet must then say so and offer
+   **Abrir as configurações do aplicativo**, never a prompt that does not
+   appear. Typing works throughout.
+
+   That permissions screen should list the microphone and nothing you did not
+   expect. It did not list it before this release, and `docs/VOICE.md` and the
+   microphone section above explain why that changed. The network permission is
+   still the assistant's alone: the second attempt travels on the recognition
+   service's own connection, not on this application's.
 9. **Answers are read aloud, and the silent switch stops them.** Leave
    **Settings → Ask → Read answers aloud** on, ask a question, and listen. Then
    put the phone on silent and ask again: `RingerPlugin` reads the ringer mode,
@@ -307,10 +386,10 @@ npm run generate:android-icons
 artwork and automatic backup switched on. `generate:android-icons` replaces the
 artwork and deletes what it supersedes. The manifest, `MainActivity.java` and
 `app/build.gradle` carry the rest of those decisions and would have to come back
-from git — including the `queries` element, `allowBackup="false"`, and the long
-comment explaining why `INTERNET` is the only permission here. The template's
-own `INTERNET` line happens to be the one thing it gets right now, which is a
-poor reason to trust the rest of it.
+from git — including the `queries` element, `allowBackup="false"`,
+`RECORD_AUDIO`, and the long comment explaining why those two permissions are
+here and no others. The template's own `INTERNET` line happens to be the one
+thing it gets right now, which is a poor reason to trust the rest of it.
 
 ---
 

@@ -117,6 +117,29 @@ refused every request, and the button appeared dead. Twice. Failures that still
 happen are named rather than silent, and the one that can be fixed comes with a
 panel holding the install path and the way back to the typed box.
 
+*Android asks you for the microphone, and it did not use to.* This section used
+to say the application never requested that permission, and the design behind
+the claim was real: speech went through `ACTION_RECOGNIZE_SPEECH`, Google's own
+voice search screen opened, the system held the microphone, and this application
+was handed a sentence it had not recorded. Nothing to ask for, nothing to
+refuse.
+
+It is abandoned because on the phone this application exists for — a moto g35
+5G — that screen never opens. Android answers *"Voice search isn't available"*:
+the component behind the Intent is not on the device. Four releases went into
+that wall, including a retry that knocked on the same door. What ended the
+argument was the keyboard: **voice typing works perfectly on the same phone**,
+which means the phone can transcribe and simply will not do it when asked that
+way. The keyboard does not fire the Intent — it binds the speech service
+directly, and that is what this application does now. Binding it means recording
+here, and recording here means `android.permission.RECORD_AUDIO`.
+
+Android asks you the first time you press the microphone and never at startup.
+Say no and the button says so and points at the typed box; say no twice and
+Android stops asking, so the panel offers the app's own settings page instead of
+prompting into a void. Typing is the same feature either way, and nothing about
+the stock database changed: it still never leaves the phone.
+
 If you want the absolute version anyway, **Settings → Ask → Transcribe on this
 device only** restores it in one press: no second attempt, ever, and a language
 with no offline pack simply will not transcribe. It is off as shipped, and
@@ -208,16 +231,23 @@ built from the same source and carrying every asset inside the file. It needs no
 network even on first launch, and it keeps Android's automatic backup switched
 off, so the database never reaches Google Drive.
 
-It asks the operating system for one permission: `android.permission.INTERNET`,
-and only so that the AI assistant can reach Anthropic with your key. That is a
-change. The APK used to ask for nothing at all, which was the better sentence,
-and Android offers no narrower way to make one request. So the build's check was
-narrowed rather than dropped: it allows that one name and fails on every other —
-`RECORD_AUDIO`, camera, location, contacts, storage — and you can run it
-yourself against a built APK. `RECORD_AUDIO` has never been declared, microphone
-and all: speech goes through the system's own recognizer, which holds the
-microphone itself and hands this application a sentence. Leave the key blank and
-the application opens no connection at all.
+It asks the operating system for two permissions and no others.
+`android.permission.INTERNET`, so the AI assistant can reach Anthropic with your
+key — leave the key blank and the application opens no connection at all. And
+`android.permission.RECORD_AUDIO`, for the microphone in the ask box, requested
+the first time you press it rather than at startup.
+
+Both are changes, and both were argued for one at a time. The APK used to ask
+for nothing at all, which was the better sentence. `INTERNET` went first because
+Android offers no narrower way to reach one host. `RECORD_AUDIO` went second
+because the permission-free path it replaces — handing recording to Google's
+voice search screen — does not work on the phone this was built for, while the
+keyboard's voice typing on that same phone does. The reasoning in full is in
+`docs/ANDROID.md`.
+
+So the build's check was narrowed rather than dropped, twice. It allows exactly
+those two names and fails on every other — camera, location, contacts, storage —
+and you can run it yourself against a built APK.
 
 `docs/ANDROID.md` explains how to produce the APK and what to check after
 installing it. Nothing else here changes: the phone still holds its own database,
@@ -300,7 +330,7 @@ a "coming soon" panel — if it is not built, it is not shown.
 
 - **Speech input on every browser.** The microphone needs a recognizer this
   application can ask about locality, so that it can insist on the on-device
-  attempt first. Chrome exposes one and Android has the system recognizer;
+  attempt first. Chrome exposes one and Android has its recognition service;
   Safari and Firefox offer a networked-only API with no such control, and one
   that cannot be questioned is not used. There the typed box is the way in, and
   it always was.

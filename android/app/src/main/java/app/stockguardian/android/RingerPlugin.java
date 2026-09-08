@@ -12,21 +12,28 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 /**
  * One question: is the phone on silent?
  *
- * This is what is left of SpeechPlugin, which used to hand recording to the
- * system recognizer through ACTION_RECOGNIZE_SPEECH. That never worked on the
- * phone it was built for - Android's recognizer refuses EXTRA_PREFER_OFFLINE
- * when no offline Portuguese pack is installed, and answers "Voice search
- * isn't available" - so voice commands were dropped. Reading answers ALOUD was
- * not: it works, and it is genuinely useful with your hands full.
+ * This is what was left of SpeechPlugin when the microphone was dropped. That
+ * plugin used to hand recording to the system recognizer through
+ * ACTION_RECOGNIZE_SPEECH, which never worked on the phone it was built for -
+ * Android answers "Voice search isn't available" there - so voice commands went
+ * and reading answers ALOUD stayed, because it works and is genuinely useful
+ * with your hands full.
  *
- * Which leaves this. A WebView cannot see the ringer mode, so a spoken answer
- * would talk straight over a phone its owner had deliberately silenced.
+ * The microphone is back, on a different mechanism: SpeechPlugin now binds the
+ * recognition service directly and holds RECORD_AUDIO. These two stayed apart
+ * anyway. Recognizing speech belongs to the microphone, reading the ringer
+ * switch belongs to the speaker, and an APK that can speak needs nothing from
+ * the plugin that listens.
+ *
+ * A WebView cannot see the ringer mode, so a spoken answer would talk straight
+ * over a phone its owner had deliberately silenced.
  * src/services/speech/ringer.ts is the other half; the voice sheet composes it
  * with the user's own setting, and either saying no is enough to stay quiet.
  *
  * It asks the system for nothing. AudioManager.getRingerMode needs no
- * permission, opens no socket and records nothing, which is why the check in
- * .github/workflows/android.yml still passes with INTERNET as the only entry.
+ * permission, opens no socket and records nothing, which is why nothing in this
+ * file appears in the permission check in .github/workflows/android.yml - a
+ * check that allows INTERNET and RECORD_AUDIO and fails the build on the rest.
  *
  * Java rather than Kotlin because this Gradle build has no Kotlin plugin. One
  * class is not a reason to add a language toolchain.
