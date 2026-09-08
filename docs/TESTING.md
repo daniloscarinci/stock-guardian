@@ -1,7 +1,7 @@
 # Testing
 
 ```bash
-npm test              # 827 unit tests, 33 files
+npm test              # 956 unit tests, 36 files
 npm run smoke         # 18 browser checks against the production build
 npm run typecheck     # TypeScript, strict
 ```
@@ -64,9 +64,10 @@ back:
 
 `src/voice/grammar/*.phrases.test.ts` holds every phrase form the application
 claims to understand — 67 in Portuguese, 77 in English, 78 in Spanish. They are
-written the way a recognizer returns a sentence, lowercase and often without
-accents, rather than the way a person would type it, because that is what the
-parser actually receives.
+written lowercase and often without accents - the way speech used to arrive,
+and the way a hurried thumb still does - rather than the way a careful person
+would type it, because a folded, unaccented phrase is what the parser is built
+to survive.
 
 A corpus, not a sample. It is the specification of the feature: a phrase that is
 not in it is a phrase `docs/VOICE.md` does not claim.
@@ -158,15 +159,15 @@ Stated so nobody mistakes green for complete.
   React Testing Library suite, written because the confirmation card's whole
   purpose is a thing that must not happen and no other layer can prove it. Every
   screen is exercised end to end by the smoke test instead, not unit tested.
-- **Real speech.** No test speaks. The three recognizers are tested against
-  stubs — that `processLocally` is set, that `start()` is never reached without
-  an on-device model unless the user has opted in, that both sides of that
-  opt-in behave, that the Android plugin is called with the right language and
-  with `allowOnline: false` when nobody asked for otherwise, and that every
-  rejection carries a reason the interface can act on — and the voice sheet is
-  driven through its typed box. Whether a given phone's recognizer actually
-  transcribes offline is a property of that phone, and `docs/ANDROID.md` lists
-  it among the things to check on the first install.
+- **Real speech.** No test speaks, and nothing listens any more: the
+  recognizers were deleted with the feature, and their suites with them.
+  `ringer.test.ts` covers what is left of that layer - that the ringer is read
+  on Android, that it is not asked anywhere else, and that a bridge call which
+  fails is read as "not silenced" rather than thrown.
+- **The real Anthropic API.** Never. `converse.test.ts` and `VoiceSheet.test.tsx`
+  both replace the SDK and keep `client.ts` real, so the assertion that no key
+  builds no client is made against the code that would have built one. Every key
+  in every test is a string nobody could bill.
 - **Printing.** The print stylesheet is written and the button calls
   `window.print()`, but no test opens a print preview - browsers do not expose
   one to automation.

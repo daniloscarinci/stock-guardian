@@ -1,5 +1,76 @@
 # Changelog
 
+## Unreleased
+
+The entry below records 2.0.0 as it shipped and is left standing. Two of the
+things it describes are no longer true, and both are named here rather than
+edited out of the history.
+
+### The assistant is wired in
+
+**Ask Claude from the same box the twelve rules answer.** Paste your own
+Anthropic API key into **Settings → Ask Claude**, switch it on, and a typed
+question goes to `api.anthropic.com` instead of to the parser. Claude is handed
+functions rather than data - find an item, what is expiring, what is below its
+minimum - and the application runs the ones it chose against the database on
+this device. The inventory is never uploaded.
+
+Anything it proposes changing arrives as the confirmation card voice control
+already had, calls the same `commit`, and can be undone the same way. Nothing a
+model produced can reach the database without a press, and the interface does
+not read the proposal's own `certainty` field to decide that - a value can be
+wrong, and this one would be wrong in the direction that writes.
+
+**Every exchange says which engine answered.** One is exact, offline and free;
+the other is capable and costs money per question, and the difference is worth
+a line on each answer rather than a banner.
+
+**Claude failing falls back rather than dead-ending.** No signal, a refused key,
+too many questions at once: the twelve rules answer instead, and the sheet says
+which of those it was, so a key typed with one character wrong does not look
+like an assistant nobody switched on.
+
+### Voice control loses its microphone
+
+**Speech input is removed.** It was built, it shipped, and it did not work on
+the phone it was built for: Android's recognizer refuses `EXTRA_PREFER_OFFLINE`
+when no offline Portuguese pack is installed, and answers *"Voice search isn't
+available"*. Deleted with it: `recognizer.ts`, `webspeech.ts`, `none.ts`, the
+recording half of `SpeechPlugin.java`, the install panel, the failure notices,
+and **Settings → Voice → Send your audio to Google** - which was the only
+control in this application that could put a recording of anybody onto a
+network. The manifest has lost its `queries` element too.
+
+**Reading answers aloud is kept**, and with it `RingerPlugin`, so a spoken
+answer still yields to the switch on the side of the phone.
+
+**The audit rule that guarded the recognizer was kept and tightened.**
+`scripts/audit-offline.mjs` used to permit the identifier `SpeechRecognition` in
+`webspeech.ts` and nowhere else. That file is gone; the rule now permits it
+nowhere at all. The hazard did not move when the file did.
+
+**`voiceEnabled` became `askEnabled`, and `voiceAllowOnline` is gone.** A stored
+row for either is ignored rather than read - `parseSettings` skips any key the
+schema does not have - so an old database neither restores a setting that no
+longer exists nor trips over one.
+
+### Defects fixed
+
+**`whats_missing` ignored dismissals.** The replenishment screen honours an item
+the user has taken off the list; the spoken answer and the assistant's tool did
+not, so the application disagreed with itself about the same list and Claude
+would tell someone to buy the thing they had just dismissed. `VoiceDeps` now
+carries `dismissedItemIds`, required rather than optional so that a new caller
+has to answer the question rather than inherit the wrong answer.
+
+**A proposal from Claude had no honest reason.** Every one was marked assumed
+because of the item, which renders as *"you did not say its whole name"* - a
+true sentence about a phrase the parser matched loosely and a false one about a
+row a model picked out of a tool result. Proposals now lead with a reason of
+their own: *"The assistant chose this item. Check it is the one you meant."*
+
+---
+
 ## 2.0.0
 
 A rebuild of the original single-file application. Everything it did, this does.

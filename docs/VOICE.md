@@ -1,30 +1,39 @@
-# Voice control
+# The typed command engine
 
-Ask the inventory a question, or tell it what you just used, without typing.
-Say *"quanto arroz eu tenho?"* and hear the answer. Say *"usei 3 ovos"* and see
-a card that says what would change, which changes nothing until you press
-**Confirmar**.
+Ask the inventory a question, or tell it what you just used, in a handful of
+words. Type *"quanto arroz eu tenho?"* and read the answer. Type *"usei 3
+ovos"* and the stock moves, with **Desfazer** offered for ten seconds. Type
+something the engine had to guess at, and a card appears saying what would
+change, which changes nothing until you press **Confirmar**.
 
 The original application had none of this. It exists because the situation this
 project is built for is one where you are holding a torch in one hand and a box
 in the other, and a form with six fields is the wrong thing to be looking at.
 
+**THIS DOCUMENT USED TO BE ABOUT A MICROPHONE. THERE IS NO LONGER ONE.** Speech
+input was built, shipped, and did not work on the phone it was built for:
+Android's recognizer refuses `EXTRA_PREFER_OFFLINE` when no offline Portuguese
+pack is installed, and answers *"Voice search isn't available"*. Every path
+round that was worse than the box itself, so listening was removed - the two
+web recognizers, the seam above them, the Android plugin's recording half, the
+install panel, and the setting that could have sent recorded speech to Google.
+What is described below is the engine those things fed, which was always the
+part doing the work.
+
 Two facts shape every decision below.
 
-**The application never opens the microphone itself.** There is no
-`getUserMedia`, no `MediaRecorder`, and no audio API anywhere in `src/`. On
-Android the system's own recognizer records; in Chrome the browser does. That is
-why the APK declares no `RECORD_AUDIO`, and the build fails if one ever appears.
-See *How speech stays on the device*.
+**The box is the feature, and always was.** It is present on every platform, in
+the same sheet, doing the same thing. Nothing about it was a fallback for
+anything.
 
-**The microphone is not the feature.** A typed command box is present on every
-platform, in the same sheet, doing the same thing. A device that cannot
-transcribe speech loses the button in the header and keeps everything else.
+**Answers are still read aloud.** Speaking is not listening: `speechSynthesis`
+opens no microphone, asks for no permission, and sends nothing anywhere. See
+*Reading answers aloud* below.
 
-**Nothing you say leaves the device unless you switch one thing on.** The
-default is on-device transcription or none at all, enforced rather than
-promised. **Settings → Voice → Send your audio to Google** is the exception, it
-is off, and it is described under *Sending your audio to Google* below.
+Since the assistant shipped, this engine is one of two behind the same box. It
+answers when the assistant is switched off or has no key, and whenever Claude
+cannot be reached - and the sheet says which one answered. `docs/OFFLINE.md`
+sets out what the other one sends.
 
 ---
 
@@ -33,8 +42,9 @@ is off, and it is described under *Sending your audio to Google* below.
 Every row below is taken from `src/voice/grammar/*.phrases.test.ts`, which is a
 corpus rather than a sample: 222 rows across the three languages, and a phrase
 that is not in it is a phrase this document does not claim. They are written the
-way a recognizer returns them — lowercase, and often without accents — because
-that is what the parser actually receives.
+way speech used to arrive — lowercase, and often without accents — because a
+folded, unaccented phrase is still what the parser is built to survive, and the
+corpus was not weakened when the microphone went.
 
 ### Asking
 
@@ -100,11 +110,11 @@ A write with no number stays UNKNOWN. "I bought rice" is an ordinary sentence
 and the tempting reading is +1, but nothing in it says one. Guessing writes a
 number the user never said into an emergency food inventory and then tells them
 it worked — the exact failure this design exists to prevent. UNKNOWN puts the
-transcript back on the screen with examples beside it, where a person can see
-what was heard and say the amount.
+phrase back on the screen with examples beside it, where a person can see what
+was read and type the amount.
 
 A question with no item is refused for the same reason: the item is what is
-missing, not something the parser failed to hear.
+missing, not something the parser mislaid.
 
 `31 de abril` is refused rather than repaired. April has never had a 31st, so
 there is no year in which that phrase means anything.
@@ -137,7 +147,7 @@ an adjustment rather than becoming a wrong one. Order is load-bearing:
 QUERY_QUANTITY rule that also matches `tenho`. `parse.test.ts` pins it.
 
 **Produce an Intent.** Eleven kinds, plus `UNKNOWN`. An Intent is data and
-cannot act — it holds the spoken phrase, not a database identifier. That is what
+cannot act — it holds the phrase as typed, not a database identifier. That is what
 makes the whole parser testable with a string and an expectation, and it is why
 `src/voice/` performs no I/O at all.
 
@@ -169,9 +179,11 @@ tests hold it there:
   After a change is understood and the card is on screen, it reads the item's
   quantity straight out of the database and asserts it is still the old one.
 
-The card names the item, the amount, and what the quantity becomes. Speech is
-misheard often enough that a confirmation step is not ceremony; it is the only
-place a mishearing can be caught before it becomes data.
+The card names the item, the amount, and what the quantity becomes. A phrase is
+matched loosely often enough that a confirmation step is not ceremony; it is the
+only place a wrong match can be caught before it becomes data. That is truer
+still of the assistant, whose every proposal is a card: a grammar fails by not
+understanding, and a model fails by understanding something else.
 
 After a write lands, the receipt is read back **out of the database** rather than
 assembled from the request. What you hear is then a statement about what is
@@ -180,196 +192,7 @@ the screen.
 
 ---
 
-## How speech stays on the device
-
-Three recognizers sit behind one seam, `SpeechRecognizer` in
-`src/services/speech/recognizer.ts`. Above it nothing knows which is listening,
-in the same way nothing above `SqlDriver` knows which database is answering.
-
-**Android — the system recognizer.** `SpeechPlugin.java` fires
-`ACTION_RECOGNIZE_SPEECH` with `EXTRA_PREFER_OFFLINE`. Android opens the
-recognizer's own screen, records there, and hands back text. The microphone
-belongs to the recognizer and never to this application, so there is no
-`RECORD_AUDIO` to declare — which is why this route was chosen over
-`SpeechRecognizer.startListening` and over the community Capacitor plugin, both
-of which need the permission. `EXTRA_PREFER_OFFLINE` is a request, and what it
-is worth depends on the recognizer installed on the phone. The interface says
-on-device speech is a capability of the device, not a guarantee this application
-can make on the device's behalf. The extra is sent unless the user has switched
-on the opt-in below.
-
-The plugin does use the `SpeechRecognizer` class for one thing, and only one:
-`checkRecognitionSupport`, which asks the system which languages it can
-transcribe without a network. That is a question about the recognizer rather
-than a use of the microphone, it records nothing, and it needs no permission —
-the permission belongs to `startListening`, which this application never calls.
-The build check confirms it: `RECORD_AUDIO` is one of the names that fails the
-build, and the APK declares only `INTERNET`, which belongs to the AI assistant
-rather than to voice.
-
-The plugin is Java, not Kotlin, because this Gradle build has no Kotlin plugin.
-One class is not a reason to add a language toolchain, a stdlib dependency and a
-second way for the APK build to break.
-
-**Chrome — `processLocally`, failing closed.** `webspeech.ts` is the only module
-permitted to construct `SpeechRecognition`. It sets `processLocally` first and
-on every path, and it refuses to start unless `availableOnDevice(tag)` reports a
-model for that language. `processLocally` fails **closed**: with no local model
-the call errors rather than quietly reaching a server. That property is what
-makes this API usable here at all, because the default mode of it streams audio
-to Google.
-
-The value is `true` unless there is no on-device model AND the user has opted
-in. A browser that can transcribe locally still does, whatever the setting says.
-A browser that cannot be asked about locality — Safari — is still refused
-outright: the opt-in governs which mode a qualifying browser may use, not which
-browsers qualify.
-
-**Everything else — nothing.** `none.ts` reports unavailable and throws if asked
-to listen. Safari exposes `webkitSpeechRecognition` but not `availableOnDevice`,
-so there is no way to require local transcription and `availability()` returns
-unavailable before anything is constructed. Firefox is the same. On those
-browsers the microphone button says why it will not be used and opens the typed
-box.
-
-Availability is asked per language, not per device. A phone with an English
-model and no Portuguese one is ready for one and unavailable for the other, so
-switching the interface language asks again.
-
-### What enforces this
-
-In the order it holds:
-
-1. **The Content-Security-Policy.** `index.html` declares
-   `connect-src 'self' https://api.anthropic.com` — one host, and it is not a
-   speech service. An implementation that shipped audio to a server *itself*
-   would still have nowhere to send it. This is the structural one: it
-   constrains what the code can do rather than what it may say.
-2. **`processLocally`.** The browser makes the Web Speech API's own network
-   calls, out of reach of the CSP, so inside that one implementation this flag
-   is the only thing between it and a server. `webspeech.test.ts` pins it from
-   both sides: `start()` is never reached without it when the caller passes no
-   options, an empty options object, or `allowOnline: false`, and
-   `allowOnline: true` is the single way past.
-3. **The build audit.** `scripts/audit-offline.mjs` fails the build if the
-   literal identifier `SpeechRecognition` appears anywhere in `src/` other than
-   `webspeech.ts`. It is a text match on one spelling over source files, and it
-   is evadable — a name assembled at runtime passes it. It catches the second
-   use site somebody adds in good faith, which is the failure that actually
-   happens.
-
-None of the three is sufficient alone, and the third is the weakest.
-
-### Downloading a speech pack
-
-**Settings → Speech recognition → Install.** When Chrome reports the language
-pack as downloadable, that button appears and calls `installOnDevice(tag)`,
-asking the browser to download a speech model.
-
-That is the browser fetching on an explicit press, not the page fetching on its
-own, which is why the offline audit does not flag it. It never happens
-automatically. The line beside the button says so, because the decision is made
-there and not here.
-
-The button never appears inside the APK. `install` is optional on the seam, and
-only the Chrome implementation defines one; on Android the system recognizer
-manages its own languages, so Settings prints the path through Android's menus
-instead. The installed Android application still fetches nothing.
-
-### Sending your audio to Google
-
-**Settings → Voice → Send your audio to Google**, stored as `voiceAllowOnline`,
-`false` by default. The only thing in this project that can put a recording of
-you onto a network — the AI assistant sends text, never audio.
-
-It exists because of a bug on a real phone. The plugin asked for offline-only
-recognition, the phone had no offline Portuguese model, the recognizer refused
-at once, and every unsuccessful outcome arrived in the web layer as
-"cancelled" — which the interface answers with silence, on purpose, because a
-banner after a deliberate "never mind" teaches people to ignore banners. The
-microphone did nothing and said nothing. Two things came out of that: failures
-now say what they are, and the person holding the phone gets to decide whether
-transcribing over the network is worth it to them. The application does not
-decide that on their behalf, in either direction.
-
-| | |
-|---|---|
-| **What is sent** | One recorded utterance, when you press the microphone. |
-| **To whom** | The platform's recognizer — Google's, on Android and in Chrome. |
-| **When** | Only if the device has no offline model for the language, and only while the switch is on. |
-| **What is never sent** | Anything in the database. Items, locations, contacts, backups. No code here could. |
-| **Default** | Off. |
-
-What holds it shut, because a default on its own is not an argument:
-
-- `settingsSchema` defaults it to `false`, and a corrupt stored value falls back
-  to `false` rather than to the permissive side. Both are tested.
-- `SpeechOptions.allowOnline` is absent-means-no everywhere on the seam, so a
-  caller that forgets the argument gets the private behaviour.
-- `SpeechPlugin.listen` reads `call.getBoolean("allowOnline", false)`, so a
-  bridge call that omits it sends `EXTRA_PREFER_OFFLINE` exactly as before.
-- A device that can transcribe locally still does. The opt-in permits the
-  network, it does not prefer it.
-- Nothing switches it on but a person. Not a failure, not a retry, not a
-  first-run prompt. The panel shown after a listen that found no offline model
-  names the setting; the user goes and moves it.
-
-The label names Google rather than saying "online", because "allow online
-recognition" describes a mechanism and "send your audio to Google" describes
-what happens to you. In Portuguese it reads *Seu áudio vai para o Google*.
-
-### When the microphone does not work, it says so
-
-`SpeechPlugin` rejects with a stable code rather than a sentence, because it
-cannot know which of three languages the reader uses.
-`speechFailureReason(cause)` in `src/services/speech/failure.ts` maps every
-rejection onto one of seven, and the interface branches on that:
-
-| Code | What happened | What the interface shows |
-|---|---|---|
-| `cancelled` | You pressed back. | Nothing at all. |
-| `no-offline-model` | No speech pack for this language. | The panel: how to install, or type instead. |
-| `no-recognizer` | Nothing on this device transcribes. | `voice.unavailable`, and the typed box. |
-| `network` | It went looking for the internet and did not find it. | `voice.networkFailed` |
-| `no-match` | It listened and made nothing of it. | `voice.nothingHeard` |
-| `busy` | Something else holds the recognizer. | `voice.busy` |
-| `failed` | Everything else, including reasons a platform declines to name. | `voice.listenFailed` |
-
-Exactly one of those is answered with silence, and an unrecognised failure maps
-to `failed` rather than to `cancelled` — which is the whole shape of the bug,
-inverted.
-
-**What the Intent flow actually tells you**, since the honest answer is "less
-than you would like". The result Intent carries no error extra; the whole of the
-diagnosis is the activity result code. `RecognizerIntent` documents five besides
-`RESULT_OK` and `RESULT_CANCELED` — `RESULT_NO_MATCH`, `RESULT_CLIENT_ERROR`,
-`RESULT_SERVER_ERROR`, `RESULT_NETWORK_ERROR`, `RESULT_AUDIO_ERROR` — and all
-five are mapped, but a recognizer may answer `RESULT_CANCELED` for any of them,
-and Google's commonly does. `SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE` and
-`ERROR_LANGUAGE_NOT_SUPPORTED`, the two constants that name this exact problem,
-are delivered through `RecognitionListener` — the API that needs `RECORD_AUDIO`,
-and therefore not the one recording here. They never reach an Intent result.
-
-So a missing offline model is established two other ways:
-
-1. **Before the dialog opens**, by `checkRecognitionSupport`. Android 13 and
-   later. If the installed on-device language list is non-empty and this
-   language is not in it, the plugin rejects with `no-offline-model` without
-   launching anything. It concludes "missing" only from a list with something in
-   it: a recognizer reporting nothing installed has not answered the question,
-   and treating that as "no model" would take the microphone away from phones
-   where offline speech works. The same check makes **Settings → Speech
-   recognition** say *installable* rather than *ready* on a phone missing the
-   pack.
-2. **Below Android 13, or when that check cannot answer**, by how fast
-   `RESULT_CANCELED` comes back. Under a second is a refusal, not a person: the
-   recognizer's screen takes a moment to appear, and a deliberate back press
-   lands well beyond that. **This one is a heuristic**, and it is applied only
-   while the question is genuinely open — never when the pre-flight check
-   answered. Being wrong costs a dismissible panel after a very fast
-   cancellation. Being silent cost a user a microphone that appeared broken.
-
-### Reading answers aloud
+## Reading answers aloud
 
 The **Read answers aloud** setting uses `speechSynthesis`, a system service
 rather than a network request — nothing in `speak.ts` fetches. The Web Speech
@@ -382,33 +205,26 @@ your language, the platform may still resolve to a remote one, and the API gives
 no way to refuse. On Android the system voice is on the phone. Switching the
 setting off is the only thing here that is certain.
 
-On Android the phone's silent switch wins over the setting: `SpeechPlugin`
-reads the ringer mode, which a WebView cannot see on its own.
+On Android the phone's silent switch wins over the setting: `RingerPlugin`
+reads the ringer mode, which a WebView cannot see on its own. That plugin is all
+that is left of `SpeechPlugin` - one method, `isSilent`, needing no permission
+and recording nothing. `src/services/speech/ringer.ts` is the other half of it.
 
 ---
 
 ## What it will not do
 
-- **No wake word, and no continuous listening.** The system recognizer
-  transcribes one utterance per press. Hands-free listening means holding the
-  microphone open, which means the permission this whole design exists to
-  avoid.
-- **No voice on iPhone, iPad or Safari.** No browser there offers a speech API
-  that can be told to transcribe on the device, so the application declines to
-  use one at all. The typed box works, and the interface says why rather than
-  showing a microphone that fails.
-- **No voice proven in the desktop build.** The same code ships, but
-  `src-tauri/` has still never been compiled. Whether that webview exposes an
-  on-device recognizer has not been observed, and nothing here claims it does;
-  if it does not, `none.ts` answers and the typed box is what remains.
+- **No speech input, on any platform.** Removed rather than hidden: there is
+  no recognizer module, no seam above one, and no `RECORD_AUDIO` that could be
+  declared. Reading answers aloud is unaffected.
 - **No conversation.** The engine answers the forms in the tables above.
   Anything else is UNKNOWN with examples, not a guess. It has no memory between
   sentences: each one is parsed on its own, so "and two more" refers to nothing.
-- **No new categories, locations, contacts or settings by voice.** Speech reads
+- **No new categories, locations, contacts or settings from the box.** It reads
   the inventory and changes quantities, expiry dates, and creates items.
   Everything else is a screen.
-- **No deleting or archiving by voice.** Destructive actions stay where they can
-  be read before they are taken.
+- **No deleting or archiving from the box.** Destructive actions stay where they
+  can be read before they are taken.
 
 ---
 
@@ -428,8 +244,8 @@ of the name, and it is visible before anything is stored.
 
 **Slashed dates are read day/month in every language.** `12/09` is 12 September
 in English as well as in Portuguese and Spanish. The **Date format** setting is
-not consulted here; it governs how dates are displayed, and the spoken parser
-does not read it. Say the month by name — `october 10` — to be certain.
+not consulted here; it governs how dates are displayed, and the parser does not
+read it. Name the month — `october 10` — to be certain.
 
 **English hundreds and thousands compose by multiplication.** English builds
 large numbers out of `hundred` and `thousand` as multipliers where Portuguese
@@ -442,10 +258,10 @@ shown on the confirmation card before it is written.
 Portuguese and Spanish the same verb serves "I have" and "how many do I have",
 and the question rules run first, so `tenho 5 ovos` returns QUERY_QUANTITY for
 the phrase `5 ovos` and finds nothing. It is a slightly wrong answer to a
-read-only question, never a wrong write. To state a quantity, say
+read-only question, never a wrong write. To state a quantity, type
 `agora tenho 5 ovos`. English is not affected: `i have 5 eggs` is UNKNOWN.
 
-**A spoken answer names three items and counts the rest.** "4 items expire
+**An answer names three items and counts the rest.** "4 items expire
 within 30 days: Leite, Arroz, Feijão and 1 more." A list read aloud past three
 names is a list nobody follows. The count is the real one; the names are the
 part that is cut. Two of the queries also read at most 50 rows — what is
@@ -456,19 +272,15 @@ out, but it is a limit and not a total.
 
 ## Turning it off
 
-**Settings → Voice control** hides the microphone in the header. While it is
-off the header probes nothing and constructs no recognizer. The sheet and the
-typed box are reached only through that button, so switching it off removes the
-feature entirely rather than only its microphone.
+**Settings → Ask → The ask button** hides the button in the header. The sheet
+and the box inside it are reached through that button and through nothing else,
+so switching it off removes the feature rather than only its entry point.
 
-The Settings screen still asks the device what it can do, so the **Speech
-recognition** line reports honestly either way.
+**Settings → Ask → Read answers aloud** keeps the box and stops the speaking.
 
-**Settings → Read answers aloud** keeps the microphone and stops the speaking.
-
-**Settings → Voice → Send your audio to Google** is the one control here that
-starts off rather than on, and the one that has to be turned on rather than off.
-It is set out under *Sending your audio to Google* above.
+Neither is the assistant's switch. **Settings → Ask Claude** decides which
+engine answers, and with it off - or with no key pasted - this one does, and
+nothing is sent anywhere.
 
 ---
 

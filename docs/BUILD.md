@@ -16,7 +16,7 @@ npm install
 npm run dev          # development server, hot reload, http://localhost:5173
 npm run build        # production build → dist/, then the offline audit
 npm run preview      # serve dist/ at http://localhost:4173
-npm test             # 827 unit tests
+npm test             # 956 unit tests
 npm run smoke        # drive the production build in a real browser
 npm run typecheck    # TypeScript, strict
 npm run lint         # ESLint

@@ -38,11 +38,20 @@ test, or sitting behind a Rust process on the desktop. That is why the desktop
 driver is eighty lines: transaction semantics were written once, in
 `createDriver`, and all three drivers inherit them.
 
-**`SpeechRecognizer` is the second seam, and the same shape as the first.**
-Above it, nothing knows whether Android's system recognizer, Chrome's on-device
-model or nothing at all is listening. It was worth building for the third case:
-a device with no speech API is not a broken device here, it is the `none`
-implementation and a typed box. See *The voice path*.
+**`SpeechRecognizer` WAS the second seam, and is gone.** It stood above
+Android's system recognizer, Chrome's on-device model and a `none` that reported
+unavailable, and it was built well. It was also built for a phone whose
+recognizer refuses to transcribe offline without a Portuguese pack, so the
+feature never worked there and was removed rather than kept as a button that
+failed in silence. What survives of that layer is `speak.ts`, which reads an
+answer aloud, and `ringer.ts`, which asks Android whether the phone is on
+silent. Neither is a seam; both are one function.
+
+**The second seam now is the pair of engines behind one box.** A typed question
+goes to Claude when the assistant is on and a key is stored, and to the twelve
+parser rules otherwise - and to the parser anyway when Claude cannot be reached.
+`useVoice.ts` is where that choice is made, and it is the only place it is made.
+See *The ask path*.
 
 ---
 
@@ -54,7 +63,7 @@ src/
   components/    UI primitives, status badges, charts, icons
   features/      one directory per screen (inventory, dashboard, expiration,
                  replenishment, catalog, locations, categories, contacts,
-                 reports, settings) and one for the voice sheet, which is a
+                 reports, settings) and one for the ask sheet, which is a
                  dialog rather than a route
   database/
     driver/      SqlDriver contract, shared transaction logic, oo1 adapter
@@ -139,31 +148,37 @@ in a way no user could detect.
 
 ---
 
-## The voice path
+## The ask path
 
 ```
                     ┌──────────────────────────────┐
    features/voice/ ─│  Button, sheet, confirm card │
-                    └───────┬──────────────────┬───┘
-                            │ transcript       │ listen
-                            │                  │
-             ┌──────────────▼───┐   ┌──────────▼───────────────────┐
-   voice/  ──│ parse(grammar)   │   │ SpeechRecognizer (the seam)  │── services/
-             │ PURE, zero I/O   │   └──┬──────────┬────────────┬───┘    speech/
-             └──────────┬───────┘      │          │            │
-                        │ Intent  ┌────▼─────┐ ┌──▼───────┐ ┌──▼──────┐
-             ┌──────────▼──────┐  │ Android  │ │ Chrome   │ │ none    │
-   services/ │ resolve         │  │ system   │ │ on-device│ │ Safari, │
-     voice/ ─│ execute (READS) │  │recognizer│ │  model   │ │ Firefox,│
-             │ commit (WRITES) │  └──────────┘ └──────────┘ │ tests   │
-             └──────────┬──────┘                            └─────────┘
-                        │ calls
-                  repositories/
+                    └───────┬──────────────────────┘
+                            │ one question, one of two engines
+              ┌─────────────┴──────────────┐
+              │                            │
+   ┌──────────▼───────┐        ┌───────────▼──────────────┐
+   │ parse(grammar)   │        │ services/ai/converse     │
+   │ PURE, zero I/O   │        │ tool-use loop, one host  │
+   └──────────┬───────┘        └───────────┬──────────────┘
+              │ Intent                     │ tool calls
+              │                ┌───────────▼──────────────┐
+              │                │ services/ai/tools        │
+              │                │ READS run; WRITES only   │
+              │                │ propose                  │
+              │                └───────────┬──────────────┘
+              │                            │ PendingWrite
+   ┌──────────▼──────────────────────────────────────────┐
+   │ services/voice/  resolve · execute (READS)          │
+   │                  commit (WRITES, on a press only)   │
+   └──────────┬──────────────────────────────────────────┘
+              │ calls
+        repositories/
 ```
 
 **`voice/` is pure and `services/voice/` is not, and the line is the point.**
 `parse` takes a grammar and a string and returns an `Intent` — data that holds
-the spoken phrase, never a database identifier, and that cannot act. Every rule
+the phrase as typed, never a database identifier, and that cannot act. Every rule
 in every language is therefore testable with a string and an expectation, which
 is what makes a corpus of 222 rows cheap enough to be worth keeping. Turning
 a phrase into a row needs the database, so it lives on the other side of the
@@ -176,13 +191,23 @@ else. That is what makes "nothing is stored until you confirm" a structural
 property rather than a claim about the interface, and `execute.writes.test.ts`
 spies on the driver to hold it there.
 
+**The second engine inherits that property rather than repeating it.**
+`services/ai/tools.ts` never writes: its four changing tools build the same
+`PendingWrite` and tell Claude only that the change was proposed. So a card, a
+receipt and undo are the existing ones, and `tools.writes.test.ts` spies on
+`exec` and `transaction` to keep it structural. The interface goes one step
+further and never reads `certainty` on a proposal at all - the branch that
+stores an explicit write unasked belongs to the parser, and nothing a model
+produced may reach it.
+
 **A grammar is a file, not a branch.** One file per language plus one registry
 entry, the same rule `i18n/translate.ts` follows. `parse.ts` knows nothing about
 any particular language. Rule order inside a grammar is load-bearing — first
 match wins, so specific forms precede general ones — and `parse.test.ts` pins
 it.
 
-`docs/VOICE.md` covers what can be said and what happens to it.
+`docs/VOICE.md` covers what can be typed and what happens to it;
+`docs/OFFLINE.md` covers what the other engine sends.
 
 ---
 

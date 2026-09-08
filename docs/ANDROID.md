@@ -175,37 +175,26 @@ it writes to the application's own external files directory instead, because the
 public Downloads folder would need a storage permission there and this
 application has none.
 
-**Voice control needs no microphone permission.** `SpeechPlugin` starts the
-system's own recognizer with `ACTION_RECOGNIZE_SPEECH`. Android opens the
-recognizer's screen, records there, and hands back the text; the microphone is
-held by the recognizer, never by this application, so there is no `RECORD_AUDIO`
-to declare. That is why this route was chosen over `SpeechRecognizer.startListening`
-and over the community Capacitor plugin, both of which require the permission.
+**There is no microphone, so there is nothing to ask for.** Voice control was
+built on `ACTION_RECOGNIZE_SPEECH`, which let the system hold the microphone and
+kept `RECORD_AUDIO` out of the manifest. It was then removed outright: Android's
+recognizer refuses `EXTRA_PREFER_OFFLINE` when no offline pack for the language
+is installed, and on the Portuguese phone this was built for it answered *"Voice
+search isn't available"*. `SpeechPlugin.java` is gone with it, and so is the
+`queries` element that let it see the system recognizer at all.
 
-The plugin does call one method on the `SpeechRecognizer` class:
-`checkRecognitionSupport`, which asks the system which languages it can
-transcribe with no network, so that a phone missing the pack is told so instead
-of watching the recognizer screen flash past. It records nothing and needs no
-permission — the permission belongs to `startListening`, which is never called
-here — and the check above is what proves it rather than this paragraph.
-`RECORD_AUDIO` is still one of the names that fails the build.
+What replaced it is `RingerPlugin`. One method, `isSilent`,
+reading `AudioManager.getRingerMode` so that an answer read aloud does not talk
+over a phone somebody has deliberately silenced. It records nothing, opens
+nothing, and needs no permission, which the build's check proves rather than
+this paragraph.
 
-**Nor does the online opt-in.** **Settings → Voice → Send your audio to Google**
-is off by default; switched on, `SpeechPlugin` omits `EXTRA_PREFER_OFFLINE` and
-the system recognizer may transcribe over the network. The audio leaves from
-Google's process under Google's permissions, not from this application, and that
-was true before `INTERNET` was declared and is true after: nothing in the voice
-path opens a connection from here. `docs/OFFLINE.md` states the disclosure in
-full.
+Reading answers aloud stays and uses `speechSynthesis`, which asks the system
+for nothing. `RECORD_AUDIO` is still one of the names that fails the build, and
+now nothing in this application could ever want it.
 
-The one thing the manifest gained for voice is a `queries` element naming the
-speech intents. From Android 11 an application cannot see another it has not
-named, and without it the check for "is there a recognizer on this phone" would
-answer no on every modern phone and the microphone button would never appear. It
-is not a permission, it is not `QUERY_ALL_PACKAGES`, and the build's check
-confirms as much: it is not one of the names that appear.
-
-`docs/VOICE.md` covers the feature itself, including what it will not do.
+`docs/VOICE.md` covers the typed command engine itself, including what it will
+not do.
 
 ---
 
@@ -250,27 +239,20 @@ tells you something different:
    phone's Downloads folder for the `.json` file.
 6. **The back button behaves.** It should move back through the screens and
    leave the application from the dashboard.
-7. **The microphone appears, and works.** Tap it and say *"quanto arroz eu
-   tenho?"*. Android should open its own recognizer screen — that screen
-   belonging to the system rather than to this application is the whole design.
-   No microphone button at all means `availability` found no recognizer, which
-   is a real answer on a phone that has none. Confirm in **Settings → Apps →
-   Stock Guardian → Permissions** that the microphone is not among what this
-   application holds — the one permission it declares is the network, and voice
-   control does not use it.
-8. **A failure says what it was.** The one thing the microphone must never do is
-   nothing. If the recognizer screen closes without a transcript you should see
-   a sentence — most often that this phone has no offline pack for the language,
-   with the path to install one and a way to type the command instead. Silence
-   is only ever correct after you pressed back yourself. **Settings → Speech
-   recognition** should agree, reporting the language as installable rather than
-   ready on a phone that is missing it.
-9. **It transcribes in airplane mode.** `EXTRA_PREFER_OFFLINE` is a request, and
-   whether the phone honours it depends on the recognizer installed. This is the
-   check that tells you what that phone actually does, and it is the one thing in
-   this list no test here can answer. If it cannot, the panel from step 8 is what
-   you should be looking at, and **Settings → Voice → Send your audio to Google**
-   is the choice it leaves you.
+7. **The ask button opens the box.** Tap the speech bubble in the header and
+   type *"quanto arroz eu tenho?"*. There is no microphone and there should be
+   none: confirm in **Settings → Apps → Stock Guardian → Permissions** that the
+   microphone is not among what this application holds. The one permission it
+   declares is the network, and only the assistant uses it.
+8. **Answers are read aloud, and the silent switch stops them.** Leave
+   **Settings → Ask → Read answers aloud** on, ask a question, and listen. Then
+   put the phone on silent and ask again: `RingerPlugin` reads the ringer mode,
+   and the phone's own switch wins over the setting.
+9. **The assistant is off, and stays off.** With no key pasted, ask something the
+   twelve rules do not know and confirm the answer is "I did not understand
+   that" with examples - not a network error, and not a pause while something
+   times out. Nothing should leave the phone until a key is stored and
+   **Settings → Ask Claude** is switched on.
 
 ---
 

@@ -14,11 +14,10 @@ which is the point, because the situations it exists for are the ones where the
 internet is not there. That is the default, it is what you get by changing
 nothing, and the build still proves it.
 
-Three things sit outside it, each off until you switch it on: the **AI
-assistant**, which needs an Anthropic API key you paste in yourself; downloading
-a speech pack; and a setting that lets speech recognition send your recorded
-voice to Google. Each is described below. Your database is never uploaded by any
-of them — see **The AI assistant** for exactly what a question sends.
+One thing sits outside it, and it is off until you switch it on: the **AI
+assistant**, which needs an Anthropic API key you paste in yourself. It is
+described below. Your database is never uploaded by it — see **The AI
+assistant** for exactly what a question sends.
 
 It is a rebuild of `backup/End_of_world_V11-Pro_Upgraded.html`, a single-file
 application kept in this repository untouched as the functional baseline. Every
@@ -94,42 +93,33 @@ replace.
 **Three languages.** English, Portuguese (Brazil) and Spanish, switchable at any
 time. Your choice persists — the original reset to Portuguese on every reload.
 
-**Voice.** Ask *"quanto arroz eu tenho?"* and hear the answer. Say *"usei 3
-ovos"* and a card appears saying what would change — and changes nothing until
-you press **Confirmar**. It works in all three languages.
+**Ask about your stock.** Type *"quanto arroz eu tenho?"* into the box behind
+the header button and read the answer. Type *"usei 3 ovos"* and the stock moves,
+with **Desfazer** offered for ten seconds; type something the application had to
+guess at, and a card appears saying what would change — and changes nothing
+until you press **Confirmar**. It works in all three languages.
 
-Four things about it belong here rather than in a footnote.
+Three things about it belong here rather than in a footnote.
 
-*The application never opens the microphone.* On Android the system's own
-recognizer records and hands back text, which is why the app declares no
-`RECORD_AUDIO` — and why the build still fails if it ever appears. In Chrome the
-browser transcribes with its on-device model, and errors rather than reaching a
-server when that model is not installed.
+*There is no microphone, and there used to be.* It was removed. Android's own
+recognizer refuses to transcribe without a network unless an offline pack for
+your language is installed, and on the Portuguese phone this was built for it
+answered *"Voice search isn't available"* — a button that did nothing and could
+not say why. The typed box was never the fallback for it; the box was always the
+feature, on every platform, and it is what remains.
 
-*One switch sends your voice, and it is off.* **Settings → Voice → Send your
-audio to Google** is the only thing that can put a recording of you onto a
-network, and it stays off until you move it. Left alone, speech
-is transcribed on the device or not at all. Switched on, a phone with no offline
-pack for your language transcribes by sending what you said to Google — your
-voice, not your inventory. It exists because the alternative was worse: without
-it, a phone missing its Portuguese pack had a microphone that did nothing and
-said nothing. Nothing switches it on for you, and no failure offers to.
+*Answers are still read aloud.* **Settings → Ask → Read answers aloud** uses the
+system voice and is on by default. On Android the silent switch on the side of
+the phone wins over the setting. Speaking is not listening: it opens no
+microphone, asks for no permission and sends nothing anywhere.
 
-*The microphone is not the feature.* The same sheet has a box you can type into,
-on every platform, doing exactly the same thing. On an iPhone no browser offers
-a speech API that can be told to transcribe on the device, so the microphone is
-absent and the interface says why — the typed box is not a consolation prize, it
-is the feature.
+*Two engines answer the same box.* Twelve rules run on the device — exact,
+instant and free — and Claude answers instead when you have switched the
+assistant on and pasted a key. Every exchange says which one answered, because
+one of them costs money per question and the other does not.
 
-*One button downloads something.* **Settings → Speech recognition → Install**
-appears when the browser has a speech pack for your language, and pressing it
-fetches one. It is the only file the application ever downloads, it never
-happens on its own, and nothing of yours is uploaded in exchange. On Android the
-packs belong to the system, so Settings prints the path through Android's own
-menus instead of a button.
-
-`docs/VOICE.md` lists every phrase it understands, in all three languages, and
-every one it deliberately refuses.
+`docs/VOICE.md` lists every phrase the offline engine understands, in all three
+languages, and every one it deliberately refuses.
 
 **The AI assistant.** Paste an Anthropic API key of your own into Settings and
 you can ask about your stock in ordinary language, rather than in the phrases
@@ -150,10 +140,12 @@ hundred items sends no more than a pantry of four.
 setting, nothing is compiled into the build, and every question is charged to
 the account that key belongs to.
 
-*Offline is the fallback, not a casualty.* With no key, no network, or the
-assistant switched off, the typed command engine still answers the phrases it
-knows — exactly, instantly and free. `docs/OFFLINE.md` sets out what travels,
-what does not, and what enforces which.
+*Offline is the fallback, not a casualty.* With no key, or the assistant
+switched off, the same box runs the twelve rules and nothing is sent. So does a
+question that Claude could not answer — no signal, a refused key, too many
+questions at once — and the exchange says which of those it was rather than
+quietly pretending the assistant was never on. `docs/OFFLINE.md` sets out what
+travels, what does not, and what enforces which.
 
 ---
 
@@ -208,9 +200,9 @@ change. The APK used to ask for nothing at all, which was the better sentence,
 and Android offers no narrower way to make one request. So the build's check was
 narrowed rather than dropped: it allows that one name and fails on every other —
 `RECORD_AUDIO`, camera, location, contacts, storage — and you can run it
-yourself against a built APK. Voice control still needs no microphone
-permission, because the system's own recognizer holds the microphone. Leave the
-key blank and the application opens no connection at all.
+yourself against a built APK. `RECORD_AUDIO` was never declared and now could
+not be: there is no microphone left to ask for. Leave the key blank and the
+application opens no connection at all.
 
 `docs/ANDROID.md` explains how to produce the APK and what to check after
 installing it. Nothing else here changes: the phone still holds its own database,
@@ -240,7 +232,7 @@ import shows you what the file contains and asks before writing anything.
 | `npm run dev` | Development server with hot reload |
 | `npm run build` | Production build, then the offline audit |
 | `npm run preview` | Serve the production build locally |
-| `npm test` | The 827-test unit suite |
+| `npm test` | The 956-test unit suite |
 | `npm run smoke` | Drive the production build in a real browser (needs Edge or Chrome) |
 | `npm run typecheck` | TypeScript, strict |
 | `npm run lint` | ESLint |
@@ -277,7 +269,7 @@ to see the behaviour for yourself.
 | `docs/DATABASE.md` | Schema, every table and column |
 | `docs/MIGRATION.md` | Legacy import, field by field |
 | `docs/OFFLINE.md` | How the offline guarantee is made and enforced |
-| `docs/VOICE.md` | Voice control: every phrase, and every limit |
+| `docs/VOICE.md` | The typed command engine: every phrase, and every limit |
 | `docs/BUILD.md` | Building, hosting, and the desktop build |
 | `docs/ANDROID.md` | The Android app: building, signing, installing |
 | `docs/TESTING.md` | What is tested, and how to run it |
@@ -291,16 +283,13 @@ Stated plainly, because the alternative is an interface full of buttons that do
 nothing. Nothing in this list appears in the application as a disabled control or
 a "coming soon" panel — if it is not built, it is not shown.
 
-- **A wake word, or continuous listening.** The system recognizer transcribes
-  one utterance per tap. Hands-free listening means holding the microphone open,
-  and the microphone means the permission this whole design exists to avoid.
-- **Voice on iPhone, iPad or Safari.** Safari offers no way to require that
-  speech is transcribed on the device, so the application declines to use it at
-  all. The typed command box works, and the interface says why the microphone is
-  missing rather than showing one that fails.
-- **Voice proven in the desktop build.** The code is the same, but `src-tauri/`
-  has still never been compiled, so whether that webview offers an on-device
-  recognizer is unknown. If it does not, the typed box is what you get.
+- **Speech input, anywhere.** It was built, it shipped, and it did not work:
+  Android's recognizer refuses to transcribe offline without a language pack the
+  target phone did not have. Reading answers aloud stays; listening is gone
+  until Android's side of it is worth revisiting.
+- **The desktop build, proven.** The code is the same, but `src-tauri/` has
+  still never been compiled, so nothing here has been seen running in that
+  webview.
 - **An open conversation without a key.** The offline engine answers the phrase
   forms listed in `docs/VOICE.md`. Anything else comes back as "I did not
   understand that" with examples beside it, never as a guess — and it has no
@@ -309,9 +298,10 @@ a "coming soon" panel — if it is not built, it is not shown.
 - **Memory between sessions, for the assistant.** Each question starts fresh.
   What you can see in the history is for you to read, not something the model
   is given back.
-- **Voice for anything but stock.** Speech reads the inventory and changes
+- **Asking for anything but stock.** The box reads the inventory and changes
   quantities, expiry dates, and creates items. Categories, locations, contacts
-  and settings are screens. Nothing can be deleted or archived by voice.
+  and settings are screens. Nothing can be deleted or archived from the box, by
+  either engine.
 - **Photographs.** The database stores them; there is no interface for adding
   them yet.
 - **Barcode scanning.** A barcode can be typed in and is searchable. Scanning

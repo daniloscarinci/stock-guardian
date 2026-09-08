@@ -1,6 +1,8 @@
 # The AI assistant
 
-**Status:** design approved, not implemented
+**Status:** implemented. `useVoice.ts` routes the typed box between
+`services/ai/converse.ts` and the parser; Settings holds the key, the model and
+the switch; the microphone was removed as *Not built* below says it would be.
 **Date:** 2026-09-07
 **Follows:** `2026-09-07-voice-control-design.md`
 
@@ -137,8 +139,11 @@ matters: one is exact and free, the other is capable and costs money.
 
 - **No conversation memory across sessions.** Each question starts fresh. The
   history in the sheet is for the reader, not the model.
-- **No voice.** The microphone stays removed until Android's recognizer is
-  worth revisiting.
+- **No voice.** The microphone is removed - `recognizer.ts`, `webspeech.ts`,
+  `none.ts`, `SpeechPlugin.java` and the online opt-in with it - and stays
+  removed until Android's recognizer is worth revisiting. Reading answers aloud
+  was kept, and `RingerPlugin` with it, so a spoken answer still yields to the
+  switch on the side of the phone.
 - **No deleting or archiving through Claude.** Reversing a wrong creation is
   undo's job; removing real stock is a decision for the inventory screen.
 - **No background or scheduled use.** It answers when asked.
