@@ -32,3 +32,8 @@ test-results/
 *.jks
 *.keystore
 android-signing-secrets.txt
+
+# Built APKs kept beside the project for installing on a phone. They are release
+# artifacts - the signed copy of record is attached to its GitHub Release - and a
+# 5 MB binary has no business in the history.
+*.apk
