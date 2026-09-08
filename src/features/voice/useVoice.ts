@@ -178,6 +178,9 @@ export function useVoice(speak: Speak): Voice {
       context: itemContext,
       language: settings.language,
       trackedCategoryIds: settings.preparednessCategoryIds,
+      // What the user took off the replenishment list, so an answer about what
+      // to buy agrees with the screen that offers the same list.
+      dismissedItemIds: settings.replenishmentDismissed,
     }),
     [
       repositories.items,
@@ -185,6 +188,7 @@ export function useVoice(speak: Speak): Voice {
       itemContext,
       settings.language,
       settings.preparednessCategoryIds,
+      settings.replenishmentDismissed,
     ],
   );
 

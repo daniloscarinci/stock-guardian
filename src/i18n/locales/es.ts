@@ -488,6 +488,7 @@ export const es: LocaleTree = {
     assumedUnit: 'Supuse {unit}, la unidad en que se guarda este ítem. Contaste en otra.',
     assumedDate: 'Supuse {date}. No dijiste el día exacto.',
     assumedNewItem: 'Supuse que es nuevo. Nada en tu stock se llama {name}.',
+    assumedAssistant: 'El asistente eligió este artículo. Comprueba que sea el que querías.',
     which: '¿Cuál de estos?',
     whichOfMany: 'Mostrando {shown} de {total} coincidencias. Di el nombre con más precisión.',
     notFound: 'No encontré «{phrase}» en tu stock.',

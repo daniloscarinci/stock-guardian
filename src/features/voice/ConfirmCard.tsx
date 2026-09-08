@@ -123,6 +123,11 @@ function assumed(
         return t('voice.assumedDate', { date });
       case 'newItem':
         return t('voice.assumedNewItem', { name });
+      // Names who chose, rather than borrowing `item`'s "you did not say its
+      // whole name" - which is a sentence about something the reader of an
+      // assistant proposal never did.
+      case 'assistant':
+        return t('voice.assumedAssistant');
     }
   });
 }

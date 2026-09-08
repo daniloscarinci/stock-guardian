@@ -118,7 +118,7 @@ describe('converse', () => {
     feijaoId = feijao.id;
 
     deps = {
-      items, locations, categories, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [],
+      items, locations, categories, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [],
     };
   });
 

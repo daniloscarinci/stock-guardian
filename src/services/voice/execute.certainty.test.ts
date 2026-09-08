@@ -38,7 +38,7 @@ describe('execute: certainty', () => {
     await items.create({ name: 'Feijão Preto', quantity: 4, unit: 'kg' });
     await items.create({ name: 'Milho Verde', quantity: 3, unit: 'latas' });
 
-    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [] };
+    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [] };
   });
 
   afterEach(async () => {

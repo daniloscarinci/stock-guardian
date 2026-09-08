@@ -24,6 +24,17 @@ export interface VoiceDeps {
   readonly language: Language;
   /** From settings.preparednessCategoryIds. Empty means every category that holds an item. */
   readonly trackedCategoryIds: readonly string[];
+  /**
+   * From settings.replenishmentDismissed. Items the user has taken off the
+   * replenishment list.
+   *
+   * Required rather than optional, and that is the fix rather than an
+   * incidental choice. This was absent, so every caller of `buildReplenishmentList`
+   * outside the Replenishment screen quietly omitted it and told the user to
+   * buy something they had explicitly dismissed. A required field makes a new
+   * caller answer the question rather than inherit the wrong answer.
+   */
+  readonly dismissedItemIds: readonly string[];
 }
 
 export type Answer =
@@ -48,7 +59,16 @@ export type AssumptionReason =
   | 'item'       // matched by something looser than an exact name
   | 'unit'       // the spoken unit differed from the stored one
   | 'date'       // the date was derived rather than stated
-  | 'newItem';   // the item does not exist yet
+  | 'newItem'    // the item does not exist yet
+  /**
+   * A model chose this row, not the parser and not the user.
+   *
+   * `item` is the parser's reason and says "you did not say its whole name",
+   * which is a true sentence about a phrase matched loosely and a false one
+   * about a row Claude picked out of a tool result. The reader has to check a
+   * different thing in each case, so they are different reasons.
+   */
+  | 'assistant';
 
 /**
  * How much of a write was heard, and how much was filled in.
@@ -216,6 +236,10 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
         today: deps.context.today,
         defaultThreshold: deps.context.defaultThreshold,
         expiryWindows: deps.context.expiryWindows,
+        // Dismissal is a decision the user made on the Replenishment screen,
+        // and it has to mean the same thing here. Without this the spoken
+        // answer and the screen disagreed about the same list.
+        dismissedItemIds: deps.dismissedItemIds,
       });
       return { kind: 'answer', answer: { kind: 'MISSING', lines } };
     }

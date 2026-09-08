@@ -30,7 +30,7 @@ describe('execute: writes stay pending', () => {
     });
     feijaoId = feijao.id;
 
-    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [] };
+    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [] };
   });
 
   afterEach(async () => {
@@ -213,7 +213,7 @@ describe('commit', () => {
     const locations = createLocationsRepository(db);
     await locations.create({ name: 'Despensa' });
     await items.create({ name: 'Feijão Preto', quantity: 4, unit: 'kg' });
-    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [] };
+    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [] };
   });
 
   afterEach(async () => {

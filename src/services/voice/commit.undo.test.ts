@@ -39,7 +39,7 @@ describe('undo', () => {
     });
     feijaoId = feijao.id;
 
-    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [] };
+    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [] };
   });
 
   afterEach(async () => {

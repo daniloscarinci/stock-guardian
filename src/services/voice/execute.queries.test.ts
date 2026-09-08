@@ -63,7 +63,7 @@ describe('execute: queries', () => {
       name: 'Feijão Preto', quantity: 1, unit: 'kg', minimumQuantity: 10, idealQuantity: 20,
     });
 
-    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [] };
+    deps = { items, locations, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [] };
   });
 
   afterEach(async () => {
@@ -95,6 +95,32 @@ describe('execute: queries', () => {
     if (result.kind === 'answer' && result.answer.kind === 'MISSING') {
       expect(result.answer.lines.length).toBeGreaterThan(0);
     }
+  });
+
+  /*
+   * The defect this test exists to keep fixed.
+   *
+   * The Replenishment screen honours a dismissal and this answer did not, so
+   * the application disagreed with itself about the same list. `dismissedItemIds`
+   * now comes through `VoiceDeps`, from the same setting the screen reads.
+   */
+  it('leaves out an item the user dismissed from the replenishment list', async () => {
+    const before = await execute(deps, { kind: 'QUERY_MISSING' });
+    if (before.kind !== 'answer' || before.answer.kind !== 'MISSING') {
+      throw new Error(`expected MISSING, got ${before.kind}`);
+    }
+    const dropped = before.answer.lines[0];
+    if (dropped === undefined) throw new Error('the fixture has nothing to dismiss');
+
+    const after = await execute(
+      { ...deps, dismissedItemIds: [dropped.itemId] },
+      { kind: 'QUERY_MISSING' },
+    );
+    if (after.kind !== 'answer' || after.answer.kind !== 'MISSING') {
+      throw new Error(`expected MISSING, got ${after.kind}`);
+    }
+    expect(after.answer.lines.map((line) => line.name)).not.toContain(dropped.name);
+    expect(after.answer.lines).toHaveLength(before.answer.lines.length - 1);
   });
 
   it('says where an item is', async () => {
@@ -254,6 +280,7 @@ describe('execute: queries', () => {
         context: CONTEXT,
         language: 'pt-BR',
         trackedCategoryIds: tracked,
+        dismissedItemIds: [],
       });
 
       expect(spoken).toBe(await screenScore(items, tracked));
@@ -274,7 +301,7 @@ describe('execute: queries', () => {
         locations: createLocationsRepository(empty),
         context: CONTEXT,
         language: 'pt-BR',
-        trackedCategoryIds: [],
+        trackedCategoryIds: [], dismissedItemIds: [],
       });
 
       expect(spoken).toBe(0);

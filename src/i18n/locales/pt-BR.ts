@@ -487,6 +487,7 @@ export const ptBR: LocaleTree = {
     assumedUnit: 'Assumi {unit}, a unidade em que este item é guardado. Você contou em outra.',
     assumedDate: 'Assumi {date}. Você não disse o dia exato.',
     assumedNewItem: 'Assumi que é novo. Nada no seu estoque se chama {name}.',
+    assumedAssistant: 'O assistente escolheu este item. Confira se é o que você queria.',
     which: 'Qual deles?',
     whichOfMany: 'Mostrando {shown} de {total} resultados. Diga o nome com mais precisão.',
     notFound: 'Não encontrei "{phrase}" no seu estoque.',

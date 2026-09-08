@@ -50,7 +50,7 @@ describe('ai tools: reading', () => {
     });
 
     deps = {
-      items, locations, categories, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [],
+      items, locations, categories, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [],
     };
   });
 
@@ -223,6 +223,41 @@ describe('ai tools: reading', () => {
         (line) => line.name === 'Iogurte Natural',
       );
       expect(yoghurt).toMatchObject({ reason: 'expired', to_acquire: 1 });
+    });
+
+    /*
+     * The defect this test exists to keep fixed.
+     *
+     * Dismissing an item on the Replenishment screen is a decision - "I know,
+     * and I am not restocking it" - and the tool used to ignore it entirely.
+     * Claude would then tell someone to buy the thing they had just taken off
+     * the list, and cite the application for it. The screen, the parser and
+     * this tool now read the same list from the same field.
+     */
+    it('leaves out an item the user dismissed from the list', async () => {
+      const before = await read('whats_missing');
+      const names = (body: Record<string, unknown>) =>
+        (body.items as { name: string }[]).map((line) => line.name);
+      const dropped = names(before)[0];
+      expect(dropped).toBeDefined();
+
+      const lines = buildReplenishmentList({
+        items: await deps.items.listForAnalysis(),
+        today: TODAY,
+        defaultThreshold: CONTEXT.defaultThreshold,
+        expiryWindows: CONTEXT.expiryWindows,
+      });
+      const dismissed = lines.find((line) => line.name === dropped);
+      if (dismissed === undefined) throw new Error('the fixture has nothing to dismiss');
+
+      const after = await runTool(
+        { ...deps, dismissedItemIds: [dismissed.itemId] },
+        'whats_missing',
+        {},
+      );
+      const body = JSON.parse(after.result) as Record<string, unknown>;
+      expect(names(body)).not.toContain(dropped);
+      expect(body.matched).toBe((before.matched as number) - 1);
     });
   });
 

@@ -487,6 +487,7 @@ export const en = {
     assumedUnit: 'Assumed {unit}, the unit this item is kept in. You counted in something else.',
     assumedDate: 'Assumed {date}. You did not say the exact day.',
     assumedNewItem: 'Assumed this is new. Nothing in your stock is called {name}.',
+    assumedAssistant: 'The assistant chose this item. Check it is the one you meant.',
     which: 'Which one?',
     whichOfMany: 'Showing {shown} of {total} matches. Say the name more precisely.',
     notFound: 'I did not find "{phrase}" in your stock.',

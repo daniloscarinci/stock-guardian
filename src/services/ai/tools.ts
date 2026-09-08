@@ -255,16 +255,20 @@ export const TOOLS: readonly Anthropic.Tool[] = [
  * `assumed`, and every proposal carries at least one reason, because a card
  * headed "what I filled in" with nothing under it tells the reader nothing.
  *
- * The base reason is the item itself, or `newItem` for a creation. That is the
- * one part of a write the model always supplied: the user said a sentence, and
- * something turned it into this row. `quantity` and `unit` are added on top
- * when they are true as well.
+ * THE BASE REASON IS `assistant`, ON EVERY PROPOSAL AND WITHOUT EXCEPTION, and
+ * it used to be `item`. That was wrong in the one place the card is read:
+ * `item` renders as "you did not say its whole name", which describes a phrase
+ * the parser matched loosely and describes nothing at all about a row a model
+ * picked out of a tool result. The reader was being told to check the wrong
+ * thing, in a sentence about something they had not done. `assistant` says who
+ * chose, which is the fact, and the rest - `newItem`, `quantity`, `unit`,
+ * `date` - is added on top wherever it is true as well.
  */
 function assumed(reasons: readonly AssumptionReason[]): {
   certainty: 'assumed';
   assumptions: readonly AssumptionReason[];
 } {
-  return { certainty: 'assumed', assumptions: reasons };
+  return { certainty: 'assumed', assumptions: ['assistant', ...reasons] };
 }
 
 /**
@@ -554,6 +558,10 @@ async function whatsMissing(deps: AiDeps): Promise<ToolRun> {
     today: deps.context.today,
     defaultThreshold: deps.context.defaultThreshold,
     expiryWindows: deps.context.expiryWindows,
+    // The user's dismissals, honoured here as the Replenishment screen honours
+    // them. Without this Claude would tell someone to buy the thing they had
+    // just taken off the list, and be able to cite the application for it.
+    dismissedItemIds: deps.dismissedItemIds,
   });
 
   const shown = lines.slice(0, LIST_LIMIT);
@@ -680,7 +688,8 @@ async function adjustQuantity(deps: AiDeps, input: unknown): Promise<ToolRun> {
     return ok({ status: 'no change', item: itemJson(found.item) });
   }
 
-  const reasons: AssumptionReason[] = ['item'];
+  // `assistant` is added by `assumed`; only what is true on top of it goes here.
+  const reasons: AssumptionReason[] = [];
   if (unitDiffers(unit, found.item.unit)) reasons.push('unit');
 
   const write: PendingWrite = {
@@ -713,7 +722,8 @@ async function setQuantity(deps: AiDeps, input: unknown): Promise<ToolRun> {
     return ok({ status: 'no change', item: itemJson(found.item) });
   }
 
-  const reasons: AssumptionReason[] = ['item'];
+  // `assistant` is added by `assumed`; only what is true on top of it goes here.
+  const reasons: AssumptionReason[] = [];
   if (unitDiffers(unit, found.item.unit)) reasons.push('unit');
 
   const write: PendingWrite = {
@@ -786,14 +796,14 @@ async function setExpiry(deps: AiDeps, input: unknown): Promise<ToolRun> {
   const found = await locate(deps, phrase);
   if (!found.ok) return found.run;
 
-  // `date` as well as `item`: a model reading a date out of a sentence has
+  // `date` as well as `assistant`: a model reading a date out of a sentence has
   // derived it, and the card exists to show the reader exactly that part.
   const write: PendingWrite = {
     kind: 'EXPIRY',
     item: found.item,
     before: found.item.expirationDate,
     after: expiresOn,
-    ...assumed(['item', 'date']),
+    ...assumed(['date']),
   };
 
   return proposed(write, proposalNote(`${found.item.name} would expire on ${expiresOn}`));

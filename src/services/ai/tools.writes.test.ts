@@ -49,7 +49,7 @@ describe('ai tools: writes stay proposals', () => {
     feijaoId = feijao.id;
 
     deps = {
-      items, locations, categories, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [],
+      items, locations, categories, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [],
     };
   });
 
@@ -123,6 +123,11 @@ describe('ai tools: writes stay proposals', () => {
     for (const proposal of proposals) {
       expect(proposal.certainty, proposal.kind).toBe('assumed');
       expect(proposal.assumptions.length, proposal.kind).toBeGreaterThan(0);
+      // And the first reason names who chose. `item` - "you did not say its
+      // whole name" - is the parser's reason for a loose match and says
+      // nothing true about a row a model picked out of a tool result.
+      expect(proposal.assumptions[0], proposal.kind).toBe('assistant');
+      expect(proposal.assumptions, proposal.kind).not.toContain('item');
     }
   });
 
@@ -196,7 +201,7 @@ describe('ai tools: writes stay proposals', () => {
     it('fills in the quantity and unit it was not given, and says it did', async () => {
       const write = await propose('create_item', { name: 'quinoa' });
       expect(write).toMatchObject({ kind: 'CREATE', name: 'quinoa', quantity: 1, unit: 'un' });
-      expect(write.assumptions).toEqual(['newItem', 'quantity']);
+      expect(write.assumptions).toEqual(['assistant', 'newItem', 'quantity']);
     });
 
     it('names the location it was given, so the card can show it', async () => {
