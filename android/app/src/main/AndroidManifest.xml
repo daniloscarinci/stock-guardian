@@ -78,12 +78,16 @@
           - With no key stored, and with the assistant switched off, nothing
             runs and nothing is sent. That is the shipping default.
 
-        RECORD_AUDIO is not here and never will be. The microphone was removed
-        outright: Android's recognizer refuses EXTRA_PREFER_OFFLINE with no
-        offline Portuguese pack installed, which is this phone, so voice
-        commands were dropped rather than left to fail in silence. Reading
-        answers aloud stays, and speech synthesis asks for nothing. Do not add
-        it: the check in .github/workflows/android.yml fails on it.
+        RECORD_AUDIO IS NOT HERE, AND THE MICROPHONE WORKS. Speech arrives
+        through the system's own recognizer, launched as an Intent
+        (ACTION_RECOGNIZE_SPEECH, see SpeechPlugin): the system's own screen
+        opens, the system holds the microphone, and this application is handed
+        a sentence. It never opens an audio stream, so there is nothing for it
+        to ask permission for. Reading answers aloud is the same story from the
+        other side, and speech synthesis asks for nothing either.
+
+        Do not add RECORD_AUDIO. The feature works without it, and the check in
+        .github/workflows/android.yml fails the build on it.
 
         That check was narrowed rather than deleted. It allows exactly
         android.permission.INTERNET and still fails the build on every other
@@ -108,4 +112,26 @@
     -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+        Not a permission, and the only reason it is here.
+
+        From Android 11 an application sees no other application it has not
+        named, so SpeechPlugin's check of whether anything on this phone answers
+        ACTION_RECOGNIZE_SPEECH would come back empty on every modern phone, and
+        the microphone would report itself unavailable everywhere. Naming the
+        intents restores the answer for those two queries and nothing else.
+
+        This grants nothing and asks the system for nothing. It is not
+        QUERY_ALL_PACKAGES, which is a permission and is not here; it makes
+        visible only the applications that themselves declare they can do speech
+        recognition. The check in the workflow still finds nothing but INTERNET.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
 </manifest>
