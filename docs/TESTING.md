@@ -160,15 +160,18 @@ Stated so nobody mistakes green for complete.
   in silence is a defect no layer below the interface can see. Every
   screen is exercised end to end by the smoke test instead, not unit tested.
 - **Real speech.** No test speaks and no test listens. What is covered is
-  everything around the microphone: `webspeech.test.ts` pins that
-  `processLocally` is set before every start and that a listen without a local
-  model is refused unless the user has opted in; `capacitor.test.ts` pins the
-  codes the Android plugin returns and that `allowOnline` is absent-means-no;
-  `recognizer.test.ts` pins that no unrecognised failure is ever read as a
-  cancellation; and `VoiceSheet.test.tsx` drives a stubbed recognizer through
-  the real sheet, for each failure's sentence and for the one that must stay
-  silent. What no test can reach is the recognizer itself - whether a given
-  phone honours `EXTRA_PREFER_OFFLINE` is a fact about that phone, which is why
+  everything around the microphone, and the two-attempt sequence in particular:
+  `webspeech.test.ts` pins that the first recognizer of every listen sets
+  `processLocally` and that one without it is always a retry; `capacitor.test.ts`
+  pins the codes the Android plugin returns and the order of `preferOffline`
+  across both attempts; `online.test.ts` pins the policy both of them share -
+  never after a cancel, never under the refusal, never with the radio off, and
+  never twice; `recognizer.test.ts` pins that no unrecognised failure is ever
+  read as a cancellation; and `VoiceSheet.test.tsx` drives a stubbed recognizer
+  through the real sheet, for each failure's sentence, for the one that must
+  stay silent, and for the marker on an exchange the network transcribed. What
+  no test can reach is the recognizer itself - whether a given phone honours
+  `EXTRA_PREFER_OFFLINE` is a fact about that phone, which is why
   `docs/ANDROID.md` has a step for it.
   `ringer.test.ts` covers the speaker's half - that the ringer is read on
   Android, that it is not asked anywhere else, and that a bridge call which

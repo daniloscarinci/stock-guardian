@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased
+
+The 2.2.0 entry below records that release as it shipped and is left standing.
+The part of it describing `voiceAllowOnline` is no longer true, and it is named
+here rather than edited out of the history.
+
+### Offline is the standard; the internet is what it falls back to
+
+**The microphone tries the device first and the network second, and 2.2.0's
+opt-in was not enough.** That release named every failure and offered a switch,
+but the switch was off by default and the default therefore reproduced the
+original failure exactly: on a phone with no offline Portuguese pack, Google
+answered *"Voice search isn't available"* and the button still did nothing. An
+absolute rule nobody can use is not a stronger promise.
+
+**Every listen still starts on the device.** The Android plugin sends
+`EXTRA_PREFER_OFFLINE` on the first attempt and Chrome's recognizer sets
+`processLocally = true`, exactly as before, and on a phone with the language
+installed that is where every press ends.
+
+**A failed attempt is now retried once without the offline requirement**, when
+the device reports a connection and the user has not refused it. It never
+follows a deliberate cancel, never runs twice, and reports the first failure
+rather than the retry's — except a cancelled retry, because a banner after
+*never mind* is the thing this feature has a rule against. The retry fires on
+any failure but a cancel, because the Intent flow cannot name a missing language
+pack: a retry that waited for a diagnosis would not fire on the phone this
+exists for.
+
+**The exchange says when the network transcribed it.** *Transcribed online* /
+*Transcrito pela internet* / *Transcrito por internet*, beside the marker naming
+which engine answered. A fallback nobody can see is a fallback nobody agreed to.
+
+**`voiceAllowOnline` became `voiceOfflineOnly`, default false.** Named for the
+restriction so the label states what it does: on, no second attempt is ever
+made. A row stored under the old name is not read in either direction —
+`seedDatabase` writes every default on first run, so a stored
+`voiceAllowOnline: false` says *this install was never touched* far more often
+than it says *somebody refused the network*, and migrating it would restore the
+dead button for everybody who never had an opinion.
+
+**The sequence moved out of Java.** `SpeechPlugin.listen` takes `preferOffline`
+and does as it is told; `capacitor.ts` and `webspeech.ts` own the two attempts,
+and `online.ts` owns the one policy both of them ask. All of it is testable
+without a device.
+
+**The APK still asks for `INTERNET` and nothing else.** The second attempt
+travels on the system recognizer's own connection, not on this application's.
+
+---
+
 ## 2.2.0
 
 The 2.1.0 entry below records that release as it shipped and is left standing.

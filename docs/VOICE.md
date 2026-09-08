@@ -17,14 +17,17 @@ Three facts shape every decision below.
 the same sheet, doing the same thing. Nothing about it is a fallback for
 anything, which is why it survived the release where the microphone did not.
 
-**The microphone is back, offline first, and it says why when it fails.** It was
-built, shipped, and did not work on the phone it was built for: Android's
+**The microphone tries your device first, every time, and the internet second.**
+It was built, shipped, and did not work on the phone it was built for: Android's
 recognizer refuses `EXTRA_PREFER_OFFLINE` when no offline Portuguese pack is
-installed, and answers *"Voice search isn't available"* — while the plugin
-reported every failure as a cancellation, which this interface renders as
-silence. So the button appeared dead, and it was removed. What was wrong with it
-is fixed: every failure is now named, and the one failure with something to do
-about it carries the fix on the panel. See *Speaking instead of typing*.
+installed, and answers *"Voice search isn't available"*. It was removed, brought
+back with an opt-in nobody had switched on, and said the same thing again. What
+is here now is on-device first as the standard and the network as the fallback:
+if the device cannot transcribe and the phone has a connection, the recognizer
+is asked once more without the offline requirement, and the exchange is marked
+**Transcribed online** so you can see it happened. **Settings → Ask → Transcribe
+on this device only** refuses that fallback outright. See *Speaking instead of
+typing*.
 
 **Answers are read aloud.** Speaking is not listening: `speechSynthesis` opens
 no microphone, asks for no permission, and sends nothing anywhere. See *Reading
@@ -223,23 +226,49 @@ open the sheet to type. The failure that killed this feature was a control that
 appeared dead; burying the control that works under an explanation of the one
 that does not is the same mistake wearing a hat.
 
-### Nothing leaves the device unless you say so
+### The device first, the internet second, and the second one is visible
 
-**Offline is the default and it is not a preference — it is the request the
-recognizer is given.** On Android the plugin sends `EXTRA_PREFER_OFFLINE`; in
-Chrome the recognizer sets `processLocally = true`, which fails closed. With no
-model on the device for your language, the listen fails. It does not quietly go
-looking for a network.
+**The on-device attempt is not a preference — it is the request the recognizer
+is given, and it is given on every press.** On Android the plugin sends
+`EXTRA_PREFER_OFFLINE`; in Chrome the recognizer sets `processLocally = true`,
+which fails closed. With no model on the device for your language that attempt
+fails rather than quietly going looking for a network. On a phone that has the
+language, this is where it ends and nothing leaves.
 
-**Settings → Ask → Use internet recognition** is the one control in this
-application that can send a recording of anybody anywhere, and it is off. Switch
-it on and the offline flag is omitted: the system recognizer may then use the
-network, and on most phones the system recognizer is Google's. The label says
-that rather than saying "online", because *online* does not name who receives
-your voice.
+**If it fails and the phone has a connection, the same call runs once more
+without the offline requirement.** The system recognizer then transcribes over
+the network, which on most phones means Google receives what you said. Four
+rules bound it, and `src/services/speech/online.ts` is the whole of them:
 
-Nothing switches it on for you. Not a retry, not a failure, not an upgrade. A
-failure may put the switch in front of you; only you flip it.
+- **Second, never first.** The retry lives only in the failure path of the
+  on-device attempt.
+- **Never after a cancel.** Press back and nothing else happens.
+- **Never with no connection.** `navigator.onLine` is read as a hint in one
+  direction: a definite *no* stops the retry; a *yes* it cannot verify lets the
+  attempt run and fail, which costs a second.
+- **At most once.** A failing retry reports the first failure and stops.
+
+**The exchange says so.** *Transcribed online* / *Transcrito pela internet* /
+*Transcrito por internet* appears in the log beside the marker naming which
+engine answered. Most presses never show it, which is the point of showing it.
+
+**Why the retry is not aimed more precisely.** The Intent flow returns no error
+extra and the two constants that name a missing language pack never reach it
+(see *What Android actually tells you*), so a retry that waited for a diagnosis
+would not fire on the phone this exists for. It fires on any failure but a
+cancel. A wasted retry costs a second; a missed one is a dead button.
+
+**Settings → Ask → Transcribe on this device only** turns the second attempt off
+for good: what you say never leaves the phone, and a language with no offline
+pack simply will not transcribe. It is off as shipped, and it is named for the
+restriction rather than for a permission so that the label states what it does.
+It replaces `voiceAllowOnline`, and a row stored under the old name is not read
+in either direction — `seedDatabase` writes every default on first run, so a
+stored `voiceAllowOnline: false` says *never touched* far more often than it
+says *refused*.
+
+Nothing switches it for you. Not a retry, not a failure, not an upgrade. A
+failure may put the switch in front of you; only you move it.
 
 ### When it fails, it says which failure
 
@@ -263,11 +292,13 @@ plugin cannot know which of three languages you read:
 | Anything else | *The microphone could not be used. Typing works* |
 
 The missing-model case gets a panel rather than a sentence, because it is the
-only failure with something you can actually do about it. The panel carries all
-three ways forward: the install path for the offline pack, folded away until you
-ask for it; **Type the command instead**, which dismisses the panel and puts the
-cursor in the box; and the internet-recognition switch itself, in the same
-words as the Settings row.
+only failure with something you can actually do about it — and it now reaches
+you only where the second attempt could not run, which is either *no connection*
+or *you asked for on-device only*. The panel says which, and carries all three
+ways forward: the install path for the offline pack, folded away until you ask
+for it; **Type the command instead**, which dismisses the panel and puts the
+cursor in the box; and the on-device-only switch itself, in the same words as
+the Settings row, with a line under it saying what it is currently doing.
 
 The switch is on the panel deliberately. The first version of this named the
 setting in a sentence and sent you to Settings to find it, having just told you
@@ -386,9 +417,10 @@ so switching it off removes the feature rather than only its entry point.
 
 **Settings → Ask → Read answers aloud** keeps the box and stops the speaking.
 
-**Settings → Ask → Use internet recognition** is off, and switching it off again
-after you have switched it on returns the microphone to offline-only. Nothing
-else in the application writes that setting.
+**Settings → Ask → Transcribe on this device only** is off. Switching it on
+removes the second attempt entirely and returns the microphone to the absolute
+behaviour: nothing you say ever leaves the phone, and a language with no offline
+pack will not transcribe. Nothing else in the application writes that setting.
 
 Neither is the assistant's switch. **Settings → Ask Claude** decides which
 engine answers, and with it off - or with no key pasted - this one does, and

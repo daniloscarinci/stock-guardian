@@ -101,16 +101,26 @@ nothing until you press **Confirmar**. It works in all three languages.
 
 Three things about it belong here rather than in a footnote.
 
-*The microphone is offline first, and it tells you when it cannot be.* It sits
-in the sheet next to the box, and it asks the phone's own recognizer to
-transcribe without a network. Where no offline pack for your language is
-installed, that request is refused — which is exactly what happened on the
-Portuguese phone this was built for, and the button appeared dead because the
-failure came back as a cancellation and a cancellation is answered with silence.
-Every failure is now named. The one that can be fixed comes with a panel holding
-the install path, the way back to the box, and **Use internet recognition — your
-voice goes to Google**, which is off until you switch it on and is the only
-thing here that can send a recording of anybody anywhere.
+*The microphone tries your phone first, every time, and uses the internet only
+when your phone could not.* It sits in the sheet next to the box. Every press
+asks the phone's own recognizer to transcribe with no network, which is what
+happens on a phone that has the language installed — nothing leaves, and it
+works with the radio off. Where that attempt fails and the phone has a
+connection, it tries once more without the offline requirement: the system
+recognizer sends the recording away to transcribe it, on most phones to Google,
+and **the answer is marked "Transcribed online"** in the log so you can see
+which presses left the device.
+
+That fallback exists because the absolute version did not work. On the
+Portuguese phone this was built for there is no offline pack, the recognizer
+refused every request, and the button appeared dead. Twice. Failures that still
+happen are named rather than silent, and the one that can be fixed comes with a
+panel holding the install path and the way back to the typed box.
+
+If you want the absolute version anyway, **Settings → Ask → Transcribe on this
+device only** restores it in one press: no second attempt, ever, and a language
+with no offline pack simply will not transcribe. It is off as shipped, and
+nothing in the application ever turns it on or off for you.
 
 *Answers are read aloud.* **Settings → Ask → Read answers aloud** uses the
 system voice and is on by default. On Android the silent switch on the side of
@@ -288,10 +298,12 @@ Stated plainly, because the alternative is an interface full of buttons that do
 nothing. Nothing in this list appears in the application as a disabled control or
 a "coming soon" panel — if it is not built, it is not shown.
 
-- **Speech input, anywhere.** It was built, it shipped, and it did not work:
-  Android's recognizer refuses to transcribe offline without a language pack the
-  target phone did not have. Reading answers aloud stays; listening is gone
-  until Android's side of it is worth revisiting.
+- **Speech input on every browser.** The microphone needs a recognizer this
+  application can ask about locality, so that it can insist on the on-device
+  attempt first. Chrome exposes one and Android has the system recognizer;
+  Safari and Firefox offer a networked-only API with no such control, and one
+  that cannot be questioned is not used. There the typed box is the way in, and
+  it always was.
 - **The desktop build, proven.** The code is the same, but `src-tauri/` has
   still never been compiled, so nothing here has been seen running in that
   webview.

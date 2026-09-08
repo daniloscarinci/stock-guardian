@@ -6,31 +6,38 @@ and it is still enforced. This page describes how, because a promise like this
 erodes by accident: one webfont, one analytics snippet, one CDN fallback added
 while debugging.
 
-Three things sit outside it. Each is off until a person switches it on, each is
-set out in full below, and none of them puts your database on a network.
+Three things sit outside it. Each is set out in full below, none of them puts
+your database on a network, and **one of the three is on as it ships** — read
+that one even if you skip the others.
 
-**Asking Claude.** Paste your own Anthropic API key into Settings, switch the
-assistant on, and a question goes to `api.anthropic.com`. This is the only
-request in this project that the application itself makes, and *The AI
-assistant* below says precisely what is in it. With no key stored, the assistant
-does not run, opens no connection and sends nothing.
+**Asking Claude.** *Off until you switch it on.* Paste your own Anthropic API
+key into Settings, switch the assistant on, and a question goes to
+`api.anthropic.com`. This is the only request in this project that the
+application itself makes, and *The AI assistant* below says precisely what is in
+it. With no key stored, the assistant does not run, opens no connection and
+sends nothing.
 
-**Internet speech recognition.** The microphone asks the device to transcribe
-without a network, and where that is refused it fails and says so. **Settings →
-Ask → Use internet recognition** lifts that request instead: the system
-recognizer may then send what you say away to transcribe it, which on most
-phones means to Google. It is off, it is the only control here that can put a
-recording of anybody on a network, and nothing but a person switches it on. See
-*Speech* below.
+**The microphone's second attempt. THIS ONE IS ON.** Every press asks the device
+to transcribe with no network, and on a phone that has your language installed
+that is the whole of it — nothing leaves, and it works with the radio off. When
+that attempt fails and the phone reports a connection, the recognizer is asked
+once more without the offline requirement, and the system recognizer then sends
+what you said away to transcribe it — on most phones, to Google. The exchange is
+marked **Transcribed online** in the sheet, so you can see which presses left
+the device. It is never tried after you press back, never tried twice, and
+**Settings → Ask → Transcribe on this device only** stops it happening at all.
+*Speech* below sets out why the absolute rule was replaced and what still holds
+it in.
 
-**Downloading a speech pack.** Where the browser offers it, installing an
-on-device model for your language is a download you ask for. Nothing of yours
-goes with it, and the point of it is to make the first of these unnecessary.
+**Downloading a speech pack.** *A download you ask for.* Where the browser
+offers it, installing an on-device model for your language costs nothing of
+yours, and the point of it is to make the attempt above unnecessary.
 
-Leave all three alone and nothing in the application, on any platform, reaches
-the network at all. Your database is never uploaded even when you do not:
-the assistant sends the rows a question asked about and never the file they came
-from.
+The application itself still reaches nothing, on any platform, whatever you do
+with these: the audit and the Content-Security-Policy below hold that, and the
+recording the second attempt sends is sent by the system recognizer rather than
+by this code. Your database is never uploaded either way — the assistant sends
+the rows a question asked about and never the file they came from.
 
 ---
 
@@ -52,9 +59,10 @@ the build, and so does that host used from any other module. *The AI assistant*
 below sets out how the rule is written and what it cannot see.
 
 It also carries a rule that reads `src/` instead of `dist/`, for the
-`SpeechRecognition` identifier — which is now permitted in no module at all.
-That rule, why it was kept after its subject was deleted, and what it cannot
-catch, are set out under *Speech*.
+`SpeechRecognition` identifier — permitted in exactly one module,
+`src/services/speech/webspeech.ts`. That rule, why it was kept through the
+period when its subject was deleted, and what it cannot catch, are set out under
+*Speech*.
 
 **The Content-Security-Policy.** `index.html` declares `default-src 'self'`, so
 the browser itself refuses any off-origin request. The single exception is
@@ -236,8 +244,10 @@ Stated rather than glossed, in the manner of the rest of this page.
 ## Speech
 
 **Speech input is the one feature that could quietly undo everything above**, so
-it is worth a chapter, and the chapter has a history. It shipped, it was removed
-because it did not work, and it is back with the reason it did not work fixed.
+it is worth a chapter, and the chapter has a history. It shipped. It was removed
+because it did not work. It came back with an opt-in that nobody had switched on,
+so it still did not work. What is here now is the third answer, and it changes
+the standard rather than the wording.
 
 Three recognizers sit behind one seam. Android's fires
 `ACTION_RECOGNIZE_SPEECH`, so the system holds the microphone and no
@@ -245,36 +255,66 @@ Three recognizers sit behind one seam. Android's fires
 which fails closed. Everything else reports itself unavailable rather than
 falling back to the API's default mode, which streams the microphone to Google.
 
-### The one thing that can send your voice anywhere
+### Offline is the standard; the internet is what it falls back to
 
-By default the Android plugin sends `EXTRA_PREFER_OFFLINE` and Chrome's
-recognizer sets `processLocally = true`. Neither is a preference the recognizer
-may ignore quietly: with no model on the device for your language, the listen
-fails.
+Every listen starts on the device. The Android plugin sends
+`EXTRA_PREFER_OFFLINE` and Chrome's recognizer sets `processLocally = true`, and
+neither is a preference the recognizer may ignore quietly: with no model on the
+device for your language, that attempt fails rather than going to a server
+behind your back. On a phone that has the language, this is where every press
+ends, and nothing leaves.
 
-**That failure is what removed this feature once.** On the Portuguese phone this
-was built for there was no offline pack, the recognizer refused every time, and
-the plugin reported the refusal as a cancellation — which this interface answers
-with silence. The button appeared dead and could not say why, so it was deleted.
+**That failure is what removed this feature once, and dead-ended it twice.** On
+the Portuguese phone this was built for there is no offline pack. The recognizer
+refused every request. The first time, the plugin reported the refusal as a
+cancellation — which this interface answers with silence — so the button
+appeared dead and could not say why, and it was deleted. The second time the
+failure was named, but the way past it was an opt-in that was off by default, so
+the default still refused every press. An absolute rule nobody can use is not a
+stronger promise. It is a dead button.
 
-**`voiceAllowOnline` is the answer to it, and it is off.** Switched on, the
-offline flag is omitted and the system recognizer may use the network: what you
-say then goes to whichever service that recognizer uses, which on most phones is
-Google's. The label says that rather than saying *online*, in Settings and on
-the failure panel both, because *online* does not name who receives your voice.
+**So a failed on-device attempt is now tried once more without the offline
+requirement.** The system recognizer then transcribes over the network, which on
+most phones means Google receives what you said. Four things bound it, and each
+is tested on its own:
 
-Three properties hold it closed, and all three are tested:
+- **It is second, never first.** The on-device attempt runs every time, and the
+  retry exists only in the failure path of it.
+- **It never follows a cancel.** Press back and nothing further happens. Sending
+  a recording away because somebody changed their mind is the worst thing this
+  feature could do.
+- **It never runs without a connection.** `navigator.onLine` is read as a hint
+  in one direction: a definite *no* stops it. A *yes* it cannot verify lets the
+  attempt run and fail, which costs a second.
+- **It happens at most once.** A failing retry reports the first failure and
+  stops. There is no loop.
 
-- The schema default is `false`.
-- `allowOnline` is absent-means-no at every layer of the seam, so a caller that
-  forgets the argument gets the private behaviour.
-- The Android plugin sends `EXTRA_PREFER_OFFLINE` unless explicitly told not to.
+**And it is visible.** The exchange carries **Transcribed online** in the sheet,
+beside the marker naming which engine answered. A fallback nobody can see is a
+fallback nobody agreed to.
 
-**Nothing in the application ever writes it.** Not a retry, not a failure, not
-an upgrade. A failure may put the switch in front of you — the panel that
-explains a missing offline model carries it, because sending somebody to hunt
-through a settings screen after a failure they cannot interpret is how this
-failed the first time — and only a press moves it.
+**`voiceOfflineOnly` is how to refuse it, and it is off.** Switched on, no
+second attempt is ever made: what you say never leaves the phone, and a language
+with no offline pack simply will not transcribe — which is exactly what somebody
+switching it on is asking for. It is named for the restriction rather than for a
+permission, so that the label states what it does. It replaces
+`voiceAllowOnline`; a stored row under the old name is not read, in either
+direction, because `seedDatabase` writes every default on first run and a stored
+`voiceAllowOnline: false` says *this install was never touched* far more often
+than it says *somebody refused the network*.
+
+**The retry is deliberately not aimed more precisely.** `ACTION_RECOGNIZE_SPEECH`
+returns no error extra, and the two Android constants that name a missing
+language pack are delivered only to a `RecognitionListener` — the API that needs
+`RECORD_AUDIO`, which this application does not hold. Below API 33 the diagnosis
+is a timing heuristic. A retry that waited for certainty would not fire on the
+phone this exists for, so it fires on any failure but a cancel.
+
+**Nothing in the application ever writes the setting.** Not a retry, not a
+failure, not an upgrade. A failure may put the switch in front of you — the
+panel that explains a missing offline model carries it, because sending somebody
+to hunt through a settings screen after a failure they cannot interpret is how
+this failed the first time — and only a press moves it.
 
 ### What still guards the default
 
@@ -284,7 +324,8 @@ it came back.** `scripts/audit-offline.mjs` fails the build if the identifier
 input was removed, the allowance became `null` — permitted nowhere — rather than
 the rule being deleted along with its subject, on the grounds that the browser
 API was still there and still streamed audio by default. Speech input came back;
-naming the module again was the whole of what restoring the guarantee cost.
+naming the module again was the whole of what restoring the guarantee cost. One
+module still constructs a recognizer, and both of its attempts are in it.
 
 What it cannot catch is unchanged: it is a text match on one spelling over
 source files, so a name assembled at runtime passes it. It catches the second

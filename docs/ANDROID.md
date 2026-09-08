@@ -181,13 +181,23 @@ microphone, and this application is handed a sentence. It never opens an audio
 stream, so `RECORD_AUDIO` is not in the manifest and fails the build if anybody
 puts it there.
 
-It sends `EXTRA_PREFER_OFFLINE` unless **Settings → Ask → Use internet
-recognition** has been switched on, which is off by default. That flag is why
-this feature was once removed: on a phone with no offline pack for the language,
-Android's recognizer simply refuses, and it answered *"Voice search isn't
-available"* on the Portuguese phone this was built for while the plugin reported
-every refusal as a cancellation. `docs/VOICE.md` sets out how each failure is
-now named, and where the switch that lifts the flag is offered.
+**The plugin no longer decides whether to stay offline.** `listen` takes
+`preferOffline` and does as it is told; the web layer owns the sequence, in
+`src/services/speech/capacitor.ts`, where it can be tested without a phone in
+the room. Every press calls it once with `true`, which sends
+`EXTRA_PREFER_OFFLINE` and keeps the recording on the device. If that fails and
+the phone reports a connection, it calls once more with `false`, the extra is
+omitted, and the system recognizer transcribes over the network — on most
+phones, through Google. The exchange is then marked *Transcribed online* in the
+sheet.
+
+That flag is why this feature was removed once and dead-ended twice: on a phone
+with no offline pack for the language Android's recognizer simply refuses, and
+it answered *"Voice search isn't available"* on the Portuguese phone this was
+built for. **Settings → Ask → Transcribe on this device only** restores the
+absolute behaviour for anyone who wants it, and is off as shipped.
+`docs/VOICE.md` sets out how each failure is named and what bounds the second
+attempt.
 
 **The manifest carries a `<queries>` element, and it is not a permission.** From
 Android 11 an application sees no other application it has not named, so without
@@ -256,14 +266,19 @@ tells you something different:
    leave the application from the dashboard.
 7. **The ask button opens the box.** Tap the speech bubble in the header and
    type *"quanto arroz eu tenho?"*.
-8. **The microphone works, or says why.** Press it in the sheet and say the same
-   thing. With an offline Portuguese pack installed you get an answer; without
-   one you get a panel naming the missing pack, the way to install it, and the
-   switch that lets the recognizer use the network — never a button that does
-   nothing. Either way, confirm in **Settings → Apps → Stock Guardian →
-   Permissions** that the microphone is *not* among what this application holds:
-   the system's recognizer holds it. The one permission declared is the network,
-   and only the assistant uses it.
+8. **The microphone works.** Press it in the sheet and say the same thing. With
+   an offline Portuguese pack installed you get an answer and no marker, because
+   nothing left the phone. Without one, the recognizer's screen may appear twice
+   in quick succession — that is the second attempt — and the answer carries
+   *Transcrito pela internet*. Turn the radio off and try again: you should get
+   the panel naming the missing pack and the way to install it, never a button
+   that does nothing. Then switch **Settings → Ask → Transcribe on this device
+   only** on and confirm the second attempt stops happening. Either way, confirm
+   in **Settings → Apps → Stock Guardian → Permissions** that the microphone is
+   *not* among what this application holds: the system's recognizer holds it.
+   The one permission declared is the network, and only the assistant uses it:
+   the second attempt travels on the system recognizer's own connection, not on
+   this application's.
 9. **Answers are read aloud, and the silent switch stops them.** Leave
    **Settings → Ask → Read answers aloud** on, ask a question, and listen. Then
    put the phone on silent and ask again: `RingerPlugin` reads the ringer mode,
