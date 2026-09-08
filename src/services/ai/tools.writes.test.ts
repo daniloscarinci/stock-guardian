@@ -18,6 +18,8 @@ import { seedDatabase } from '../../database/seed/seed';
 import { createItemsRepository, type ItemContext } from '../../repositories/items.repository';
 import { createLocationsRepository } from '../../repositories/locations.repository';
 import { createCategoriesRepository } from '../../repositories/categories.repository';
+import { createContactsRepository } from '../../repositories/contacts.repository';
+import { createCatalogRepository } from '../../repositories/catalog.repository';
 import { commit } from '../voice/commit';
 import type { PendingWrite } from '../voice/execute';
 import { runTool, type AiDeps } from './tools';
@@ -41,6 +43,8 @@ describe('ai tools: writes stay proposals', () => {
     const items = createItemsRepository(db);
     const locations = createLocationsRepository(db);
     const categories = createCategoriesRepository(db);
+    const contacts = createContactsRepository(db);
+    const catalog = createCatalogRepository(db);
     await locations.create({ name: 'Despensa' });
 
     const feijao = await items.create({
@@ -49,7 +53,8 @@ describe('ai tools: writes stay proposals', () => {
     feijaoId = feijao.id;
 
     deps = {
-      items, locations, categories, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [],
+      items, locations, categories, contacts, catalog,
+      context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [],
     };
   });
 

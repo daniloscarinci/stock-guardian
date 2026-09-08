@@ -29,16 +29,27 @@ import { buildReplenishmentList } from '../../domain/replenishment';
 import { evaluatePreparedness } from '../../domain/preparedness';
 import { foldText } from '../../domain/normalize';
 import type { CategoriesRepository } from '../../repositories/categories.repository';
+import type { ContactsRepository } from '../../repositories/contacts.repository';
+import type { CatalogRepository } from '../../repositories/catalog.repository';
 import type { ExpiryBucket } from '../../domain/expiry';
 import type { StockStatus } from '../../domain/stock';
 import type { InventoryItemView, LocationNode, StockTransactionType } from '../../types/domain';
 
 /**
- * Everything a tool needs, which is everything voice control needs plus the
- * categories - the parser never had to name one, and a typed question does.
+ * Everything a tool needs, which is everything voice control needs plus three
+ * repositories the parser never had to reach for.
+ *
+ * The categories, because a typed question names one where a spoken command
+ * never did. The contacts, because "who do I call" is a question about this
+ * household that has nothing to do with stock. The catalog, because it is the
+ * only place that knows what a prepared household OUGHT to hold - the
+ * inventory knows what this one does hold, and answering "what am I missing"
+ * takes both.
  */
 export interface AiDeps extends VoiceDeps {
   readonly categories: CategoriesRepository;
+  readonly contacts: ContactsRepository;
+  readonly catalog: CatalogRepository;
 }
 
 /**
@@ -161,6 +172,73 @@ export const TOOLS: readonly Anthropic.Tool[] = [
       "Every category, named in the user's language. Use it to turn a category the user " +
       'named into one list_items will accept.',
     input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'stock_summary',
+    description:
+      'The state of the whole stock in one set of figures: how many items there are, how ' +
+      'many are critical or low, how many have expired or are about to, and how many are ' +
+      'archived. The same counts the dashboard shows. Reach for this FIRST for a broad ' +
+      'question - "how am I doing", "is anything wrong", "how much do I have" - so you can ' +
+      'say how things stand without listing every item to work it out.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'item_history',
+    description:
+      'The recorded movements of one item - every purchase, addition, use and correction - ' +
+      'most recent first, with what the quantity changed by and the day it happened. Use it ' +
+      'for "when did I last buy rice", for how fast something is being used, and to explain ' +
+      'a count that looks wrong. Name the item as the user said it; it is matched the same ' +
+      'way find_item matches it.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        item: { type: 'string', description: 'The item as the user said it.' },
+        limit: {
+          type: 'integer',
+          description: `How many movements to return, newest first. At most ${String(LIST_LIMIT)}.`,
+        },
+      },
+      required: ['item'],
+    },
+  },
+  {
+    name: 'search_catalog',
+    description:
+      'Search the built-in reference catalog of preparedness supplies - what a well-stocked ' +
+      'household COULD hold. THESE ARE RECOMMENDATIONS, NOT WHAT THE USER OWNS. Nothing it ' +
+      'returns is in their stock unless find_item or list_items says so, and telling someone ' +
+      'they have water because the catalog lists water is the mistake this tool most invites. ' +
+      'Use it for "what should I have", and for "what am I missing" alongside a look at the ' +
+      'inventory: the catalog is the recommendation, the inventory is the truth.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Free text. Matched in every language the catalog is named in.' },
+        category: { type: 'string', description: 'A category name from list_categories.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_contacts',
+    description:
+      "The household's emergency contacts, in the order the application itself keeps them: " +
+      'most urgent first, then by name - NOT alphabetically, so do not re-sort them. Returns ' +
+      'name, relationship, phone and email. Use it for who to call, who the doctor or the ' +
+      'neighbour is, and for a number the user cannot remember. The optional search matches ' +
+      'every field with accents and case ignored, so "medico" finds "Médico".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        search: {
+          type: 'string',
+          description: 'Free text matched against name, relationship, phone, email, place and notes.',
+        },
+      },
+      required: [],
+    },
   },
 
   // ---- The four that only propose ----------------------------------------
@@ -362,6 +440,20 @@ const expiringInput = z.object({
   within_days: z.number().int().min(0).max(3650).optional(),
   expired_only: z.boolean().optional(),
 });
+
+const historyInput = z.object({
+  item: z.string().min(1),
+  // Clamped rather than rejected: a model asking for two hundred movements has
+  // asked a reasonable question badly, and refusing it teaches it nothing.
+  limit: z.number().int().min(1).optional(),
+});
+
+const catalogInput = z.object({
+  query: z.string().optional(),
+  category: z.string().optional(),
+});
+
+const contactsInput = z.object({ search: z.string().optional() });
 
 const adjustInput = z.object({
   item: z.string().min(1),
@@ -656,6 +748,198 @@ async function listCategories(deps: AiDeps): Promise<ToolRun> {
   });
 }
 
+/*
+ * The cheap answer to a broad question.
+ *
+ * The same call `DashboardScreen` makes, so "how am I doing" and the screen
+ * agree. Its existence is as much about what it prevents: without it, a
+ * question as vague as "how is my stock" is answered by listing fifty items
+ * and counting them in prose, which is slower, costs more and gets the
+ * arithmetic wrong in a way nobody can see.
+ */
+async function stockSummary(deps: AiDeps): Promise<ToolRun> {
+  const stats = await deps.items.dashboardStats(deps.context);
+
+  return ok({
+    today: deps.context.today,
+    total_items: stats.totalItems,
+    total_quantity: stats.totalQuantity,
+    categories_used: stats.categoriesUsed,
+    places_used: stats.locationsUsed,
+    critical: stats.critical,
+    low: stats.low,
+    expired: stats.expired,
+    expiring_today: stats.expiringToday,
+    expiring_soon: stats.expiringSoon,
+    no_expiry_date: stats.noExpiration,
+    archived: stats.archived,
+    changed_in_the_last_week: stats.recentlyModified,
+    note: 'Counts of active items. Archived stock is counted only in "archived".',
+  });
+}
+
+/*
+ * One item's movements.
+ *
+ * `change` is derived from before and after rather than read from the
+ * `quantity` column, which stores the magnitude and not the direction: a
+ * consumption and a purchase of the same size are the same number there. A
+ * signed change is what "when did I last buy rice, and how much" is made of.
+ */
+async function itemHistory(deps: AiDeps, input: unknown): Promise<ToolRun> {
+  const parsed = historyInput.safeParse(input);
+  if (!parsed.success) return failed('item_history needs an item, and an optional whole-number limit.');
+
+  const found = await locate(deps, parsed.data.item);
+  if (!found.ok) return found.run;
+
+  const limit = Math.min(parsed.data.limit ?? LIST_LIMIT, LIST_LIMIT);
+  const rows = await deps.items.history(found.item.id, limit);
+
+  const movements = rows.map((row) => {
+    const before = Number(row.quantity_before);
+    const after = Number(row.quantity_after);
+    return {
+      type: String(row.type),
+      change: Math.round((after - before) * 1e6) / 1e6,
+      quantity_after: after,
+      // The calendar day, which is what a person asks about. The instant is
+      // ordering information, and the order of this array already carries it.
+      date: String(row.occurred_at).slice(0, 10),
+      ...(row.notes === null || row.notes === undefined ? {} : { notes: String(row.notes) }),
+    };
+  });
+
+  return ok({
+    item: found.item.name,
+    unit: found.item.unit,
+    quantity_now: found.item.quantity,
+    showing: movements.length,
+    // An empty history is a fact about the item, not a failure to find it, and
+    // saying so stops the model reporting that the item does not exist.
+    ...(movements.length === 0
+      ? { note: 'No movement has ever been recorded for this item. It has not been adjusted since it was created.' }
+      : {}),
+    movements,
+  });
+}
+
+/*
+ * The reference catalog, kept visibly separate from the stock.
+ *
+ * Everything here is shaped to resist one specific failure: a model reading a
+ * catalog row and telling the user they own it. The key is `recommendations`
+ * rather than `items`, every row is a `recommended` name rather than a `name`,
+ * and the note says the thing outright.
+ *
+ * `owned_from_this_entry` is the honest version of a tempting shortcut. It
+ * counts inventory items created FROM the catalog entry, so it proves
+ * ownership when it is above zero and proves nothing when it is zero - an item
+ * the user typed by hand carries no link back. The note says that too, because
+ * "you have no rice" to somebody with rice is worse than not answering.
+ */
+async function searchCatalog(deps: AiDeps, input: unknown): Promise<ToolRun> {
+  const parsed = catalogInput.safeParse(input);
+  if (!parsed.success) return failed('search_catalog takes a query and a category.');
+  const filters = parsed.data;
+
+  const preamble = {
+    source: 'reference catalog',
+    is_inventory: false,
+    note:
+      'RECOMMENDATIONS ONLY. This is the built-in list of supplies a prepared household could ' +
+      'hold. It is NOT the user\'s stock and says nothing about what they own. ' +
+      '"owned_from_this_entry" counts inventory items created from the entry, so above zero ' +
+      'proves they have it and zero proves nothing - anything they typed in by hand is not ' +
+      'linked. Check with find_item or list_items before saying they have something, or do not.',
+  };
+
+  let categoryIds: readonly string[] | undefined;
+  if (filters.category !== undefined) {
+    const id = await findCategory(deps, filters.category);
+    if (id === undefined) {
+      return ok({
+        ...preamble,
+        showing: 0,
+        note: `${preamble.note} No category is called "${filters.category}". Call list_categories.`,
+        recommendations: [],
+      });
+    }
+    categoryIds = [id];
+  }
+
+  // One past the cap, so the tool can say the list was cut without a second
+  // counting query the catalog repository does not offer.
+  const rows = await deps.catalog.search({
+    // Spread rather than assigned: `CatalogQuery` has no optional property that
+    // accepts `undefined`, and an absent filter is not the same as an empty one.
+    ...(filters.query === undefined ? {} : { search: filters.query }),
+    ...(categoryIds === undefined ? {} : { categoryIds }),
+    lang: deps.language,
+    limit: LIST_LIMIT + 1,
+  });
+  const shown = rows.slice(0, LIST_LIMIT);
+
+  const categories = await deps.categories.list(true);
+  const nameOf = new Map(
+    categories.map((category) => [category.id, categoryName(category.names, deps.language, category.id)]),
+  );
+
+  return ok({
+    ...preamble,
+    catalog_size: await deps.catalog.total(),
+    showing: shown.length,
+    ...(rows.length > shown.length
+      ? { more: `Only the first ${String(shown.length)} are listed. Narrow the query to see the rest.` }
+      : {}),
+    recommendations: shown.map((entry) => ({
+      recommended: entry.displayName,
+      category: nameOf.get(entry.categoryId) ?? entry.categoryId,
+      usual_unit: entry.defaultUnit,
+      owned_from_this_entry: entry.inInventory,
+    })),
+  });
+}
+
+/*
+ * The emergency contacts, in the order the contacts screen shows them.
+ *
+ * `contacts.list` orders by priority and then by folded name, and that order is
+ * passed through untouched: in an emergency the person to call first belongs at
+ * the top, not wherever the alphabet puts them. The description tells Claude
+ * not to re-sort, and `order` repeats it in the result, because a model asked
+ * for "my contacts" will otherwise tidy them into alphabetical order and
+ * silently bury the one that mattered.
+ *
+ * Ids are left out, as everywhere else. The search runs through the
+ * repository's own accent-folding filter, so "jose" finds "José".
+ */
+async function listContacts(deps: AiDeps, input: unknown): Promise<ToolRun> {
+  const parsed = contactsInput.safeParse(input);
+  if (!parsed.success) return failed('list_contacts takes an optional search.');
+  const term = parsed.data.search;
+
+  const rows =
+    term === undefined || term.trim() === ''
+      ? await deps.contacts.list()
+      : await deps.contacts.search(term);
+
+  const shown = rows.slice(0, LIST_LIMIT);
+  return ok({
+    count: rows.length,
+    showing: shown.length,
+    order: 'Most urgent first, then by name. Keep this order; it is not alphabetical.',
+    urgency_scale: '1 is the first to call, 4 the last.',
+    contacts: shown.map((contact) => ({
+      name: contact.name,
+      relationship: contact.relationship,
+      phone: contact.phone,
+      email: contact.email,
+      urgency: contact.priority,
+    })),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // The writing tools, which do not write
 // ---------------------------------------------------------------------------
@@ -836,6 +1120,14 @@ export async function runTool(deps: AiDeps, name: string, input: unknown): Promi
         return await listLocations(deps);
       case 'list_categories':
         return await listCategories(deps);
+      case 'stock_summary':
+        return await stockSummary(deps);
+      case 'item_history':
+        return await itemHistory(deps, input);
+      case 'search_catalog':
+        return await searchCatalog(deps, input);
+      case 'list_contacts':
+        return await listContacts(deps, input);
       case 'adjust_quantity':
         return await adjustQuantity(deps, input);
       case 'set_quantity':

@@ -16,6 +16,8 @@ import { seedDatabase } from '../../database/seed/seed';
 import { createItemsRepository, type ItemContext } from '../../repositories/items.repository';
 import { createLocationsRepository } from '../../repositories/locations.repository';
 import { createCategoriesRepository } from '../../repositories/categories.repository';
+import { createContactsRepository } from '../../repositories/contacts.repository';
+import { createCatalogRepository } from '../../repositories/catalog.repository';
 import { MAX_REQUESTS, cacheStats, converse, systemPrompt, thinkingFor, type AiOptions } from './converse';
 import type { AiDeps } from './tools';
 
@@ -112,13 +114,16 @@ describe('converse', () => {
     const items = createItemsRepository(db);
     const locations = createLocationsRepository(db);
     const categories = createCategoriesRepository(db);
+    const contacts = createContactsRepository(db);
+    const catalog = createCatalogRepository(db);
     const feijao = await items.create({
       name: 'Feijão Preto', quantity: 4, unit: 'kg', minimumQuantity: 10, categoryId: 'food',
     });
     feijaoId = feijao.id;
 
     deps = {
-      items, locations, categories, context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [],
+      items, locations, categories, contacts, catalog,
+      context: CONTEXT, language: 'pt-BR', trackedCategoryIds: [], dismissedItemIds: [],
     };
   });
 

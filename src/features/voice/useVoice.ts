@@ -41,6 +41,7 @@ import { commit, undo, type Receipt } from '../../services/voice/commit';
 import { renderAnswer, type AnswerOptions } from '../../services/voice/answer';
 import { converse, type AiFailureReason, type AiOptions } from '../../services/ai/converse';
 import type { AiDeps } from '../../services/ai/tools';
+import { createContactsRepository } from '../../repositories/contacts.repository';
 import { LOCALE_TAGS } from '../../i18n/translate';
 import type { Intent } from '../../voice/intents';
 import type { InventoryItemView } from '../../types/domain';
@@ -221,7 +222,7 @@ function receiptIntent(write: PendingWrite): Intent {
 const UNDO_WINDOW_MS = 10_000;
 
 export function useVoice(speak: Speak): Voice {
-  const { repositories, itemContext, settings, t, invalidate } = useApp();
+  const { db, repositories, itemContext, settings, t, invalidate } = useApp();
   const [history, setHistory] = useState<readonly Exchange[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -260,10 +261,27 @@ export function useVoice(speak: Speak): Voice {
     ],
   );
 
-  /** The same dependencies plus the categories, which only the tools need. */
+  /**
+   * The contacts, built here for the same reason ContactsScreen builds its
+   * own: the emergency list is not part of the start-up `Repositories` bundle,
+   * and adding it there for one caller would be a change to start-up.
+   */
+  const contacts = useMemo(() => createContactsRepository(db), [db]);
+
+  /**
+   * The same dependencies plus the three only the tools need: the categories,
+   * the contacts, and the reference catalog. The parser asks none of them -
+   * a spoken command never named a category, never asked who to call, and
+   * never wanted to know what a prepared household ought to hold.
+   */
   const aiDeps = useMemo<AiDeps>(
-    () => ({ ...deps, categories: repositories.categories }),
-    [deps, repositories.categories],
+    () => ({
+      ...deps,
+      categories: repositories.categories,
+      contacts,
+      catalog: repositories.catalog,
+    }),
+    [deps, repositories.categories, contacts, repositories.catalog],
   );
 
   const aiOptions = useMemo<AiOptions>(
