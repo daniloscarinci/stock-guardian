@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.0
 
 The entry below records 2.0.0 as it shipped and is left standing. Two of the
 things it describes are no longer true, and both are named here rather than

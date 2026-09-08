@@ -42,8 +42,8 @@ happens on GitHub's machines.
 ### Every time you want an APK
 
 ```bash
-git tag v2.0.0
-git push origin v2.0.0
+git tag v2.1.0
+git push origin v2.1.0
 ```
 
 The workflow builds the application, signs it, and attaches the APK to a GitHub
@@ -100,7 +100,7 @@ To install over a cable instead, with the Android platform tools on the
 computer:
 
 ```bash
-adb install -r stock-guardian-2.0.0-1.apk
+adb install -r stock-guardian-2.1.0-1.apk
 ```
 
 `-r` replaces the installed copy and keeps its data.
