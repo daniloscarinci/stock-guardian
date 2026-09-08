@@ -30,8 +30,22 @@
  * WHY THE FAILURE IS KEPT AS A CODE. This component knows what went wrong;
  * `MicNotice` knows what to show for it. A recognizer has no business choosing
  * a sentence in a language it cannot read.
+ *
+ * THERE IS A STOP BUTTON NOW, AND IT REPLACES SOMETHING THE SYSTEM USED TO
+ * PROVIDE. Speech used to arrive through Android's own recognizer screen, which
+ * came with a back button; that screen is gone, because the Intent behind it is
+ * not handled on the phone this is built for. The recognition service is bound
+ * directly instead and shows nothing at all, so a press made by mistake would
+ * otherwise hold the microphone open until the recognizer tired of the silence.
+ * The stop button is offered only where the platform can honour it - Chrome's
+ * recognizer ends a listen on silence by itself and does not implement
+ * `cancel`.
+ *
+ * IT ALSO STOPS WHEN THIS COMPONENT GOES AWAY. Closing the sheet mid-listen
+ * used to close a system screen; now it has to close a microphone this process
+ * is holding.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { Button } from '../../components/ui/primitives';
@@ -40,6 +54,7 @@ import {
   selectRecognizer,
   speechFailureReason,
   type SpeechFailure,
+  type SpeechRecognizer,
 } from '../../services/speech/recognizer';
 import { LOCALE_TAGS } from '../../i18n/translate';
 import { MicNotice } from './MicNotice';
@@ -68,6 +83,22 @@ export function MicButton({
 
   const [failure, setFailure] = useState<SpeechFailure | null>(null);
   const [listening, setListening] = useState(false);
+
+  /*
+   * The recognizer currently holding the microphone, if any. A ref rather than
+   * state because nothing renders from it: it exists so that unmounting can
+   * release a microphone this process opened, and a render caused by that would
+   * be a render of a component that is already gone.
+   */
+  const active = useRef<SpeechRecognizer | null>(null);
+
+  useEffect(
+    () => () => {
+      void active.current?.cancel?.();
+      active.current = null;
+    },
+    [],
+  );
 
   /**
    * What the caller forbids for one utterance.
@@ -104,6 +135,7 @@ export function MicButton({
 
     setFailure(null);
     setListening(true);
+    active.current = state.recognizer;
     try {
       const heard = await state.recognizer.listen(tag, options);
       onHeard(heard.text, heard.online);
@@ -112,9 +144,22 @@ export function MicButton({
       // recognise as a cancellation, and answered a cancellation with silence.
       setFailure(speechFailureReason(cause));
     } finally {
+      active.current = null;
       setListening(false);
     }
   };
+
+  /*
+   * Stopping does not settle anything here. It tells the platform to let the
+   * microphone go; the listen in flight then rejects with `cancelled`, which
+   * `MicNotice` answers with silence and `online.ts` never retries after. One
+   * path out, however it was reached.
+   */
+  const stop = async () => {
+    await speech.data?.recognizer.cancel?.();
+  };
+
+  const stoppable = listening && speech.data?.recognizer.cancel !== undefined;
 
   return (
     <>
@@ -138,6 +183,15 @@ export function MicButton({
           <MicIcon />
         </Button>
         {listening && <p role="status">{t('voice.listening')}</p>}
+        {stoppable && (
+          <Button
+            onClick={() => {
+              void stop();
+            }}
+          >
+            {t('voice.stopListening')}
+          </Button>
+        )}
       </div>
     </>
   );

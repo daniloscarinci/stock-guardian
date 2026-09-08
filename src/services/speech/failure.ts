@@ -12,6 +12,14 @@
  * because a banner after a deliberate "never mind" teaches people to ignore
  * banners. Both decisions were right on their own, and together they made a
  * microphone that failed in total silence on a phone with no offline model.
+ *
+ * THESE CODES ARE NOW EXACT ON ANDROID, AND THEY USED NOT TO BE. The plugin
+ * bound the system recognizer through an Intent, which carries no error, so a
+ * refusal was told apart from a cancellation by how fast the dialog came back.
+ * That guess is gone: SpeechPlugin binds `SpeechRecognizer` directly and reads
+ * the constants `RecognitionListener.onError` delivers, including the two that
+ * name a missing offline model. Nothing here infers a reason from a stopwatch
+ * any more.
  */
 
 /** Every reason a listen can end without a transcript. */
@@ -28,6 +36,23 @@ export const SPEECH_FAILURES = [
   'no-match',
   /** Something else holds the recognizer, or one listen is already running. */
   'busy',
+  /**
+   * The microphone permission was refused, and can be asked for again.
+   *
+   * A refusal, not a fault. The next press shows the system's prompt again,
+   * because Android still considers this one askable.
+   */
+  'permission-denied',
+  /**
+   * Refused for good: Android will not show the prompt again.
+   *
+   * The two are separate because the ways out are separate. Asking again here
+   * is a dialog into a void - the request returns instantly, nothing appears,
+   * and the microphone stays shut. The only way back is the application's own
+   * page in Settings, which is why the interface offers it for this code and
+   * not for the other.
+   */
+  'permission-blocked',
   /** Everything else, including the reasons a platform declines to name. */
   'failed',
 ] as const;
@@ -61,6 +86,10 @@ export class SpeechFailureError extends Error {
  * transcribe at all.
  */
 const RULES: readonly (readonly [RegExp, SpeechFailure])[] = [
+  // Both before the rules below, because "permission denied" would otherwise
+  // fall through to `failed` and lose the one failure with a way out under it.
+  [/never.?ask|permanently.?denied/, 'permission-blocked'],
+  [/permission|not.?allowed/, 'permission-denied'],
   [/cancel|abort/, 'cancelled'],
   [/offline.?model|on-device|language.?(not.?supported|unavailable|not.?available)/, 'no-offline-model'],
   [/no.?recognizer|unavailable|not available/, 'no-recognizer'],

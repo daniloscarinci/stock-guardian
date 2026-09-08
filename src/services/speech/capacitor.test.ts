@@ -16,6 +16,8 @@ const capacitor = vi.hoisted(() => ({
   platform: 'web',
   listen: vi.fn(async () => ({ transcript: 'dez latas' })),
   availability: vi.fn(async () => ({ state: 'ready', onDevice: 'installed' })),
+  cancel: vi.fn(async () => undefined),
+  openSettings: vi.fn(async () => undefined),
 }));
 
 vi.mock('@capacitor/core', () => ({
@@ -26,10 +28,14 @@ vi.mock('@capacitor/core', () => ({
   registerPlugin: () => ({
     listen: capacitor.listen,
     availability: capacitor.availability,
+    cancel: capacitor.cancel,
+    openSettings: capacitor.openSettings,
   }),
 }));
 
-const { createCapacitorRecognizer, isNativeAndroid } = await import('./capacitor');
+const { createCapacitorRecognizer, isNativeAndroid, openAppSettings } = await import(
+  './capacitor'
+);
 
 /** Pretends the code is running inside the APK. */
 function onAndroid(): void {
@@ -63,6 +69,10 @@ beforeEach(() => {
   capacitor.listen.mockResolvedValue({ transcript: 'dez latas' });
   capacitor.availability.mockReset();
   capacitor.availability.mockResolvedValue({ state: 'ready', onDevice: 'installed' });
+  capacitor.cancel.mockReset();
+  capacitor.cancel.mockResolvedValue(undefined);
+  capacitor.openSettings.mockReset();
+  capacitor.openSettings.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -83,6 +93,13 @@ describe('off Android', () => {
   it('reports no recognizer without asking the bridge', async () => {
     await expect(createCapacitorRecognizer().availability()).resolves.toBe('unavailable');
     expect(capacitor.availability).not.toHaveBeenCalled();
+  });
+
+  it('cancels nothing, and opens no settings page that is not there', async () => {
+    await createCapacitorRecognizer().cancel?.();
+    await expect(openAppSettings()).resolves.toBe(false);
+    expect(capacitor.cancel).not.toHaveBeenCalled();
+    expect(capacitor.openSettings).not.toHaveBeenCalled();
   });
 });
 
@@ -125,7 +142,13 @@ describe('on Android', () => {
     ['no-recognizer', 'no-recognizer'],
     ['network', 'network'],
     ['no-match', 'no-match'],
+    ['busy', 'busy'],
     ['cancelled', 'cancelled'],
+    // The two the permission brought with it. A refusal is an outcome, and the
+    // interface has a different answer for each: one can be asked again, one
+    // cannot be asked again at all.
+    ['permission-denied', 'permission-denied'],
+    ['permission-blocked', 'permission-blocked'],
     ['failed', 'failed'],
   ])('carries the plugin code %s through as a reason', async (code, expected) => {
     onAndroid();
@@ -174,8 +197,18 @@ describe('on Android', () => {
       expect(modes()).toEqual([true, false]);
     });
 
-    it.each(['failed', 'no-match', 'network', 'busy', 'something nobody predicted'])(
-      'retries after %s too, because the platform cannot name the real reason',
+    /*
+     * AIMED, NOT SPRAYED, AND THAT IS THE CHANGE.
+     *
+     * It used to retry after anything but a cancel, because the Intent flow
+     * returned no error to condition on. The plugin now binds
+     * `SpeechRecognizer` and reports what `RecognitionListener` said, so the
+     * retry runs where a second recognizer could plausibly help: a language the
+     * device does not have, a service that answered about itself, or a
+     * recognizer that could not bind at all.
+     */
+    it.each(['no-offline-model', 'network', 'failed', 'something nobody predicted'])(
+      'retries after %s, which the networked recognizer might get past',
       async (code) => {
         onAndroid();
         capacitor.listen.mockRejectedValueOnce(new Error(code));
@@ -184,6 +217,28 @@ describe('on Android', () => {
           online: true,
         });
         expect(modes()).toEqual([true, false]);
+      },
+    );
+
+    /*
+     * The other half, and the more important one. Every code here means the
+     * second attempt would record somebody who has stopped talking, ask again
+     * for a microphone that has already been refused, or bind the same absent
+     * service. `online.test.ts` states the whole table; this proves the plugin
+     * path obeys it.
+     */
+    it.each(['no-match', 'busy', 'no-recognizer', 'permission-denied', 'permission-blocked'])(
+      'never retries after %s, and reports it as it stands',
+      async (code) => {
+        onAndroid();
+        capacitor.listen.mockRejectedValue(new Error(code));
+
+        const failure = await createCapacitorRecognizer()
+          .listen('pt-BR')
+          .catch((cause: unknown) => speechFailureReason(cause));
+
+        expect(failure).toBe(code);
+        expect(modes()).toEqual([true]);
       },
     );
 
@@ -201,7 +256,7 @@ describe('on Android', () => {
     });
 
     /*
-     * Pressing back is not a failure to work around. A retry here would send a
+     * Pressing stop is not a failure to work around. A retry here would send a
      * recording away because somebody changed their mind, which is the worst
      * thing this feature could do.
      */
@@ -231,6 +286,32 @@ describe('on Android', () => {
         expect(failure).toBe('no-offline-model');
         expect(modes()).toEqual([true]);
       }
+    });
+
+    /*
+     * The stop button, which replaces the back button on a system screen that
+     * no longer opens. Without it `cancelled` - the one code answered with
+     * silence, and the one the retry never fires after - could not happen on
+     * Android at all.
+     */
+    it('stops a listen in progress through the plugin', async () => {
+      onAndroid();
+      await createCapacitorRecognizer().cancel?.();
+      expect(capacitor.cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets a failed cancel pass, because a closed microphone is not the caller to fix', async () => {
+      onAndroid();
+      capacitor.cancel.mockRejectedValueOnce(new Error('no such plugin'));
+      await expect(createCapacitorRecognizer().cancel?.()).resolves.toBeUndefined();
+    });
+
+    it('opens the settings page, and says so when it could not', async () => {
+      onAndroid();
+      await expect(openAppSettings()).resolves.toBe(true);
+
+      capacitor.openSettings.mockRejectedValueOnce(new Error('no such activity'));
+      await expect(openAppSettings()).resolves.toBe(false);
     });
 
     it('retries once and once only - a failing retry does not loop', async () => {
@@ -285,7 +366,7 @@ describe('on Android', () => {
 
   /*
    * A rejected bridge call must not become an exception in the interface. The
-   * plugin rejects on a cancelled dialog, and an older APK may not have these
+   * plugin rejects on a cancelled listen, and an older APK may not have these
    * methods at all.
    */
   it('treats a failed bridge call as unavailable, not as an error', async () => {

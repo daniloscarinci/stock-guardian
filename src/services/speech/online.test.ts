@@ -67,17 +67,53 @@ describe('mayRetryOnline', () => {
   });
 
   /*
-   * Broadly, not on a diagnosis. The Intent flow cannot name a missing language
-   * pack, so a retry that waited for certainty would never run on the phone
-   * this exists for.
+   * THE TWO TABLES BELOW ARE THE POLICY, AND THEY USED TO BE ONE.
+   *
+   * The retry fired on anything that was not a cancel, because Android's
+   * `ACTION_RECOGNIZE_SPEECH` returned no error and there was nothing to
+   * condition on. `SpeechPlugin` now binds `SpeechRecognizer` and reads the
+   * constants `RecognitionListener` delivers, so the question is answerable:
+   * would a DIFFERENT recognizer, with the network this time, plausibly produce
+   * the sentence?
+   *
+   * Both halves are pinned, because each protects the other. Widen the first
+   * and audio starts leaving the phone after failures that had nothing to do
+   * with the network; narrow it and the microphone dies on the device this
+   * exists for.
    */
-  it.each(['no-offline-model', 'failed', 'no-match', 'network', 'busy', 'no-recognizer'])(
-    'retries after %s',
-    (reason) => {
-      vi.stubGlobal('navigator', { onLine: true });
-      expect(mayRetryOnline(new Error(reason))).toBe(true);
-    },
-  );
+  it.each([
+    // The whole reason the fallback exists: ERROR_LANGUAGE_UNAVAILABLE and
+    // ERROR_LANGUAGE_NOT_SUPPORTED, which never reached an Intent result.
+    'no-offline-model',
+    // A service answered about itself rather than about the words.
+    'network',
+    // ERROR_CLIENT, ERROR_AUDIO, the plugin's watchdogs, and anything unnamed.
+    // An on-device recognizer that cannot bind lands here, and that is a phone
+    // this feature has to work on.
+    'failed',
+  ])('retries after %s, which another recognizer could get past', (reason) => {
+    vi.stubGlobal('navigator', { onLine: true });
+    expect(mayRetryOnline(new Error(reason))).toBe(true);
+  });
+
+  it.each([
+    // Nobody spoke. The retry is a fresh recording, not a second look at the
+    // same audio, so it would open the microphone at somebody who has stopped.
+    'no-match',
+    // Somebody changed their mind.
+    'cancelled',
+    // There is no microphone to record with. A second attempt is a second
+    // refusal, and for the blocked one not even a dialog.
+    'permission-denied',
+    'permission-blocked',
+    // Nothing on this device transcribes. The fallback uses the same nothing.
+    'no-recognizer',
+    // Something else holds the microphone, and still will a moment later.
+    'busy',
+  ])('does not retry after %s, whatever the connection', (reason) => {
+    vi.stubGlobal('navigator', { onLine: true });
+    expect(mayRetryOnline(new Error(reason))).toBe(false);
+  });
 });
 
 describe('reportedFailure', () => {

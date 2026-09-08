@@ -207,10 +207,36 @@ describe('webspeech recognizer', () => {
         .listen('pt-BR', { offlineOnly: true })
         .catch((cause: unknown) => speechFailureReason(cause));
 
-      (await nth(0)).onerror?.({ error: 'no-speech' });
+      // A failure the retry WOULD normally fire on, so what stops it here is
+      // the refusal and nothing else.
+      (await nth(0)).onerror?.({ error: 'language-not-supported' });
 
-      expect(await failure).toBe('no-match');
+      expect(await failure).toBe('no-offline-model');
       expect(modes()).toEqual([true]);
+    });
+
+    /*
+     * The other reason a retry does not happen, and it is a diagnosis rather
+     * than a permission. `no-speech` means the person did not speak; a retry
+     * would open the microphone again at somebody who has already stopped.
+     * `not-allowed` means they refused it; a retry is a second refusal.
+     */
+    it.each([
+      ['no-speech', 'no-match'],
+      ['not-allowed', 'permission-denied'],
+    ])('never retries after %s, whatever the connection', async (error, expected) => {
+      connectivity(true);
+      onDevice('available');
+      const recognizer = createWebSpeechRecognizer();
+      const failure = recognizer
+        .listen('pt-BR')
+        .catch((cause: unknown) => speechFailureReason(cause));
+
+      (await nth(0)).onerror?.({ error });
+
+      expect(await failure).toBe(expected);
+      expect(modes()).toEqual([true]);
+      expect(FakeRecognition.instances).toHaveLength(1);
     });
 
     it('never retries with no network, and reports the first failure', async () => {
@@ -273,7 +299,9 @@ describe('webspeech recognizer', () => {
       ['aborted', 'cancelled'],
       ['network', 'network'],
       ['language-not-supported', 'no-offline-model'],
-      ['not-allowed', 'failed'],
+      // The browser's microphone refusal, which used to read as a bare
+      // "failed" and told a Chrome user nothing about why.
+      ['not-allowed', 'permission-denied'],
     ])('reports %s as %s', async (error, expected) => {
       // Offline, so the first failure is the one reported rather than the
       // starting point of a retry.

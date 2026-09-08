@@ -1,23 +1,27 @@
 /**
- * Android, through the system's own recognizer.
+ * Android, through the recognition service the keyboard uses.
  *
- * See SpeechPlugin: the system records, so this application declares no
- * microphone permission. One utterance per call - the Intent has no continuous
- * mode, which is why the design has no wake word.
+ * See SpeechPlugin: this application now records, holds `RECORD_AUDIO`, and
+ * asks for it on the first press of the microphone. It used to fire
+ * `ACTION_RECOGNIZE_SPEECH` and declare no permission at all, which was the
+ * better design and could not work on the phone this is built for - the Intent
+ * is handled by Google Voice Search, which that phone does not have, while the
+ * keyboard's voice typing works on it perfectly. One utterance per call; there
+ * is no continuous mode here and therefore no wake word.
  *
- * TWO ATTEMPTS, AND THEY ARE SEQUENCED HERE RATHER THAN IN JAVA. The plugin
- * takes `preferOffline` and does what it is told with it; the decision to ask
- * twice is TypeScript, where it can be tested without a phone in the room. The
- * first attempt always sends EXTRA_PREFER_OFFLINE, so the ordinary press
- * transcribes on the device and nothing leaves. If that fails and online.ts
- * permits it, the same call runs again without the extra and the system
+ * TWO ATTEMPTS, AND THEY ARE STILL SEQUENCED HERE RATHER THAN IN JAVA. The
+ * plugin takes `preferOffline` and does what it is told with it; the decision
+ * to ask twice is TypeScript, where it can be tested without a phone in the
+ * room. The first attempt always asks for on-device transcription, so the
+ * ordinary press stays on the phone. If that fails and online.ts permits it,
+ * the same call runs again without the offline requirement and the system
  * recognizer uses whatever service it has - on most phones, Google's.
  *
- * WHY THE SECOND ATTEMPT IS NOT CONDITIONAL ON A DIAGNOSIS. The Intent flow
- * returns no error extra, so the plugin cannot tell a missing language pack
- * from anything else except by a timing heuristic below API 33. A retry that
- * waited for certainty would never run on the phone this was written for. See
- * online.ts for the three questions it does ask.
+ * WHY THE SECOND ATTEMPT IS NOW CONDITIONAL ON A DIAGNOSIS. It used to fire on
+ * anything that was not a cancel, because the Intent flow returned no error and
+ * there was nothing to condition on. `RecognitionListener` names the reason, so
+ * online.ts retries the failures a different recognizer could get past and
+ * leaves alone the ones that mean nobody spoke or nobody may listen.
  *
  * WHY `isNativeAndroid` IS IMPORTED RATHER THAN DECLARED. This file and
  * ringer.ts used to be one module, and the microphone's removal left the ringer
@@ -47,6 +51,8 @@ interface SpeechPlugin {
     state: SpeechAvailability;
     onDevice?: OnDeviceState;
   }>;
+  cancel: () => Promise<void>;
+  openSettings: () => Promise<void>;
 }
 
 const Speech = registerPlugin<SpeechPlugin>('Speech');
@@ -54,7 +60,22 @@ const Speech = registerPlugin<SpeechPlugin>('Speech');
 export { isNativeAndroid };
 
 /**
- * One trip through the recognizer dialog, in one mode.
+ * Opens this application's page in Android's settings.
+ *
+ * The only way back from a permanently refused microphone: Android will not
+ * show the prompt again, so an application that kept asking would be asking
+ * into a void. Resolves false anywhere it cannot be done, including every
+ * browser, so a caller may offer it without first asking what it is running on.
+ */
+export async function openAppSettings(): Promise<boolean> {
+  if (!isNativeAndroid()) return false;
+  return Speech.openSettings()
+    .then(() => true)
+    .catch(() => false);
+}
+
+/**
+ * One trip through the recognizer, in one mode.
  *
  * `preferOffline` is sent explicitly on both attempts rather than left out on
  * one, so the plugin's default and this module's cannot drift apart.
@@ -83,6 +104,20 @@ export function createCapacitorRecognizer(): SpeechRecognizer {
       return Speech.availability({ lang: tag })
         .then((r) => r.state)
         .catch(() => 'unavailable');
+    },
+
+    /**
+     * Stops a listen in progress and closes the microphone.
+     *
+     * The Intent flow got this for free - the system's dialog had a back
+     * button. A bound recognizer shows no screen of its own, so without this
+     * there would be no way to take a press back, and `cancelled` - the one
+     * code the interface answers with silence, and the one the retry never
+     * fires after - could never happen on Android at all.
+     */
+    async cancel(): Promise<void> {
+      if (!isNativeAndroid()) return;
+      await Speech.cancel().catch(() => undefined);
     },
 
     async listen(tag: string, options?: SpeechOptions): Promise<Transcript> {

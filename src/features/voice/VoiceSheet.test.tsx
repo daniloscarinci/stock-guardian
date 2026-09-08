@@ -41,6 +41,7 @@ import type * as ConverseModule from '../../services/ai/converse';
 import type { AiOutcome } from '../../services/ai/converse';
 import type * as RecognizerModule from '../../services/speech/recognizer';
 import {
+  openAppSettings,
   selectRecognizer,
   SpeechFailureError,
   type SpeechFailure,
@@ -53,7 +54,9 @@ import { VoiceButton } from './VoiceButton';
 // thing, including the reason-reading the microphone was rebuilt around.
 vi.mock('../../services/speech/recognizer', async (importOriginal) => {
   const actual = await importOriginal<typeof RecognizerModule>();
-  return { ...actual, selectRecognizer: vi.fn() };
+  // `openAppSettings` leaves the application, so it is a spy rather than the
+  // real thing. What is asserted is that the button reaches it at all.
+  return { ...actual, selectRecognizer: vi.fn(), openAppSettings: vi.fn() };
 });
 
 /** A device that can listen, and whose every listen ends the same way. */
@@ -76,6 +79,29 @@ function recognizerHearing(phrase: string, online = false): SpeechRecognizer {
   return {
     availability: () => Promise.resolve('ready'),
     listen: () => Promise.resolve({ text: phrase, online }),
+  };
+}
+
+/**
+ * A device that is still listening, and can be told to stop.
+ *
+ * The listen never settles, which is what a real one looks like between the
+ * press and the sentence. `cancel` is the whole point: Android now binds the
+ * recognition service itself and shows no screen, so this is the only way back
+ * out of a press.
+ */
+function recognizerListening(): {
+  readonly recognizer: SpeechRecognizer;
+  readonly cancel: ReturnType<typeof vi.fn>;
+} {
+  const cancel = vi.fn(async () => undefined);
+  return {
+    recognizer: {
+      availability: () => Promise.resolve('ready'),
+      listen: () => new Promise<never>(() => {}),
+      cancel,
+    },
+    cancel,
   };
 }
 
@@ -590,6 +616,119 @@ describe('the microphone: why it produced nothing', () => {
 
     expect(screen.queryByText(/no offline speech pack/i)).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole('textbox'));
+  });
+});
+
+/**
+ * The microphone permission, which this application did not use to hold.
+ *
+ * Speech arrived through Android's own recognizer screen, so there was nothing
+ * to refuse and no refusal to explain. That design could not work on the phone
+ * this is built for - the Intent behind that screen is handled by a component
+ * the device does not have, while the keyboard's voice typing works perfectly -
+ * so the application now records, holds RECORD_AUDIO, and asks for it on the
+ * first press.
+ *
+ * A refusal is an outcome, not an error, and the two refusals are different
+ * outcomes. One can be asked again by pressing the microphone. The other cannot
+ * be asked again at all, and an application that kept prompting into that void
+ * would be a dead control with an animation on it.
+ */
+describe('the microphone: when the permission is refused', () => {
+  it('says the permission was not given, and that the microphone can ask again', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('permission-denied'));
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/needs your permission/i)).toBeTruthy();
+    // No settings button here: the next press raises the system prompt again,
+    // so sending somebody to a settings screen would be the longer way round.
+    expect(screen.queryByRole('button', { name: /open app settings/i })).toBeNull();
+  });
+
+  it('says a permanent refusal is permanent, and offers the one screen that undoes it', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('permission-blocked'));
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/refused for good/i)).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /open app settings/i }));
+    expect(vi.mocked(openAppSettings)).toHaveBeenCalled();
+  });
+
+  it('leaves the typed box as the way through, which is the feature that still works', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('permission-blocked'));
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+    await screen.findByText(/refused for good/i);
+
+    await user.click(screen.getByRole('button', { name: /type the command instead/i }));
+
+    expect(screen.queryByText(/refused for good/i)).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('textbox'));
+  });
+});
+
+/**
+ * Taking a press back.
+ *
+ * The system's recognizer screen came with a back button and this replaces it.
+ * Without it a press made by mistake holds the microphone open until the
+ * recognizer tires of the silence, on a device where this process - not the
+ * system - is the one recording.
+ */
+describe('the microphone: stopping a listen', () => {
+  it('offers a way to stop while it is listening, and tells the platform to', async () => {
+    const listening = recognizerListening();
+    vi.mocked(selectRecognizer).mockResolvedValue(listening.recognizer);
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(screen.getByRole('status').textContent).toMatch(/listening/i);
+    await user.click(screen.getByRole('button', { name: /stop listening/i }));
+
+    expect(listening.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the microphone when the sheet goes away mid-listen', async () => {
+    const listening = recognizerListening();
+    vi.mocked(selectRecognizer).mockResolvedValue(listening.recognizer);
+    const { user, view } = await setup();
+    const { unmount } = view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+    expect(listening.cancel).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(listening.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  /*
+   * Chrome ends a listen on silence by itself and implements no `cancel`. A
+   * button that cannot do anything is worse than no button.
+   */
+  it('offers no stop button where the platform cannot honour one', async () => {
+    vi.mocked(selectRecognizer).mockResolvedValue({
+      availability: () => Promise.resolve('ready'),
+      listen: () => new Promise<never>(() => {}),
+    });
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(screen.getByRole('status').textContent).toMatch(/listening/i);
+    expect(screen.queryByRole('button', { name: /stop listening/i })).toBeNull();
   });
 });
 

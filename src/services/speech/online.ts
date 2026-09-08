@@ -13,25 +13,67 @@
  *   Has the user forbidden it? `voiceOfflineOnly` is the whole of that, and it
  *   is asked first because it is the only one of the three a person chose.
  *
- *   Was it a deliberate cancel? Pressing back is not a failure to work around.
- *   Sending a recording away because somebody changed their mind is the worst
- *   thing this feature could do, so `cancelled` stops here and stops here
- *   first.
+ *   Is this failure one a different recognizer could get past? See `RETRIED`.
  *
  *   Is there a network at all? See `deviceIsOnline`.
  *
- * WHY THE RETRY IS NOT AIMED MORE PRECISELY. `ACTION_RECOGNIZE_SPEECH` returns
- * no error extra, and the two Android constants that name a missing language
- * pack are delivered to a `RecognitionListener` - the API that needs
- * RECORD_AUDIO, which this application deliberately does not hold. Below API 33
- * the diagnosis is a timing heuristic. A retry that fires on a precise
- * diagnosis would therefore not fire on the phone this exists for. So it fires
- * on any failure but a cancel: a wasted retry costs a second, and a missed one
- * is a microphone that does nothing, which is the bug being fixed for the third
- * time.
+ * THE SECOND QUESTION IS NEW, AND IT USED TO BE "WAS IT A CANCEL?". The retry
+ * fired on any failure but a deliberate cancel, and it had to: Android's
+ * `ACTION_RECOGNIZE_SPEECH` returned no error, so a retry that waited for a
+ * diagnosis would never have fired on the phone this was built for. That flow
+ * is gone. `SpeechPlugin` now binds `SpeechRecognizer` directly and
+ * `RecognitionListener.onError` names the reason, so the retry can be aimed
+ * instead of sprayed.
  */
 import type { SpeechOptions } from './recognizer';
-import { asSpeechFailure, type SpeechFailureError } from './failure';
+import { asSpeechFailure, type SpeechFailure, type SpeechFailureError } from './failure';
+
+/**
+ * The failures a second recognizer could plausibly get past.
+ *
+ * The test for membership is one question: would asking a DIFFERENT service,
+ * with the network this time, plausibly produce the sentence? Everything else
+ * is left out, and leaving it out is what makes this list worth having.
+ *
+ *   `no-offline-model` is the whole reason the fallback exists. It is
+ *   `ERROR_LANGUAGE_UNAVAILABLE` and `ERROR_LANGUAGE_NOT_SUPPORTED`, the two
+ *   constants that never reached an Intent result, and a networked recognizer
+ *   has the language the device does not.
+ *
+ *   `network` is `ERROR_SERVER`, `ERROR_SERVER_DISCONNECTED` and both network
+ *   errors. An on-device recognizer should never produce these; one that does
+ *   has answered about a service, not about the words.
+ *
+ *   `failed` is `ERROR_CLIENT`, `ERROR_AUDIO`, the watchdogs, and anything the
+ *   platform declines to name. It is in the list deliberately: an on-device
+ *   recognizer that cannot bind reports `ERROR_CLIENT`, and that is a phone
+ *   this feature has to work on. A wasted retry costs a second; treating this
+ *   as terminal costs the microphone on exactly the device the retry is for.
+ *
+ * What is NOT here, and why:
+ *
+ *   `no-match` and `speech-timeout` - which arrive together as `no-match` -
+ *   mean the person did not speak, or was not understood. The retry is a fresh
+ *   recording, not a second look at the same audio, so it would open the
+ *   microphone again and wait for somebody who has already stopped talking.
+ *
+ *   `cancelled` is somebody changing their mind. Sending a recording away
+ *   because of that is the worst thing this feature could do.
+ *
+ *   `permission-denied` and `permission-blocked` mean there is no microphone to
+ *   record with at all. A second attempt is a second refusal.
+ *
+ *   `no-recognizer` means nothing on the device transcribes. The fallback uses
+ *   the same absent service.
+ *
+ *   `busy` means something else holds the microphone, and it still will a
+ *   moment later. The sentence for it asks the person to close that instead.
+ */
+const RETRIED: ReadonlySet<SpeechFailure> = new Set<SpeechFailure>([
+  'no-offline-model',
+  'network',
+  'failed',
+]);
 
 /**
  * Whether there is any point trying the network.
@@ -47,10 +89,10 @@ export function deviceIsOnline(): boolean {
   return nav?.onLine !== false;
 }
 
-/** The policy in the class comment, applied to one failed attempt. */
+/** The policy in the module comment, applied to one failed attempt. */
 export function mayRetryOnline(cause: unknown, options?: SpeechOptions): boolean {
   if (options?.offlineOnly === true) return false;
-  if (asSpeechFailure(cause).reason === 'cancelled') return false;
+  if (!RETRIED.has(asSpeechFailure(cause).reason)) return false;
   return deviceIsOnline();
 }
 
@@ -63,9 +105,9 @@ export function mayRetryOnline(cause: unknown, options?: SpeechOptions): boolean
  * also means a phone with the radio off and a phone whose retry failed report
  * the same thing for the same situation.
  *
- * The exception is a cancelled retry. Somebody who pressed back on the second
- * dialog has said "never mind", and answering that with a warning panel is
- * precisely the banner-after-a-cancellation this feature has a rule against.
+ * The exception is a cancelled retry. Somebody who pressed stop during the
+ * second attempt has said "never mind", and answering that with a warning panel
+ * is precisely the banner-after-a-cancellation this feature has a rule against.
  */
 export function reportedFailure(first: SpeechFailureError, retry: unknown): SpeechFailureError {
   const second = asSpeechFailure(retry);

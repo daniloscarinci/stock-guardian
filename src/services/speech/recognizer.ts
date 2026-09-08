@@ -1,7 +1,7 @@
 /**
  * The speech seam.
  *
- * Above this, nothing knows whether Android's system recognizer, Chrome's
+ * Above this, nothing knows whether Android's recognition service, Chrome's
  * on-device model or nothing at all is listening - the same separation
  * `SqlDriver` gives the database.
  *
@@ -27,13 +27,14 @@
  * None of the three is sufficient alone, and the second is the weakest.
  *
  * WHEN THE ON-DEVICE ATTEMPT FAILS, THE PHONE TRIES AGAIN OVER THE NETWORK.
- * Once, and only when the device reports a connection, and never after a
- * deliberate cancel. The whole of that policy is in online.ts; the two
- * recognizers share it rather than each having an opinion. This is a change of
- * standard, made deliberately: the requirement used to be absolute, and on a
- * phone with no offline Portuguese pack it produced a microphone that refused
- * every single press. An absolute rule nobody can use is not a stronger
- * promise, it is a dead button.
+ * Once, only when the device reports a connection, and only for the failures a
+ * different recognizer could plausibly get past - never after a cancel, never
+ * after nobody spoke, and never after the microphone was refused. The whole of
+ * that policy is in online.ts; the two recognizers share it rather than each
+ * having an opinion. This is a change of standard, made deliberately: the
+ * requirement used to be absolute, and on a phone with no offline Portuguese
+ * pack it produced a microphone that refused every single press. An absolute
+ * rule nobody can use is not a stronger promise, it is a dead button.
  *
  * Two things keep that honest, and both are load-bearing:
  *
@@ -102,6 +103,19 @@ export interface SpeechRecognizer {
   /** Offer the platform's own language-pack install, where one exists. */
   readonly install?: (tag: string) => Promise<boolean>;
   /**
+   * Stop a listen in progress and release the microphone.
+   *
+   * Optional because it is not everyone's to offer. Android binds the
+   * recognition service itself and shows no screen of its own, so somebody who
+   * pressed the microphone by mistake needs a way back and the process needs
+   * telling to let the microphone go. Chrome's recognizer ends a listen on
+   * silence by itself and is not given one.
+   *
+   * A cancelled listen rejects with `cancelled`, which the interface answers
+   * with silence and the retry never fires after.
+   */
+  readonly cancel?: () => Promise<void>;
+  /**
    * One utterance. Rejects rather than resolving empty, and rejects with a
    * `SpeechFailureError` so the caller can tell a cancellation from a failure.
    *
@@ -113,7 +127,9 @@ export interface SpeechRecognizer {
 
 import { noneRecognizer } from './none';
 import { createWebSpeechRecognizer } from './webspeech';
-import { createCapacitorRecognizer, isNativeAndroid } from './capacitor';
+import { createCapacitorRecognizer, isNativeAndroid, openAppSettings } from './capacitor';
+
+export { openAppSettings };
 
 export {
   SPEECH_FAILURES,
@@ -126,9 +142,8 @@ export {
 /**
  * The recognizer for this device.
  *
- * Android first: inside the APK the system recognizer is both available and
- * permission-free, and Chrome's WebView does not expose the Web Speech API
- * anyway.
+ * Android first: inside the APK the recognition service is what actually
+ * transcribes, and Chrome's WebView does not expose the Web Speech API anyway.
  *
  * `options` is passed through to the availability probe, so a browser whose
  * only working mode is the networked one is refused when - and only when - the

@@ -22,9 +22,10 @@
  *
  * SO THE GUARANTEE IS NOT "NEVER WITHOUT `processLocally`" ANY MORE, AND IT IS
  * WORTH STATING WHAT REPLACED IT. Every recognizer that starts without it is a
- * retry: it never happens on the first attempt, never after a deliberate
- * cancel, never while `offlineOnly` is set, and never while the device says it
- * has no network. The tests in webspeech.test.ts pin each of those separately,
+ * retry: it never happens on the first attempt, never while `offlineOnly` is
+ * set, never while the device says it has no network, and never after a failure
+ * online.ts does not consider worth a second recognizer - a cancel, a silence,
+ * or a refused microphone. The tests in webspeech.test.ts pin each of those separately,
  * which is a stronger statement than the old one - the old rule was absolute
  * and, on a phone with no Portuguese pack, meant the microphone never worked at
  * all.
@@ -62,13 +63,25 @@ interface SpeechRecognitionLike {
   onend: (() => void) | null;
 }
 
-/** The Web Speech API's own error names, mapped onto the seam's vocabulary. */
+/**
+ * The Web Speech API's own error names, mapped onto the seam's vocabulary.
+ *
+ * `not-allowed` is the browser's microphone refusal and now says so. It used to
+ * become `failed`, which meant a Chrome user who denied the permission read
+ * "the microphone could not be used" and was told nothing about why. It is not
+ * retried, for the same reason the Android refusal is not: a second attempt is
+ * a second refusal.
+ *
+ * `service-not-allowed` stays `failed`. It is the user agent declining the
+ * speech service rather than a person declining the microphone, and there is no
+ * settings page this application could usefully point at for it.
+ */
 const WEB_ERRORS: Readonly<Record<string, SpeechFailure>> = {
   'no-speech': 'no-match',
   aborted: 'cancelled',
   'audio-capture': 'failed',
   network: 'network',
-  'not-allowed': 'failed',
+  'not-allowed': 'permission-denied',
   'service-not-allowed': 'failed',
   'language-not-supported': 'no-offline-model',
   'bad-grammar': 'failed',
