@@ -61,6 +61,7 @@ vi.mock('@capacitor/local-notifications', () => ({
 const {
   cancelExpiryNotices,
   forgetScheduledPlan,
+  lastScheduleFailure,
   notificationPermission,
   onExpiryNoticeTapped,
   refreshExpiryNotices,
@@ -387,6 +388,32 @@ describe('refreshExpiryNotices', () => {
         status: 'failed',
         reason: 'Notifications not enabled',
       });
+    });
+
+    /*
+     * A rejection has to be findable afterwards, because there is nothing on the
+     * phone to see: the switch says on, the permission is granted, and nothing
+     * arrives. Settings reads this and says what Android said.
+     */
+    it('keeps the rejection where Settings can say it, until one succeeds', async () => {
+      expect(lastScheduleFailure()).toBeNull();
+
+      bridge.schedule.mockRejectedValueOnce(new Error('Notifications not enabled'));
+      await refresh();
+      expect(lastScheduleFailure()).toBe('Notifications not enabled');
+
+      await refresh();
+      expect(lastScheduleFailure()).toBeNull();
+    });
+
+    it('does not leave a rejection standing next to a refusal', async () => {
+      bridge.schedule.mockRejectedValueOnce(new Error('Notifications not enabled'));
+      await refresh();
+
+      bridge.display = 'denied';
+      await refresh();
+
+      expect(lastScheduleFailure()).toBeNull();
     });
 
     it('does not let a channel that cannot be created stop the reminders', async () => {

@@ -306,9 +306,30 @@ function signatureOf(notices: readonly ExpiryNotice[], t: TranslateFn): string {
   );
 }
 
+/**
+ * The last thing Android said when it would not accept the reminders, or null.
+ *
+ * A rejection is rarer than a refused permission and worse to lose, because
+ * there is nothing on the phone to see: the switch says on, the permission is
+ * granted, and nothing ever arrives. The likeliest cause is somebody silencing
+ * this application's notification channel in Android's own settings, which
+ * leaves the permission intact.
+ *
+ * Module state rather than a return value because the refresh runs in the shell
+ * and the sentence belongs in Settings, and passing it between them through
+ * React would mean holding a failure in a context every screen re-renders on.
+ * It is cleared by the next refresh that succeeds.
+ */
+let failure: string | null = null;
+
+export function lastScheduleFailure(): string | null {
+  return failure;
+}
+
 /** Forgets what is scheduled, so the next refresh does the work again. */
 export function forgetScheduledPlan(): void {
   applied = null;
+  failure = null;
 }
 
 export function refreshExpiryNotices(input: RefreshInput): Promise<RefreshOutcome> {
@@ -333,6 +354,7 @@ async function runRefresh(input: RefreshInput): Promise<RefreshOutcome> {
    */
   if (!input.enabled) {
     applied = null;
+    failure = null;
     return { status: 'off', cancelled: await cancelExpiryNotices() };
   }
 
@@ -343,6 +365,9 @@ async function runRefresh(input: RefreshInput): Promise<RefreshOutcome> {
     // again is the switch, in front of the person, and not a dialog that
     // appears because the application was opened.
     applied = null;
+    // A refusal has its own sentence next to the switch. Leaving a stale
+    // rejection standing beside it would say two different things at once.
+    failure = null;
     return {
       status: 'refused',
       reason: permission === 'blocked' ? 'permission-blocked' : 'permission-denied',
@@ -364,6 +389,7 @@ async function runRefresh(input: RefreshInput): Promise<RefreshOutcome> {
 
   if (plan.notices.length === 0) {
     applied = signature;
+    failure = null;
     return { status: 'scheduled', cancelled, scheduled: 0, dropped: plan.dropped };
   }
 
@@ -374,10 +400,12 @@ async function runRefresh(input: RefreshInput): Promise<RefreshOutcome> {
     });
   } catch (cause) {
     applied = null;
-    return { status: 'failed', reason: messageOf(cause) };
+    failure = messageOf(cause);
+    return { status: 'failed', reason: failure };
   }
 
   applied = signature;
+  failure = null;
   return { status: 'scheduled', cancelled, scheduled: plan.notices.length, dropped: plan.dropped };
 }
 

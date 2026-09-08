@@ -36,6 +36,7 @@ import { Alert, Button, Card } from '../../components/ui/primitives';
 import { SwitchRow, TextField } from '../../components/ui/Field';
 import {
   expiryNotificationsAvailable,
+  lastScheduleFailure,
   notificationPermission,
   requestNotificationPermission,
   type NotificationRefusal,
@@ -78,6 +79,15 @@ export function NotificationsPanel() {
       time: settings.expiryNotificationTime,
     });
   }, [available, enabled, leadDays, settings.expiryNotificationTime, repositories.items, revision]);
+
+  /*
+   * Read rather than passed in. A rejection is rarer than a refused permission
+   * and worse to lose: the switch says on, the permission is granted, and
+   * nothing arrives - which on a phone looks exactly like a feature that was
+   * never built. The likeliest cause is somebody silencing this application's
+   * notification channel in Android's own settings.
+   */
+  const rejected = enabled ? lastScheduleFailure() : null;
 
   // What was refused just now beats what was refused at some point in the past,
   // so that a press produces an answer about that press.
@@ -176,7 +186,13 @@ export function NotificationsPanel() {
               <p className={screens.pageSubtitle}>{t('notifications.howItWorks')}</p>
               <p className={screens.pageSubtitle}>{t('notifications.scheduledAhead')}</p>
 
-              {refusal === null && plan.data != null && (
+              {refusal === null && rejected !== null && (
+                <Alert tone="warning" role="status">
+                  <p>{t('notifications.failed', { reason: rejected })}</p>
+                </Alert>
+              )}
+
+              {refusal === null && rejected === null && plan.data != null && (
                 <p className={screens.pageSubtitle}>
                   {plan.data.notices.length === 0
                     ? t('notifications.scheduledNone')
