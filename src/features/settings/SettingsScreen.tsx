@@ -24,6 +24,7 @@ import {
 import { androidIsSilent } from '../../services/speech/ringer';
 import { LOCALE_TAGS } from '../../i18n/translate';
 import { BackupPanel } from './BackupPanel';
+import { NotificationsPanel } from './NotificationsPanel';
 import { requestPersistentStorage, storageEstimate } from '../../app/bootstrap';
 import { DATE_FORMATS, LANGUAGES, type DateFormat, type Language } from '../../domain/settings';
 import { LATEST_SCHEMA_VERSION } from '../../database/migrations';
@@ -391,6 +392,13 @@ export function SettingsScreen() {
           </SelectField>
         </div>
       </Card>
+
+      {/*
+        Directly under the warning windows, because it is the same number seen
+        from the other side: those decide when a list turns amber, this decides
+        whether the phone says so out loud while the application is shut.
+      */}
+      <NotificationsPanel />
 
       <Card title={t('preparedness.trackedCategories')} hint={t('preparedness.trackedCategoriesHelp')}>
         <div className={screens.toolbar}>

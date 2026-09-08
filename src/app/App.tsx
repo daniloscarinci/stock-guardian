@@ -14,6 +14,7 @@ import { Layout } from './Layout';
 import { StartupFailureScreen, StartupLoading } from './StartupScreen';
 import { ErrorBoundary } from './ErrorBoundary';
 import { useAsyncData } from '../hooks/useAsyncData';
+import { useExpiryNotifications } from '../features/notifications/useExpiryNotifications';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { InventoryScreen } from '../features/inventory/InventoryScreen';
 import { ExpirationScreen } from '../features/expiration/ExpirationScreen';
@@ -29,6 +30,14 @@ import { SettingsScreen } from '../features/settings/SettingsScreen';
 /** Wraps the routes so the navigation badge can read live counts. */
 function Shell() {
   const { repositories, itemContext, revision } = useApp();
+
+  /*
+   * Inside the router because a tapped notification navigates, and above the
+   * routes because the plan has to be refreshed whatever screen is open. It
+   * schedules nothing while the setting is off, and asks for no permission
+   * ever - see useExpiryNotifications.
+   */
+  useExpiryNotifications();
 
   const stats = useAsyncData(
     () => repositories.items.dashboardStats(itemContext),
