@@ -1,10 +1,25 @@
 /**
- * The voice state machine.
+ * The state machine behind the ask sheet, and the switch between two engines.
  *
- *   idle → listening → thinking → (answer | pending | choice | notFound | unknown)
+ *   idle → thinking → (an answer from this device | an answer from Claude)
  *
  * A hook rather than state inside the sheet, because the transitions are the
  * part worth testing and a component that renders them is not.
+ *
+ * TWO ENGINES, ONE BOX. A question goes to Claude when the assistant is
+ * switched on AND a key is stored; otherwise it goes to the twelve parser
+ * rules, offline and free, exactly as it always has. `failed` from Claude -
+ * no network, a refused key, a rate limit - falls back to the parser rather
+ * than dead-ending, because an application that answers is worth more than one
+ * that explains why it did not. The exchange records which engine answered and
+ * the sheet says so, because the difference matters: one is exact, offline and
+ * free, and the other is capable and costs money per question.
+ *
+ * WHAT NEITHER ENGINE MAY DO IS WRITE UNASKED. A proposal from Claude is
+ * always `assumed` and always goes to a confirmation card, whatever its
+ * certainty field says - see `commitProposal`, and the test that pins it. The
+ * parser's own narrow case, an item named exactly and a number actually
+ * spoken, is unchanged: it is stored at once and offered back for ten seconds.
  *
  * Two things happen here that cannot happen in the layers below:
  *
@@ -24,15 +39,34 @@ import { grammarFor } from '../../voice/grammar/registry';
 import { execute, type Outcome, type PendingWrite, type VoiceDeps } from '../../services/voice/execute';
 import { commit, undo, type Receipt } from '../../services/voice/commit';
 import { renderAnswer, type AnswerOptions } from '../../services/voice/answer';
+import { converse, type AiFailureReason, type AiOptions } from '../../services/ai/converse';
+import type { AiDeps } from '../../services/ai/tools';
 import { LOCALE_TAGS } from '../../i18n/translate';
 import type { Intent } from '../../voice/intents';
 import type { InventoryItemView } from '../../types/domain';
 
-/** One thing said and what came of it. */
-export interface Exchange {
+/** Which of the two answered, or would answer next. */
+export type Engine = 'claude' | 'device';
+
+/**
+ * One change Claude asked for and did not get.
+ *
+ * `done` is null while the card is on screen and becomes the sentence stating
+ * what the item now holds once the user has confirmed it. Kept in the log
+ * rather than dropped, so a sheet with three proposals shows which of them
+ * were accepted instead of quietly shrinking.
+ */
+export interface Proposal {
+  readonly write: PendingWrite;
+  readonly done: string | null;
+}
+
+/** An exchange the twelve rules on this device answered. */
+export interface DeviceExchange {
+  readonly engine: 'device';
   readonly said: string;
   readonly outcome: Outcome;
-  /** The sentence that was spoken, or null for an outcome that is not one. */
+  /** The sentence that was said, or null for an outcome that is not one. */
   readonly text: string | null;
   /**
    * The way back from a write that was stored without being asked about, for
@@ -42,7 +76,35 @@ export interface Exchange {
   readonly receipt: Receipt | null;
   /** True once Undo was pressed, so the exchange states the reversal. */
   readonly undone: boolean;
+  /**
+   * Why Claude did not answer this one, when Claude was asked first.
+   *
+   * Null on a question that never went anywhere. A silent fallback would mean
+   * a key typed with one character wrong never gets noticed: the assistant
+   * would simply never seem to be on.
+   */
+  readonly aiFailure: AiFailureReason | null;
 }
+
+/** An exchange Claude answered. */
+export interface ClaudeExchange {
+  readonly engine: 'claude';
+  readonly said: string;
+  readonly text: string;
+  readonly proposals: readonly Proposal[];
+  /**
+   * The loop hit its request cap with Claude still asking for tools.
+   *
+   * The proposals gathered so far are shown anyway. They were built, they cost
+   * nothing to display, and discarding them would throw away work the user can
+   * still say yes to - so the sheet shows them and says the question needed
+   * too many steps.
+   */
+  readonly exhausted: boolean;
+}
+
+/** One thing asked and what came of it. */
+export type Exchange = DeviceExchange | ClaudeExchange;
 
 /** Reads a sentence aloud. Supplied by the sheet, which composes the platform. */
 export type Speak = (text: string, tag: string) => Promise<void>;
@@ -53,8 +115,13 @@ export interface Voice {
   /** Set when a query or a write threw, so the failure is visible rather than silent. */
   readonly error: string | null;
   readonly examples: readonly string[];
-  readonly run: (transcript: string) => Promise<void>;
+  /** Where the next question would go. The sheet says so before it is asked. */
+  readonly engine: Engine;
+  readonly run: (question: string) => Promise<void>;
   readonly confirm: (index: number) => Promise<void>;
+  /** Confirms one of Claude's proposals. Nothing has been written before this. */
+  readonly confirmProposal: (index: number, proposal: number) => Promise<void>;
+  readonly discardProposal: (index: number, proposal: number) => void;
   /** Puts back a write that was stored without asking. */
   readonly takeBack: (index: number) => Promise<void>;
   readonly choose: (index: number, item: InventoryItemView) => Promise<void>;
@@ -178,8 +245,9 @@ export function useVoice(speak: Speak): Voice {
       context: itemContext,
       language: settings.language,
       trackedCategoryIds: settings.preparednessCategoryIds,
-      // What the user took off the replenishment list, so an answer about what
-      // to buy agrees with the screen that offers the same list.
+      // What the user took off the replenishment list, so a spoken or written
+      // answer about what to buy agrees with the screen that offers the same
+      // list. Both engines read it from here.
       dismissedItemIds: settings.replenishmentDismissed,
     }),
     [
@@ -191,6 +259,27 @@ export function useVoice(speak: Speak): Voice {
       settings.replenishmentDismissed,
     ],
   );
+
+  /** The same dependencies plus the categories, which only the tools need. */
+  const aiDeps = useMemo<AiDeps>(
+    () => ({ ...deps, categories: repositories.categories }),
+    [deps, repositories.categories],
+  );
+
+  const aiOptions = useMemo<AiOptions>(
+    () => ({ apiKey: settings.anthropicApiKey, model: settings.aiModel }),
+    [settings.anthropicApiKey, settings.aiModel],
+  );
+
+  /**
+   * Where a question goes, decided from settings and nothing else.
+   *
+   * Both halves are required. The switch alone would send a question nowhere;
+   * a key alone would start spending money for somebody who never asked for
+   * the assistant.
+   */
+  const engine: Engine =
+    settings.aiEnabled && settings.anthropicApiKey.trim() !== '' ? 'claude' : 'device';
 
   const options = useMemo<AnswerOptions>(
     () => ({ language: settings.language, dateFormat: settings.dateFormat }),
@@ -216,7 +305,7 @@ export function useVoice(speak: Speak): Voice {
   );
 
   /**
-   * Where a result lands - appended for something newly said, or over the top
+   * Where a result lands - appended for something newly asked, or over the top
    * of the exchange that raised the question.
    */
   const place = useCallback((entry: Exchange, index: number | null) => {
@@ -238,7 +327,11 @@ export function useVoice(speak: Speak): Voice {
     const timer = setTimeout(() => {
       timers.current.delete(timer);
       setHistory((past) =>
-        past.map((entry) => (entry.receipt === receipt ? { ...entry, receipt: null } : entry)),
+        past.map((entry) =>
+          entry.engine === 'device' && entry.receipt === receipt
+            ? { ...entry, receipt: null }
+            : entry,
+        ),
       );
     }, UNDO_WINDOW_MS);
     timers.current.add(timer);
@@ -273,7 +366,18 @@ export function useVoice(speak: Speak): Voice {
         return;
       }
 
-      place({ said, outcome, text, receipt: undoable ? receipt : null, undone: false }, index);
+      place(
+        {
+          engine: 'device',
+          said,
+          outcome,
+          text,
+          receipt: undoable ? receipt : null,
+          undone: false,
+          aiFailure: null,
+        },
+        index,
+      );
       if (undoable) armUndo(receipt);
       if (text !== null) await speak(text, tag);
     },
@@ -281,16 +385,22 @@ export function useVoice(speak: Speak): Voice {
   );
 
   /**
-   * One turn: execute, record, speak - and, where nothing was guessed, write.
+   * One parser turn: execute, record, speak - and, where nothing was guessed,
+   * write.
    *
    * An explicit write is one the user said in full: an item named exactly, and
-   * a number actually spoken. Asking someone to confirm the sentence they have
-   * just said clearly is what made this tiring on a real phone, so it is stored
-   * at once, stated as a fact, and offered back for a few seconds. Everything
-   * else was guessed at somewhere and goes to the card.
+   * a number actually given. Asking someone to confirm the sentence they have
+   * just typed clearly is what made this tiring on a real phone, so it is
+   * stored at once, stated as a fact, and offered back for a few seconds.
+   * Everything else was guessed at somewhere and goes to the card.
    */
   const turn = useCallback(
-    async (said: string, intent: Intent, index: number | null) => {
+    async (
+      said: string,
+      intent: Intent,
+      index: number | null,
+      aiFailure: AiFailureReason | null,
+    ) => {
       setBusy(true);
       setError(null);
       try {
@@ -302,7 +412,10 @@ export function useVoice(speak: Speak): Voice {
         }
 
         const text = sentence(outcome);
-        place({ said, outcome, text, receipt: null, undone: false }, index);
+        place(
+          { engine: 'device', said, outcome, text, receipt: null, undone: false, aiFailure },
+          index,
+        );
         // A card is not a fact, and `sentence` returns null for one. The card
         // announces itself by moving focus to a button that carries the whole
         // change; speaking it here would say a change happened that has not.
@@ -316,18 +429,89 @@ export function useVoice(speak: Speak): Voice {
     [deps, place, sentence, speak, store, tag, withExamples],
   );
 
-  const run = useCallback(
-    async (transcript: string) => {
-      await turn(transcript, parse(grammar, transcript, { today: itemContext.today }), null);
+  const askParser = useCallback(
+    async (question: string, aiFailure: AiFailureReason | null) => {
+      await turn(question, parse(grammar, question, { today: itemContext.today }), null, aiFailure);
     },
     [grammar, itemContext.today, turn],
+  );
+
+  /**
+   * One question, put to Claude.
+   *
+   * `converse` does not throw - every failure comes back classified - but the
+   * catch stays, because a repository that throws inside a tool would surface
+   * here and a sheet that swallows it would look like an assistant that simply
+   * stopped answering.
+   */
+  const askClaude = useCallback(
+    async (question: string) => {
+      setBusy(true);
+      setError(null);
+
+      try {
+        const result = await converse(aiDeps, aiOptions, question);
+
+        // The whole point of keeping the parser: no key, no network, a refused
+        // key or too many questions all still get an answer from the twelve
+        // rules, which need none of those things.
+        if (result.kind === 'failed') {
+          await askParser(question, result.reason);
+          return;
+        }
+
+        if (result.kind === 'refused') {
+          place(
+            { engine: 'claude', said: question, text: t('ai.refused'), proposals: [], exhausted: false },
+            null,
+          );
+          return;
+        }
+
+        const proposals = result.proposals.map((write) => ({ write, done: null }));
+        const text =
+          result.kind === 'exhausted'
+            ? t('ai.tooManySteps', { tries: result.requests })
+            : result.text;
+
+        place(
+          {
+            engine: 'claude',
+            said: question,
+            text,
+            proposals,
+            exhausted: result.kind === 'exhausted',
+          },
+          null,
+        );
+
+        // Read aloud like any other answer. Nothing here has been written, and
+        // the cards below say so, so this states what was found rather than
+        // what was done.
+        if (text !== '') await speak(text, tag);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [aiDeps, aiOptions, askParser, place, speak, t, tag],
+  );
+
+  const run = useCallback(
+    async (question: string) => {
+      if (engine === 'claude') await askClaude(question);
+      else await askParser(question, null);
+    },
+    [askClaude, askParser, engine],
   );
 
   /** The confirmation card's button: the write the user was asked about. */
   const confirm = useCallback(
     async (index: number) => {
       const entry = history[index];
-      if (entry === undefined || entry.outcome.kind !== 'pending') return;
+      if (entry === undefined || entry.engine !== 'device') return;
+      if (entry.outcome.kind !== 'pending') return;
       const write = entry.outcome.write;
 
       setBusy(true);
@@ -344,6 +528,66 @@ export function useVoice(speak: Speak): Voice {
   );
 
   /**
+   * The confirmation card under one of Claude's proposals.
+   *
+   * The only path from a model's sentence to the database, and it runs the
+   * same `commit` the parser's card runs, so the receipt, the history row and
+   * undo are all the existing ones. Nothing about the write is trusted here:
+   * `certainty` is not read at all, because the branch that stores an explicit
+   * write without asking must not be reachable from anything a model produced.
+   */
+  const confirmProposal = useCallback(
+    async (index: number, proposal: number) => {
+      const entry = history[index];
+      if (entry === undefined || entry.engine !== 'claude') return;
+      const target = entry.proposals[proposal];
+      if (target === undefined || target.done !== null) return;
+
+      setBusy(true);
+      setError(null);
+      try {
+        await commit(deps, target.write);
+        invalidate();
+
+        // Read back out of the database rather than assembled from the write,
+        // so the line under the card is a statement about what is stored.
+        const outcome = await execute(deps, receiptIntent(target.write));
+        const said = sentence(outcome) ?? '';
+
+        setHistory((past) =>
+          past.map((existing, i) =>
+            i !== index || existing.engine !== 'claude'
+              ? existing
+              : {
+                  ...existing,
+                  proposals: existing.proposals.map((each, j) =>
+                    j === proposal ? { ...each, done: said } : each,
+                  ),
+                },
+          ),
+        );
+        if (said !== '') await speak(said, tag);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [deps, history, invalidate, sentence, speak, tag],
+  );
+
+  /** Says no to one proposal. Nothing was written, so nothing is undone. */
+  const discardProposal = useCallback((index: number, proposal: number) => {
+    setHistory((past) =>
+      past.map((existing, i) =>
+        i !== index || existing.engine !== 'claude'
+          ? existing
+          : { ...existing, proposals: existing.proposals.filter((_, j) => j !== proposal) },
+      ),
+    );
+  }, []);
+
+  /**
    * The Undo button under a write nobody was asked about.
    *
    * The exchange is rewritten rather than removed. Someone who pressed Undo has
@@ -353,7 +597,7 @@ export function useVoice(speak: Speak): Voice {
   const takeBack = useCallback(
     async (index: number) => {
       const entry = history[index];
-      if (entry === undefined || entry.receipt === null) return;
+      if (entry === undefined || entry.engine !== 'device' || entry.receipt === null) return;
       const { receipt } = entry;
 
       setBusy(true);
@@ -365,7 +609,9 @@ export function useVoice(speak: Speak): Voice {
         const text = t('voice.undone');
         setHistory((past) =>
           past.map((existing, i) =>
-            i === index ? { ...existing, text, receipt: null, undone: true } : existing,
+            i === index && existing.engine === 'device'
+              ? { ...existing, text, receipt: null, undone: true }
+              : existing,
           ),
         );
         await speak(text, tag);
@@ -382,10 +628,11 @@ export function useVoice(speak: Speak): Voice {
   const choose = useCallback(
     async (index: number, item: InventoryItemView) => {
       const entry = history[index];
-      if (entry === undefined || entry.outcome.kind !== 'choice') return;
+      if (entry === undefined || entry.engine !== 'device') return;
+      if (entry.outcome.kind !== 'choice') return;
       const intent = aimedAt(entry.outcome.intent, item.name);
       if (intent === null) return;
-      await turn(entry.said, intent, index);
+      await turn(entry.said, intent, index, entry.aiFailure);
     },
     [history, turn],
   );
@@ -394,10 +641,11 @@ export function useVoice(speak: Speak): Voice {
   const create = useCallback(
     async (index: number) => {
       const entry = history[index];
-      if (entry === undefined || entry.outcome.kind !== 'notFound') return;
+      if (entry === undefined || entry.engine !== 'device') return;
+      if (entry.outcome.kind !== 'notFound') return;
       const intent = creationFrom(entry.outcome.intent);
       if (intent === null) return;
-      await turn(entry.said, intent, index);
+      await turn(entry.said, intent, index, entry.aiFailure);
     },
     [history, turn],
   );
@@ -411,8 +659,11 @@ export function useVoice(speak: Speak): Voice {
     busy,
     error,
     examples: grammar.examples,
+    engine,
     run,
     confirm,
+    confirmProposal,
+    discardProposal,
     takeBack,
     choose,
     create,

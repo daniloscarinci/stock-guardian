@@ -538,6 +538,8 @@ export const en = {
     apiKeyHelp:
       "Yours, pasted here, kept in this database in plain text. An unlocked phone can read it, and a debug build can be read over a cable. Nothing is built into the app, so the copy you hand to someone else carries nobody's key.",
     apiKeyPlaceholder: 'sk-ant-…',
+    keyAtRest:
+      "A debug build is debuggable: anyone with this phone and a cable can read the app's storage, and that now includes this key. A release build is not, but an unlocked phone still is.",
     getKey: 'A key comes from console.anthropic.com, under API keys.',
     model: 'Model',
     cost:
@@ -551,7 +553,8 @@ export const en = {
       'Claude could not be reached. Your stock is all still here, and the typed commands still work.',
     authFailed: 'That API key was refused. Check it in Settings.',
     rateLimited: 'Too many questions too quickly. Wait a moment and ask again.',
-    failed: 'The question could not be answered. Nothing in your stock changed.',
+    failed: 'Claude could not answer the question. Nothing in your stock changed.',
+    thenOffline: 'The offline commands answered instead.',
     refused: 'Claude declined to answer that one.',
     tooManySteps:
       'Claude was still working after {tries} tries and was stopped. Ask something narrower.',

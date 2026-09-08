@@ -539,6 +539,8 @@ export const es: LocaleTree = {
     apiKeyHelp:
       'Tuya, pegada aquí, guardada en esta base de datos en texto plano. Un teléfono desbloqueado puede leerla, y una compilación de depuración se puede leer por cable. Nada viene incrustado en la aplicación, así que la copia que le des a alguien no lleva ninguna clave.',
     apiKeyPlaceholder: 'sk-ant-…',
+    keyAtRest:
+      'Una compilación de depuración es debuggable: cualquiera con este teléfono y un cable puede leer el almacenamiento de la aplicación, y eso ahora incluye esta clave. Una compilación de release no lo es, pero un teléfono desbloqueado sí.',
     getKey: 'La clave sale de console.anthropic.com, en API keys.',
     model: 'Modelo',
     cost:
@@ -553,7 +555,8 @@ export const es: LocaleTree = {
       'No se pudo llegar a Claude. Tu stock sigue entero aquí, y los comandos escritos siguen funcionando.',
     authFailed: 'Esa clave de API fue rechazada. Revísala en Ajustes.',
     rateLimited: 'Demasiadas preguntas en muy poco tiempo. Espera un momento y vuelve a preguntar.',
-    failed: 'No se pudo responder la pregunta. Nada de tu stock cambió.',
+    failed: 'Claude no pudo responder la pregunta. Nada de tu stock cambió.',
+    thenOffline: 'Los comandos sin conexión respondieron en su lugar.',
     refused: 'Claude prefirió no responder esa.',
     tooManySteps:
       'Claude seguía trabajando después de {tries} intentos y se detuvo. Pregunta algo más concreto.',

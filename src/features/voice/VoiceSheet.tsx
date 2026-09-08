@@ -14,12 +14,12 @@
  * `androidIsSilent` for the switch on the side of the phone.
  *
  * The typed box was never a fallback. It is the whole feature, on every
- * platform, and it is what remains.
+ * platform, and it now has two engines behind it - see `useVoice`.
  *
  * The component holds no logic. `useVoice` owns the state machine and is tested
  * through this file's typed path.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Button } from '../../components/ui/primitives';
@@ -30,6 +30,8 @@ import { WRITING_INTENTS } from '../../voice/intents';
 import { useVoice, type Exchange, type Voice } from './useVoice';
 import { ConfirmCard } from './ConfirmCard';
 import { ChoiceList } from './ChoiceList';
+import type { AiFailureReason } from '../../services/ai/converse';
+import type { TranslationKey } from '../../i18n/types';
 import styles from './Voice.module.css';
 
 export interface VoiceSheetProps {
@@ -37,9 +39,26 @@ export interface VoiceSheetProps {
   readonly onClose: () => void;
 }
 
+/**
+ * A reason Claude did not answer, and the sentence for it.
+ *
+ * A total record, so a new member of `AiFailureReason` is a compile error here
+ * rather than a failure that renders as nothing. The reasons are not sentences
+ * for the same reason the speech codes were not: `converse` knows what went
+ * wrong and this file knows what to show for it.
+ */
+const AI_FAILURES: Readonly<Record<AiFailureReason, TranslationKey>> = {
+  noKey: 'ai.noKey',
+  auth: 'ai.authFailed',
+  rateLimit: 'ai.rateLimited',
+  offline: 'ai.offline',
+  api: 'ai.failed',
+};
+
 export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
   const { t, settings } = useApp();
   const [typed, setTyped] = useState('');
+  const formRef = useRef<HTMLFormElement>(null);
 
   const speaker = useMemo(
     () => createSpeaker(() => settings.voiceSpeakAnswers),
@@ -103,7 +122,14 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
         ))}
       </ol>
 
+      {/*
+        Said only while Claude is being waited on. The parser answers between
+        two frames and a status line for it would be a flicker, not a message.
+      */}
+      {voice.busy && voice.engine === 'claude' && <p role="status">{t('ai.thinking')}</p>}
+
       <form
+        ref={formRef}
         className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
@@ -129,6 +155,20 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
   );
 }
 
+/**
+ * Which engine answered, said quietly on every exchange.
+ *
+ * A marker rather than a banner. The difference is worth knowing - one is
+ * exact, offline and free, the other is capable and costs money per question -
+ * and it is not worth a paragraph on every line.
+ */
+function Answered({ engine }: { readonly engine: 'claude' | 'device' }) {
+  const { t } = useApp();
+  return (
+    <p className={styles.engine}>{t(engine === 'claude' ? 'ai.fromClaude' : 'ai.fromParser')}</p>
+  );
+}
+
 /** One exchange, rendered according to what came of it. */
 function VoiceExchange({
   entry,
@@ -140,6 +180,43 @@ function VoiceExchange({
   readonly voice: Voice;
 }) {
   const { t } = useApp();
+
+  if (entry.engine === 'claude') {
+    return (
+      <>
+        <p className={styles.said}>{t('voice.heard', { transcript: entry.said })}</p>
+        <Answered engine="claude" />
+        <p className={styles.answer}>{entry.text}</p>
+
+        {entry.proposals.length > 0 && (
+          <p className={styles.cardMeta}>
+            {t('ai.proposals', { count: entry.proposals.length })}
+          </p>
+        )}
+
+        {entry.proposals.map((proposal, position) =>
+          proposal.done === null ? (
+            <ConfirmCard
+              key={position}
+              write={proposal.write}
+              busy={voice.busy}
+              onConfirm={() => {
+                void voice.confirmProposal(index, position);
+              }}
+              onCancel={() => {
+                voice.discardProposal(index, position);
+              }}
+            />
+          ) : (
+            <p key={position} className={styles.answer}>
+              {proposal.done}
+            </p>
+          ),
+        )}
+      </>
+    );
+  }
+
   const { outcome } = entry;
 
   /*
@@ -162,6 +239,19 @@ function VoiceExchange({
   return (
     <>
       <p className={styles.said}>{t('voice.heard', { transcript: entry.said })}</p>
+
+      {/*
+        Claude was asked and could not answer, so the twelve rules did. Said
+        rather than swallowed: a key with one character wrong would otherwise
+        look exactly like an assistant nobody had switched on.
+      */}
+      {entry.aiFailure !== null && (
+        <p className={styles.hint}>
+          {t(AI_FAILURES[entry.aiFailure])} {t('ai.thenOffline')}
+        </p>
+      )}
+
+      <Answered engine="device" />
 
       {outcome.kind === 'answer' && <p className={styles.answer}>{entry.text}</p>}
 

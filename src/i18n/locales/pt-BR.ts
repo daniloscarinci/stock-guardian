@@ -538,6 +538,8 @@ export const ptBR: LocaleTree = {
     apiKeyHelp:
       'Sua, colada aqui, guardada neste banco de dados em texto puro. Um celular desbloqueado consegue lê-la, e uma versão de depuração pode ser lida por cabo. Nada vem embutido no aplicativo, então a cópia que você entregar a alguém não leva chave nenhuma.',
     apiKeyPlaceholder: 'sk-ant-…',
+    keyAtRest:
+      'Uma compilação de depuração é debuggable: quem tiver este telefone e um cabo consegue ler o armazenamento do aplicativo, e isso agora inclui esta chave. Uma compilação de release não é, mas um telefone destravado continua sendo.',
     getKey: 'A chave vem de console.anthropic.com, em API keys.',
     cost:
       'Algo entre 2 e 5 centavos de dólar por pergunta, na sua chave e cobrado de você. Não há cota nem plano gratuito. Os comandos digitados continuam de graça.',
@@ -552,7 +554,8 @@ export const ptBR: LocaleTree = {
       'Não foi possível alcançar o Claude. Seu estoque continua todo aqui, e os comandos digitados continuam funcionando.',
     authFailed: 'Essa chave de API foi recusada. Confira nos Ajustes.',
     rateLimited: 'Perguntas demais em pouco tempo. Espere um instante e pergunte de novo.',
-    failed: 'A pergunta não pôde ser respondida. Nada no seu estoque mudou.',
+    failed: 'Claude não conseguiu responder à pergunta. Nada no seu estoque mudou.',
+    thenOffline: 'Os comandos offline responderam no lugar.',
     refused: 'O Claude preferiu não responder essa.',
     tooManySteps:
       'O Claude ainda estava trabalhando depois de {tries} tentativas e foi interrompido. Pergunte algo mais específico.',

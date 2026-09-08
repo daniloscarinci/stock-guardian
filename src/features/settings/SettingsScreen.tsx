@@ -26,6 +26,8 @@ export function SettingsScreen() {
 
   const [threshold, setThreshold] = useState(String(settings.defaultLowStockThreshold));
   const [windows, setWindows] = useState(settings.expiryWarningDays.join(', '));
+  const [apiKey, setApiKey] = useState(settings.anthropicApiKey);
+  const [model, setModel] = useState(settings.aiModel);
   const [error, setError] = useState<string | null>(null);
   const [integrity, setIntegrity] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -72,6 +74,22 @@ export function SettingsScreen() {
     }
     setError(null);
     void updateSettings({ expiryWarningDays: parsed.slice(0, 6) });
+  };
+
+  /**
+   * The model, saved as typed - but never saved empty.
+   *
+   * A blank field would send a request naming no model and be refused by the
+   * API with a message about the request rather than about the field, so an
+   * empty value puts the stored one back instead.
+   */
+  const saveModel = () => {
+    const value = model.trim();
+    if (value === '') {
+      setModel(settings.aiModel);
+      return;
+    }
+    void updateSettings({ aiModel: value });
   };
 
   const runIntegrityCheck = async () => {
@@ -256,6 +274,88 @@ export function SettingsScreen() {
             void updateSettings({ voiceSpeakAnswers: on });
           }}
         />
+      </Card>
+
+      {/*
+        The assistant, and the two unwelcome facts about it.
+
+        Both are stated here rather than in the documentation, because the
+        person who pastes the key is the person who pays the bill and the person
+        whose phone holds it. The order is deliberate: what it is, then what it
+        costs, then what it takes from you, and the switch is first because
+        nothing below it does anything while it is off.
+      */}
+      <Card title={t('ai.title')} hint={t('ai.subtitle')}>
+        <SwitchRow
+          label={t('ai.settingEnabled')}
+          help={t('ai.settingEnabledHelp')}
+          checked={settings.aiEnabled}
+          onChange={(on) => {
+            void updateSettings({ aiEnabled: on });
+          }}
+        />
+
+        <div className={screens.formGrid} style={{ marginTop: 'var(--space-4)' }}>
+          <div>
+            {/*
+              `type="password"` so a key is not readable over a shoulder. It is
+              not encryption and is not offered as any: the value sits in the
+              settings table in plain text, which the help text says outright.
+            */}
+            <TextField
+              label={t('ai.apiKey')}
+              help={t('ai.apiKeyHelp')}
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={t('ai.apiKeyPlaceholder')}
+              value={apiKey}
+              onChange={(event) => {
+                setApiKey(event.target.value);
+              }}
+              onBlur={() => {
+                void updateSettings({ anthropicApiKey: apiKey.trim() });
+              }}
+            />
+          </div>
+
+          <div>
+            <TextField
+              label={t('ai.model')}
+              help={t('ai.cost')}
+              value={model}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => {
+                setModel(event.target.value);
+              }}
+              onBlur={saveModel}
+            />
+          </div>
+        </div>
+
+        {/*
+          A debug build is `debuggable`, so the key is readable over a cable by
+          anyone holding the phone. Said as a warning rather than a footnote,
+          because it is the cost of storing a credential in a database on a
+          device somebody carries around.
+        */}
+        <Alert tone="warning">{t('ai.keyAtRest')}</Alert>
+
+        <p className={screens.pageSubtitle} style={{ marginTop: 'var(--space-3)' }}>
+          {t('ai.whatIsSent')}
+        </p>
+
+        {/*
+          Where a key comes from. A link the person follows on purpose, not a
+          request this page makes: nothing is fetched from that host, and the
+          offline audit still finds no external reference in the build.
+        */}
+        <p className={screens.pageSubtitle}>
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
+            {t('ai.getKey')}
+          </a>
+        </p>
       </Card>
 
       <section>

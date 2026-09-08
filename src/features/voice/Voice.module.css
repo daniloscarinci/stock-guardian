@@ -134,6 +134,26 @@
   color: var(--text-secondary);
 }
 
+/* ---- Which engine answered, and why one stood in for the other ----------- */
+
+/*
+ * A marker, not a banner. The difference between the two engines is worth
+ * knowing on every line - one is exact, offline and free, the other is capable
+ * and billed per question - and is not worth shouting about on any of them.
+ */
+.engine {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Why Claude did not answer, above the answer the twelve rules gave instead. */
+.hint {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
 /* ---- The typed box -------------------------------------------------------- */
 
 /*
