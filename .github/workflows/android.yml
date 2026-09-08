@@ -125,19 +125,28 @@ jobs:
       # Proof, in the build log, of exactly what the artifact that came out
       # asks the operating system for. aapt2 is part of build-tools.
       #
-      # This step used to demand zero permissions, and that was the better
-      # check. The AI assistant ended it: a key the user pastes in themselves
-      # is useless unless the application can reach api.anthropic.com, and
-      # Android has no narrower permission than INTERNET and no way to hold it
-      # only while a feature is switched on. So the gate is narrowed, not
-      # deleted. It allows exactly one foreign name and fails on every other.
+      # This step has been narrowed twice and deleted never, which is the point
+      # of it. It began by demanding zero permissions, and that was the
+      # strongest version. Each widening below is one line of this file, argued
+      # for, rather than a permission that arrived unnoticed.
       #
-      # Two names pass, for different reasons.
+      # Three names pass, for three different reasons.
       #
-      # android.permission.INTERNET is a real capability asked of the system,
-      # and the one the assistant cannot work without. Naming it here means a
-      # second capability has to be a deliberate edit to this file, rather than
-      # something a dependency merges in and nobody notices.
+      # android.permission.INTERNET is what the AI assistant cannot work
+      # without. A key the user pastes in themselves is useless unless the
+      # application can reach api.anthropic.com, and Android has no narrower
+      # permission and no way to hold one only while a feature is switched on.
+      #
+      # android.permission.RECORD_AUDIO is the microphone, and it is new. This
+      # application used to record nothing at all: speech arrived through
+      # ACTION_RECOGNIZE_SPEECH, the system's own screen opened, and the system
+      # held the microphone. That is the better design and it is gone, because
+      # on the phone this is built for - a moto g35 5G - that Intent answers
+      # "Voice search isn't available", while the keyboard's voice typing works
+      # perfectly on the same device. SpeechPlugin now binds SpeechRecognizer
+      # directly, the way the keyboard does, and that records in this process.
+      # The user was asked and accepted the permission to have a microphone that
+      # works. It is requested on the first press and never at startup.
       #
       # Anything under app.stockguardian.android. is not asked of anyone: it
       # belongs to this application. androidx declares
@@ -145,11 +154,14 @@ jobs:
       # cannot reach its broadcast receivers. It grants no capability and is
       # never shown to a user.
       #
-      # Everything else still fails the build: RECORD_AUDIO - which voice
-      # control does not need, because the system's recognizer holds the
-      # microphone - CAMERA, location, contacts, storage, and whatever the next
-      # library arrives with.
-      - name: Check the APK asks for INTERNET and nothing else
+      # Everything else still fails the build: CAMERA, ACCESS_FINE_LOCATION,
+      # READ_CONTACTS, the storage permissions, and whatever the next library
+      # arrives with. The check used to prove "this application asks the system
+      # for nothing". It now proves "this application asks for the network and
+      # the microphone and nothing else", which is a weaker sentence and still
+      # worth running on every build, because the way this promise would
+      # actually be lost is one dependency quietly merging one more permission.
+      - name: Check the APK asks for INTERNET and RECORD_AUDIO and nothing else
         env:
           APK: ${{ steps.apk.outputs.name }}
         run: |
@@ -159,22 +171,29 @@ jobs:
           # cut on the quote: `uses-permission: name='android.permission.FOO'`
           unexpected=$(grep '^uses-permission:' permissions.txt | cut -d"'" -f2 \
             | grep -v '^app\.stockguardian\.android\.' \
-            | grep -vx 'android\.permission\.INTERNET' || true)
+            | grep -vx 'android\.permission\.INTERNET' \
+            | grep -vx 'android\.permission\.RECORD_AUDIO' || true)
 
           if [ -n "$unexpected" ]; then
             echo "The APK asks the operating system for:"
             echo "$unexpected"
-            echo "Only android.permission.INTERNET is allowed here, and only because"
-            echo "the AI assistant cannot reach api.anthropic.com without it."
+            echo "Two names are allowed here and no others."
+            echo "  INTERNET     - the AI assistant cannot reach api.anthropic.com without it."
+            echo "  RECORD_AUDIO - the microphone. The permission-free Intent it replaces is"
+            echo "                 not handled on the phone this is built for."
             echo "Nothing else belongs in this APK. See docs/ANDROID.md."
             exit 1
           fi
 
-          if grep -q "name='android.permission.INTERNET'" permissions.txt; then
-            echo "The APK asks the operating system for INTERNET, and nothing else."
-          else
-            echo "The APK asks the operating system for no permission at all."
-          fi
+          for expected in INTERNET RECORD_AUDIO; do
+            if grep -q "name='android.permission.$expected'" permissions.txt; then
+              echo "The APK asks the operating system for $expected."
+            else
+              echo "The APK does not ask for $expected. Nothing here requires it to,"
+              echo "but a feature that needs it will be silently dead. Check the manifest."
+            fi
+          done
+          echo "It asks for nothing else."
 
       - uses: actions/upload-artifact@v4
         with:
@@ -197,11 +216,20 @@ jobs:
           is the expected prompt for an application that does not come from the
           Play Store, and it is asked once.
 
-          This build asks Android for one permission, INTERNET, and only so that
-          the AI assistant can reach api.anthropic.com with a key you paste in
-          yourself. Leave the key blank and nothing is ever sent: the app runs
-          with the radio off, exactly as before. Everything it needs to run is
-          inside the file.
+          This build asks Android for two permissions and no others.
+
+          INTERNET, so the AI assistant can reach api.anthropic.com with a key
+          you paste in yourself. Leave the key blank and nothing is ever sent.
+
+          RECORD_AUDIO, for the microphone in the ask box. Android asks you for
+          it the first time you press the microphone, never at startup, and the
+          app works without it - typing is the same feature. Earlier builds
+          needed no such permission because speech went through Google's own
+          voice search screen; that screen is not available on every phone, and
+          on the one this was built for it never opened at all.
+
+          The stock database still never leaves the phone. Everything the app
+          needs to run is inside the file, and it runs with the radio off.
           NOTES
 
           gh release create "$GITHUB_REF_NAME" "$APK"             --title "Stock Guardian $GITHUB_REF_NAME"             --notes-file release-notes.md           || gh release upload "$GITHUB_REF_NAME" "$APK" --clobber
