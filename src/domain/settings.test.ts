@@ -48,7 +48,16 @@ describe('settings', () => {
     });
 
     it('names the model rather than leaving it to a caller to guess', () => {
-      expect(DEFAULT_SETTINGS.aiModel).toBe('claude-opus-5');
+      // Haiku, not Opus. This application asks small, concrete questions about
+      // a pantry, and answering them at roughly a fifth the cost is worth more
+      // than reasoning depth nobody needs. Settings still offers Opus.
+      expect(DEFAULT_SETTINGS.aiModel).toBe('claude-haiku-4-5');
+    });
+
+    it('defaults to a model whose request parameters the code actually sends', () => {
+      // The pairing is a 400 when wrong, so the default must match the branch
+      // in `thinkingFor`: Haiku takes budget_tokens and rejects effort.
+      expect(DEFAULT_SETTINGS.aiModel).toContain('haiku');
     });
 
     it('leaves it off for a database that predates the assistant', () => {

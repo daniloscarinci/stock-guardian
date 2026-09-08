@@ -16,7 +16,7 @@ import { seedDatabase } from '../../database/seed/seed';
 import { createItemsRepository, type ItemContext } from '../../repositories/items.repository';
 import { createLocationsRepository } from '../../repositories/locations.repository';
 import { createCategoriesRepository } from '../../repositories/categories.repository';
-import { MAX_REQUESTS, converse, systemPrompt, type AiOptions } from './converse';
+import { MAX_REQUESTS, cacheStats, converse, systemPrompt, thinkingFor, type AiOptions } from './converse';
 import type { AiDeps } from './tools';
 
 const mocks = vi.hoisted(() => ({
@@ -447,6 +447,65 @@ describe('converse', () => {
       const outcome = await converse(deps, OPTIONS, 'comprei 5 kg de feijão');
       expect(outcome).not.toHaveProperty('proposals');
       expect((await deps.items.getById(feijaoId))?.quantity).toBe(4);
+    });
+  });
+});
+
+describe('the parameters each model will accept', () => {
+  // These are not interchangeable and the wrong pair is a 400, not a worse
+  // answer - so the branch is pinned rather than trusted.
+  it('sends Haiku the older thinking form and no effort at all', () => {
+    const params = thinkingFor('claude-haiku-4-5');
+    expect(params).toEqual({ thinking: { type: 'enabled', budget_tokens: 4000 } });
+    // `output_config.effort` ERRORS on Haiku 4.5. Its absence is the assertion.
+    expect(params).not.toHaveProperty('output_config');
+  });
+
+  it('sends Opus adaptive thinking and an effort', () => {
+    expect(thinkingFor('claude-opus-5')).toEqual({
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'high' },
+    });
+  });
+
+  it('never sends budget_tokens to a model that rejects it', () => {
+    for (const model of ['claude-opus-5', 'claude-sonnet-5', 'claude-opus-4-8']) {
+      expect(JSON.stringify(thinkingFor(model))).not.toContain('budget_tokens');
+    }
+  });
+
+  it('matches the family, so a future haiku needs no change here', () => {
+    expect(thinkingFor('claude-haiku-5')).toHaveProperty('thinking.budget_tokens');
+  });
+
+  it('keeps the budget under max_tokens, as the API requires', () => {
+    const params = thinkingFor('claude-haiku-4-5') as {
+      thinking: { budget_tokens: number };
+    };
+    expect(params.thinking.budget_tokens).toBeLessThan(16000);
+    expect(params.thinking.budget_tokens).toBeGreaterThanOrEqual(1024);
+  });
+});
+
+describe('cacheStats', () => {
+  // Zero reads across a turn is how a prefix below the model's minimum
+  // announces itself - there is no error, only this number staying at zero.
+  it('reports what the cache actually did', () => {
+    expect(
+      cacheStats({
+        input_tokens: 200,
+        output_tokens: 50,
+        cache_creation_input_tokens: 1830,
+        cache_read_input_tokens: 0,
+      } as never),
+    ).toEqual({ written: 1830, read: 0, uncached: 200 });
+  });
+
+  it('treats absent cache fields as zero rather than undefined', () => {
+    expect(cacheStats({ input_tokens: 200, output_tokens: 50 } as never)).toEqual({
+      written: 0,
+      read: 0,
+      uncached: 200,
     });
   });
 });

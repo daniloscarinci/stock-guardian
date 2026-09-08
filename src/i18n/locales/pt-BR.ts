@@ -542,7 +542,7 @@ export const ptBR: LocaleTree = {
       'Uma compilação de depuração é debuggable: quem tiver este telefone e um cabo consegue ler o armazenamento do aplicativo, e isso agora inclui esta chave. Uma compilação de release não é, mas um telefone destravado continua sendo.',
     getKey: 'A chave vem de console.anthropic.com, em API keys.',
     cost:
-      'Algo entre 2 e 5 centavos de dólar por pergunta, na sua chave e cobrado de você. Não há cota nem plano gratuito. Os comandos digitados continuam de graça.',
+      'Cerca de 1 centavo de dólar por pergunta no Haiku, 5 no Opus, na sua chave e cobrado de você. Não há cota nem plano gratuito. Os comandos digitados continuam de graça.',
     model: 'Modelo',
     whatIsSent:
       'O que sai deste aparelho: a sua pergunta, o que o Claude pediu para ler e a resposta. Nunca o seu inventário.',

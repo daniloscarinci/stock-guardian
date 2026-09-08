@@ -133,7 +133,7 @@ export const settingsSchema = z.object({
   anthropicApiKey: z.string().default(''),
 
   /** The model asked. Settings shows it, because it is what the questions cost. */
-  aiModel: z.string().default('claude-opus-5'),
+  aiModel: z.string().default('claude-haiku-4-5'),
 
   /**
    * Items the user has taken off the replenishment list.

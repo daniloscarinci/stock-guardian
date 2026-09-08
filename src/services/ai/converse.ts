@@ -94,6 +94,56 @@ export interface AiOptions {
  */
 export const MAX_REQUESTS = 8;
 
+/**
+ * The thinking and effort parameters this model will actually accept.
+ *
+ * These are not interchangeable, and sending the wrong pair is a 400 rather
+ * than a degraded answer:
+ *
+ *   Opus and Sonnet take `thinking: {type: 'adaptive'}` and an `effort`.
+ *   `budget_tokens` was removed on them and is rejected.
+ *
+ *   Haiku 4.5 is the other way round. It has no adaptive mode - thinking is
+ *   the older `{type: 'enabled', budget_tokens: N}` - and `output_config.effort`
+ *   ERRORS rather than being ignored.
+ *
+ * Haiku is the default because this application asks small, concrete questions
+ * about a pantry, and answering them at a fifth the cost is worth more than
+ * reasoning depth nobody needs. The setting still offers Opus for the questions
+ * that deserve it, which is why this has to branch rather than be hard-coded.
+ *
+ * The match is on the family rather than the exact id, so a future
+ * `claude-haiku-5` needs no change here.
+ */
+export function thinkingFor(model: string): Record<string, unknown> {
+  if (model.includes('haiku')) {
+    // Below `max_tokens`, and comfortably above the 1024 minimum.
+    return { thinking: { type: 'enabled', budget_tokens: 4000 } };
+  }
+  return { thinking: { type: 'adaptive' }, output_config: { effort: 'high' } };
+}
+
+/**
+ * What the cache actually did, read back from the response rather than assumed.
+ *
+ * `cache_read_input_tokens` staying at zero across a turn is the signal that
+ * the prefix never cached - most often because it sits under the model's
+ * minimum cacheable length, which fails silently and costs full price forever.
+ */
+export interface CacheStats {
+  readonly written: number;
+  readonly read: number;
+  readonly uncached: number;
+}
+
+export function cacheStats(usage: Anthropic.Usage): CacheStats {
+  return {
+    written: usage.cache_creation_input_tokens ?? 0,
+    read: usage.cache_read_input_tokens ?? 0,
+    uncached: usage.input_tokens,
+  };
+}
+
 /** Non-streaming, so this stays under the SDK's HTTP timeout. */
 const MAX_TOKENS = 16000;
 
@@ -171,7 +221,49 @@ export async function converse(
 
   const proposals: PendingWrite[] = [];
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: question }];
-  const system = systemPrompt(deps.language, deps.context.today);
+
+  /*
+   * One cache breakpoint, on the system block.
+   *
+   * Caching is a prefix match and the render order is tools -> system ->
+   * messages, so a breakpoint here covers the tool schemas AND the system
+   * prompt - every byte that is identical on all eight requests of a turn, and
+   * on every turn of the day. Only the conversation after it varies.
+   *
+   * The prompt interpolates today's date, so the prefix changes at midnight and
+   * the first question of a new day pays full price. That is correct rather
+   * than unfortunate: a stale date would have Claude reason about expiry from
+   * the wrong day.
+   *
+   * WHETHER THIS DOES ANYTHING DEPENDS ON THE MODEL, and not in the direction
+   * anyone expects. A prefix shorter than the model's minimum does not cache
+   * and does not complain - `cache_creation_input_tokens` simply stays zero.
+   * The minimums are not monotonic across generations:
+   *
+   *   Claude Opus 5      512 tokens
+   *   Sonnet 5, Opus 4.8  1024
+   *   Haiku 4.5           4096
+   *
+   * Our prefix is the eleven tool schemas (~1,630 tokens) plus this system
+   * prompt - call it ~1,830. That caches on Opus 5 and DOES NOT on Haiku 4.5,
+   * which is the default. The marker stays anyway: it is free, it is correct,
+   * and it starts working the moment someone switches the model in Settings.
+   *
+   * Padding the prefix to clear 4,096 would be writing two thousand tokens of
+   * tool description to satisfy a cache rather than to instruct a model, and
+   * the arithmetic does not even ask for it - Haiku uncached is still around a
+   * third the price of Opus cached.
+   *
+   * `cacheStats` reads back what actually happened, so this comment can be
+   * checked rather than believed.
+   */
+  const system: Anthropic.TextBlockParam[] = [
+    {
+      type: 'text',
+      text: systemPrompt(deps.language, deps.context.today),
+      cache_control: { type: 'ephemeral' },
+    },
+  ];
 
   try {
     for (let requests = 1; requests <= MAX_REQUESTS; requests += 1) {
@@ -180,8 +272,7 @@ export async function converse(
         max_tokens: MAX_TOKENS,
         system,
         tools: [...TOOLS],
-        thinking: { type: 'adaptive' },
-        output_config: { effort: 'high' },
+        ...thinkingFor(options.model),
         messages,
       });
 

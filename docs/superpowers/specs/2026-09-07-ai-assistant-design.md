@@ -31,7 +31,7 @@ o que vence primeiro". That sentence is the reason for this document.
 |---|---|---|
 | Can Claude change stock | Yes, through the existing confirmation card | One tap per change, as before |
 | Whose API key | The user's own, pasted into Settings | He needs an Anthropic account |
-| Model | `claude-opus-5` | ~2–5¢ per question |
+| Model | `claude-haiku-4-5` by default, `claude-opus-5` selectable | ~1¢ per question, ~5¢ on Opus |
 | Offline behaviour | The existing parser, unchanged | Two grammars of understanding, not one |
 
 ---
@@ -96,7 +96,7 @@ Two things follow, and both are stated in the interface rather than buried:
   the app's private storage, and that now includes an API key. Release builds
   are not debuggable; the key still sits in a database an unlocked phone can
   reach.
-- **The bill is the key holder's.** Roughly 2–5¢ a question on `claude-opus-5`.
+- **The bill is the key holder's.** About 1¢ a question on `claude-haiku-4-5`, ~5¢ on `claude-opus-5`.
   Settings shows the model and links to where the key comes from.
 
 ---

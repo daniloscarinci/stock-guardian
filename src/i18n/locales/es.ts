@@ -544,7 +544,7 @@ export const es: LocaleTree = {
     getKey: 'La clave sale de console.anthropic.com, en API keys.',
     model: 'Modelo',
     cost:
-      'Entre 2 y 5 centavos de dólar por pregunta, con tu clave y facturado a ti. No hay cupo ni plan gratuito. Los comandos escritos siguen siendo gratis.',
+      'Alrededor de 1 centavo de dólar por pregunta con Haiku, 5 con Opus, con tu clave y facturado a ti. No hay cupo ni plan gratuito. Los comandos escritos siguen siendo gratis.',
     whatIsSent:
       'Lo que sale de este dispositivo: tu pregunta, lo que Claude pidió leer y la respuesta. Nunca tu inventario.',
 

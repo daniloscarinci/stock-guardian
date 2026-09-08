@@ -543,7 +543,7 @@ export const en = {
     getKey: 'A key comes from console.anthropic.com, under API keys.',
     model: 'Model',
     cost:
-      'Roughly 2 to 5 cents a question, on your key and billed to you. There is no allowance and no free tier. The typed commands stay free.',
+      'About a cent a question on Haiku, five on Opus, on your key and billed to you. There is no allowance and no free tier. The typed commands stay free.',
     whatIsSent:
       'What leaves this device: your question, whatever Claude asked to read, and the answer. Never your inventory.',
 
