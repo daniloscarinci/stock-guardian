@@ -42,8 +42,15 @@ export interface AnswerOptions {
  * rows and a total of eighty, and "and 47 more" after three names would be a
  * number that is simply wrong. It defaults to the length, so every caller with
  * the whole list passes nothing.
+ *
+ * EXPORTED, AND THE SECOND CALLER IS NOT A SENTENCE. An expiry notification has
+ * the same problem for a different reason: not that forty names read aloud is
+ * noise, but that forty names do not fit on a lock screen, where Android keeps
+ * one line and drops the rest. The rule is the same rule and there is one copy
+ * of it, so "Leite, Iogurte, Pao and 7 more" reads identically in a spoken
+ * answer and on a notification instead of being written twice and drifting.
  */
-function namesOf(t: TranslateFn, names: readonly string[], total = names.length): string {
+export function namesOf(t: TranslateFn, names: readonly string[], total = names.length): string {
   const shown = names.slice(0, MAX_NAMES).join(', ');
   const rest = total - Math.min(MAX_NAMES, names.length);
   return rest <= 0 ? shown : `${shown} ${t('voice.andMore', { count: rest })}`;

@@ -28,6 +28,7 @@
     "@anthropic-ai/sdk": "^0.124.0",
     "@capacitor/android": "^8.5.0",
     "@capacitor/core": "^8.5.0",
+    "@capacitor/local-notifications": "^8.3.1",
     "@sqlite.org/sqlite-wasm": "3.53.0-build1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
