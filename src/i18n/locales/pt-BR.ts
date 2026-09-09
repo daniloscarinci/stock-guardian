@@ -562,6 +562,8 @@ export const ptBR: LocaleTree = {
     preview: 'Ouvir',
     previewSentence: 'Você tem 12 latas de feijão.',
     previewSilent: 'O botão de silencioso do telefone está ligado, então nada tocaria.',
+    previewUnavailable:
+      'Este aparelho não tem voz para este idioma, então não há nada para ouvir aqui. O Android instala as vozes nas próprias configurações, em Saída de texto para fala.',
     settingOfflineOnly: 'Transcrever só neste aparelho — nunca usar a internet',
     settingOfflineOnlyHelp: 'Desligado. Toda vez que você fala, o aparelho transcreve sozinho primeiro, e num telefone que tem o idioma instalado nada sai dele. Se essa tentativa falhar e o telefone tiver conexão, ele tenta mais uma vez pela internet: o reconhecedor do sistema envia sua voz gravada para isso — na maioria dos telefones, para o Google — e a resposta fica marcada como transcrita pela internet, para você ver quando aconteceu. Ligue isto e essa segunda tentativa nunca acontece. O que você fala nunca sai do telefone, e um idioma sem pacote off-line simplesmente não é transcrito.',
     availability: 'Reconhecimento de voz',

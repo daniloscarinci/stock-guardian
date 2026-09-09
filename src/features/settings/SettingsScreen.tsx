@@ -19,6 +19,7 @@ import {
   createSpeaker,
   listVoices,
   onVoicesChanged,
+  speechAvailable,
   type VoiceChoice,
 } from '../../services/speech/speak';
 import { androidIsSilent } from '../../services/speech/ringer';
@@ -79,18 +80,26 @@ export function SettingsScreen() {
   /*
    * The voices this device has, and the wait for them.
    *
-   * `speechSynthesis.getVoices()` returns what has loaded so far, and on Chrome
-   * the first call after a page load returns nothing at all - the real list
-   * arrives with a `voiceschanged` event a few milliseconds later. `speak.ts`
-   * can shrug that off by naming no voice; a picker cannot. An empty menu is a
-   * broken control, and one that fills in underneath somebody's finger is
-   * worse.
+   * THIS LIST WAS ALWAYS EMPTY ON THE PHONE, AND THE PICKER THEREFORE NEVER
+   * APPEARED. It read `speechSynthesis.getVoices()`, which inside Android's
+   * WebView returns nothing at all - the API is exposed and not implemented. It
+   * now goes through the seam, which asks the phone's own TextToSpeech engine
+   * and gets back what the engine really has, `#female` markers and all.
    *
-   * So the list is read once, the event is subscribed to, and `settled` decides
-   * what an empty list is allowed to mean: "still asking" before it, "this
-   * device has none" after. The timer is the third case and the reason it is
-   * here - a device with no voices that also never fires the event would say
-   * "still asking" forever, which is the broken control wearing a hat.
+   * The wait is still here because the browser still needs it.
+   * `speechSynthesis.getVoices()` returns what has loaded so far, and on Chrome
+   * the first call after a page load returns nothing; the real list arrives with
+   * a `voiceschanged` event a few milliseconds later. `speak.ts` can shrug that
+   * off by naming no voice; a picker cannot. An empty menu is a broken control,
+   * and one that fills in underneath somebody's finger is worse.
+   *
+   * So `settled` decides what an empty list is allowed to mean: "still asking"
+   * before it, "this device has none" after. The seam reports it, because only
+   * the seam knows which platform answered - the native engine is asked after it
+   * has initialised and its first answer is final, so nothing there ever says
+   * "still asking". The timer is the third case and the reason it is here: a
+   * browser with no voices that also never fires the event would say "still
+   * asking" forever, which is the broken control wearing a hat.
    *
    * Keyed on the interface language, because that is what is being spoken: the
    * whole list is different, and any voice chosen for the old one is not
@@ -102,19 +111,30 @@ export function SettingsScreen() {
   const [previewNote, setPreviewNote] = useState<string | null>(null);
 
   useEffect(() => {
-    const first = listVoices(voiceTag);
-    setVoices(first);
-    setVoicesSettled(first.length > 0);
+    let dropped = false;
 
+    // `final` is the caller's own claim, and only the `voiceschanged` handler
+    // makes it: the platform has said its list is loaded, so an empty one from
+    // here on is a device with no voice for this language rather than a device
+    // still thinking about it.
+    const read = (final: boolean) => {
+      void listVoices(voiceTag).then((listing) => {
+        if (dropped) return;
+        setVoices([...listing.voices]);
+        if (final || listing.settled) setVoicesSettled(true);
+      });
+    };
+
+    read(false);
     const unsubscribe = onVoicesChanged(() => {
-      setVoices(listVoices(voiceTag));
-      setVoicesSettled(true);
+      read(true);
     });
     const giveUp = setTimeout(() => {
-      setVoicesSettled(true);
+      if (!dropped) setVoicesSettled(true);
     }, 1500);
 
     return () => {
+      dropped = true;
       unsubscribe();
       clearTimeout(giveUp);
     };
@@ -158,16 +178,27 @@ export function SettingsScreen() {
    * A real sentence, in the language the answers come in, and not "test test":
    * the point is to hear the voice saying the kind of thing it will say.
    *
+   * IT USED TO DO NOTHING ON THE PHONE, which is what put this whole release in
+   * motion. It called `speechSynthesis`, which Android's WebView exposes without
+   * implementing, so the press was accepted and no sound was ever made. It now
+   * goes through the seam and reaches the phone's own engine.
+   *
    * It speaks even when "read answers aloud" is off. The press IS the consent -
-   * somebody choosing a voice is on their way to switching that on, and a
-   * button that silently does nothing is the failure this whole screen is
-   * written against. The phone's silent switch still wins, and says so instead
-   * of leaving a dead press unexplained.
+   * somebody choosing a voice is on their way to switching that on, and a button
+   * that silently does nothing is the failure this whole screen is written
+   * against. Both remaining ways for it to stay quiet now SAY SO: the phone's
+   * silent switch, which still wins, and a device with no engine for this
+   * language, which is the one thing the browser could never tell us and the
+   * plugin can.
    */
   const previewVoice = async () => {
     setPreviewNote(null);
     if (await androidIsSilent()) {
       setPreviewNote(t('voice.previewSilent'));
+      return;
+    }
+    if (!(await speechAvailable(voiceTag))) {
+      setPreviewNote(t('voice.previewUnavailable'));
       return;
     }
     await createSpeaker(

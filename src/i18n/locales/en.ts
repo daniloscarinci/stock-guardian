@@ -562,6 +562,8 @@ export const en = {
     preview: 'Hear it',
     previewSentence: 'You have 12 cans of beans.',
     previewSilent: 'The phone’s silent switch is on, so nothing would play.',
+    previewUnavailable:
+      'This device has no speech engine for this language, so there is nothing here to hear. Android installs them through its own settings, under Text-to-speech output.',
     settingOfflineOnly: 'Transcribe on this device only — never use the internet',
     settingOfflineOnlyHelp: 'Off. Every time you speak, this device transcribes on its own first, and on a phone that has the language installed nothing ever leaves it. If that attempt fails and the phone has a connection, it tries once more over the internet: the system recognizer sends your recorded speech away to do it — on most phones, to Google — and the answer is marked as transcribed online, so you can see when it happened. Switch this on and that second attempt never happens. What you say never leaves the phone, and a language with no offline pack will simply not transcribe.',
     availability: 'Speech recognition',

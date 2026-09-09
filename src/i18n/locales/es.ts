@@ -563,6 +563,8 @@ export const es: LocaleTree = {
     preview: 'Escuchar',
     previewSentence: 'Tienes 12 latas de frijoles.',
     previewSilent: 'El interruptor de silencio del teléfono está activado, así que no sonaría nada.',
+    previewUnavailable:
+      'Este dispositivo no tiene una voz para este idioma, así que no hay nada que escuchar aquí. Android las instala desde sus propios ajustes, en Salida de texto a voz.',
     settingOfflineOnly: 'Transcribir solo en este dispositivo — nunca usar la internet',
     settingOfflineOnlyHelp: 'Desactivado. Cada vez que hablas, el dispositivo transcribe por su cuenta primero, y en un teléfono que tiene el idioma instalado nada sale de él. Si ese intento falla y el teléfono tiene conexión, lo intenta una vez más por internet: el reconocedor del sistema envía tu voz grabada para hacerlo — en la mayoría de los teléfonos, a Google — y la respuesta queda marcada como transcrita por internet, para que veas cuándo ha pasado. Actívalo y ese segundo intento no ocurre nunca. Lo que dices nunca sale del teléfono, y un idioma sin paquete sin conexión sencillamente no se transcribe.',
     availability: 'Reconocimiento de voz',
