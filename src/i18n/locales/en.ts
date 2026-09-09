@@ -597,12 +597,55 @@ export const en = {
   },
 
   /*
-   * The one part of this application that speaks first.
+   * The first thing this application says, before it has been asked anything.
    *
-   * Everything else waits to be opened. A reminder arrives on a locked phone,
-   * about food, at an hour it chose - so the title says how many and by when,
-   * which are the two facts that decide whether it is worth unlocking for, and
-   * the names go underneath where there is room for them.
+   * A greeting on its own is a novelty that gets switched off within a week, so
+   * this is a status report with a greeting on the front: hello, and then the
+   * one or two things that would have made somebody open the application
+   * anyway. Everything it reads has already been counted for the dashboard -
+   * nothing is queried for the sake of saying it out loud.
+   *
+   * TWO FACTS AT MOST, in the order urgency runs: gone off, going off today,
+   * going off inside the warning window, below its minimum. The rest is left to
+   * the screen, which can show ten at once and does. A spoken list nobody can
+   * scroll back through is not a list.
+   *
+   * The greeting is the time of day rather than one fixed word. Portuguese and
+   * Spanish have three of them and getting that wrong is worse than not trying,
+   * so the bands are theirs - morning until noon, afternoon until six, night
+   * after that - and English is given the same ones rather than an invented set
+   * of its own.
+   */
+  welcome: {
+    morning: 'Good morning',
+    afternoon: 'Good afternoon',
+    evening: 'Good evening',
+
+    expired_one: 'One item has expired.',
+    expired_other: '{count} items have expired.',
+    today_one: 'One item expires today.',
+    today_other: '{count} items expire today.',
+    soon_one: 'One item expires within {days} days.',
+    soon_other: '{count} items expire within {days} days.',
+    low_one: 'One item is below its minimum.',
+    low_other: '{count} items are below their minimum.',
+    nothing: 'Nothing needs your attention.',
+
+    setting: 'Say hello when the app opens',
+    settingHelp:
+      'On. One sentence as the app opens: the time of day, then the one or two things that need doing — what has expired, what expires today, what is running low. When nothing does, it says so and stops. It speaks once per launch and never again while you move between screens, never over an answer you asked for, and never while the phone is on silent.',
+  },
+
+  /*
+   * The part of this application that speaks first WHILE IT IS SHUT.
+   *
+   * The welcome above talks unprompted too, and the difference between them is
+   * the whole reason one ships switched on and the other does not: a reminder
+   * arrives on a locked phone, about food, at an hour of its own choosing,
+   * while the welcome only ever happens in the second after somebody has
+   * deliberately opened the application. So the title here says how many and by
+   * when, which are the two facts that decide whether it is worth unlocking
+   * for, and the names go underneath where there is room for them.
    */
   notifications: {
     title: 'Expiry reminders',

@@ -470,6 +470,22 @@ export function SettingsScreen() {
         />
 
         {/*
+          The one control here for something this application does unasked, and
+          the only reason it may. It is independent of the switch above rather
+          than nested under it: two switches that each mean what their label says
+          are better than one that quietly overrides the other, which is the
+          exact failure this release is about.
+        */}
+        <SwitchRow
+          label={t('welcome.setting')}
+          help={t('welcome.settingHelp')}
+          checked={settings.voiceSpeakWelcome}
+          onChange={(on) => {
+            void updateSettings({ voiceSpeakWelcome: on });
+          }}
+        />
+
+        {/*
           WHICH voice, and not a female/male toggle.
 
           What was asked for was a choice between a woman's voice and a man's.

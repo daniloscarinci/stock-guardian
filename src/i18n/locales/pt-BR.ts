@@ -596,6 +596,26 @@ export const ptBR: LocaleTree = {
     dayWindow_other: '{count} dias',
   },
 
+  welcome: {
+    morning: 'Bom dia',
+    afternoon: 'Boa tarde',
+    evening: 'Boa noite',
+
+    expired_one: 'Um item venceu.',
+    expired_other: '{count} itens venceram.',
+    today_one: 'Um item vence hoje.',
+    today_other: '{count} itens vencem hoje.',
+    soon_one: 'Um item vence nos próximos {days} dias.',
+    soon_other: '{count} itens vencem nos próximos {days} dias.',
+    low_one: 'Um item está abaixo do mínimo.',
+    low_other: '{count} itens estão abaixo do mínimo.',
+    nothing: 'Nada precisa de atenção.',
+
+    setting: 'Falar comigo ao abrir o aplicativo',
+    settingHelp:
+      'Ligado. Uma frase ao abrir: a hora do dia e as uma ou duas coisas que precisam de você — o que venceu, o que vence hoje, o que está acabando. Quando não há nada, ele diz isso e para. Fala uma vez por abertura e nunca mais enquanto você troca de tela, nunca por cima de uma resposta que você pediu, e nunca com o telefone no silencioso.',
+  },
+
   notifications: {
     title: 'Lembretes de validade',
     subtitle: 'Um aviso antes de a comida vencer, num telefone que você não abriu',

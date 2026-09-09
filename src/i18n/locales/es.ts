@@ -597,6 +597,26 @@ export const es: LocaleTree = {
     dayWindow_other: '{count} días',
   },
 
+  welcome: {
+    morning: 'Buenos días',
+    afternoon: 'Buenas tardes',
+    evening: 'Buenas noches',
+
+    expired_one: 'Un ítem ha vencido.',
+    expired_other: '{count} ítems han vencido.',
+    today_one: 'Un ítem vence hoy.',
+    today_other: '{count} ítems vencen hoy.',
+    soon_one: 'Un ítem vence en los próximos {days} días.',
+    soon_other: '{count} ítems vencen en los próximos {days} días.',
+    low_one: 'Un ítem está por debajo de su mínimo.',
+    low_other: '{count} ítems están por debajo de su mínimo.',
+    nothing: 'No hay nada que necesite atención.',
+
+    setting: 'Saludarme al abrir la aplicación',
+    settingHelp:
+      'Activado. Una frase al abrir: la hora del día y la una o dos cosas que hay que atender — lo que ha vencido, lo que vence hoy, lo que se está acabando. Cuando no hay nada, lo dice y calla. Habla una vez por apertura y nunca más mientras cambias de pantalla, nunca por encima de una respuesta que pediste, y nunca con el teléfono en silencio.',
+  },
+
   notifications: {
     title: 'Recordatorios de vencimiento',
     subtitle: 'Un aviso antes de que la comida se venza, en un teléfono que no has abierto',

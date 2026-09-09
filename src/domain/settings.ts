@@ -111,6 +111,38 @@ export const settingsSchema = z.object({
   speakingVoiceUri: z.string().default(''),
 
   /**
+   * SAYS HELLO, AND WHAT NEEDS DOING, THE MOMENT THE APPLICATION OPENS. On.
+   *
+   * ON IS A DECISION AND HERE IS THE ARGUMENT. The only other setting in this
+   * file that ships off is `expiryNotificationsEnabled`, and the comment there
+   * gives the test: every other default is the behaviour somebody would choose
+   * anyway, and that one is not, because it interrupts a person who is not using
+   * the application. This passes that test. A notification arrives on a locked
+   * phone, at an hour of its own choosing, while the application is shut. The
+   * welcome only ever happens in the second AFTER somebody has deliberately
+   * opened this application, lasts about three seconds, and cannot occur at all
+   * while it is closed. Those are different acts.
+   *
+   * What settles it is what shipping it off would mean. Somebody asked for this
+   * out loud; an application that answers by installing a switch they then have
+   * to find is the same silent nothing this release exists to end - and until
+   * this release, `voiceSpeakAnswers` had defaulted to true for months while the
+   * phone said not one word, so nobody has been trained to expect quiet. This
+   * application already speaks by default when spoken to. Now it says good
+   * morning first.
+   *
+   * It is guarded on every side that costs nothing: the phone's silent switch
+   * wins, it never speaks over an answer somebody asked for, it happens once per
+   * launch and not once per screen, and it never delays the interface - the
+   * application is drawn and usable before a word is said.
+   *
+   * INDEPENDENT OF `voiceSpeakAnswers` ON PURPOSE. Coupling them would make one
+   * switch read "on" while the other silently overrode it, which is the failure
+   * mode this whole release is about. Two switches, each true to its label.
+   */
+  voiceSpeakWelcome: z.boolean().default(true),
+
+  /**
    * Keeps recorded speech on the device even when that means no transcription
    * at all.
    *

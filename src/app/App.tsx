@@ -15,6 +15,7 @@ import { StartupFailureScreen, StartupLoading } from './StartupScreen';
 import { ErrorBoundary } from './ErrorBoundary';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useExpiryNotifications } from '../features/notifications/useExpiryNotifications';
+import { useWelcome } from '../features/welcome/useWelcome';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { InventoryScreen } from '../features/inventory/InventoryScreen';
 import { ExpirationScreen } from '../features/expiration/ExpirationScreen';
@@ -45,6 +46,17 @@ function Shell() {
   );
 
   const attention = (stats.data?.expired ?? 0) + (stats.data?.expiringToday ?? 0);
+
+  /*
+   * The spoken welcome, from the counts already loaded above.
+   *
+   * Here rather than in a screen for the same reason the notifications are: the
+   * shell mounts once per launch and every route inside it comes and goes, so
+   * this is the only place where "once, when the application opens" means what
+   * it says. It starts no query of its own, and nothing renders from it - the
+   * application is drawn and usable before a word is spoken.
+   */
+  useWelcome(stats.data);
 
   return (
     <Routes>
