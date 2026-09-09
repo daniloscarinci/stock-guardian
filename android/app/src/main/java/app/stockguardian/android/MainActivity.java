@@ -23,11 +23,18 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * The native shell. It exists to do the three things a WebView cannot: save
- * exported files, reach the system's speech recognizer, and read the ringer
- * switch so a spoken answer does not talk over a phone somebody has
+ * The native shell. It exists to do the four things a WebView cannot: save
+ * exported files, reach the system's speech recognizer, SPEAK, and read the
+ * ringer switch so a spoken answer does not talk over a phone somebody has
  * deliberately silenced. The download listener below is the first of those;
- * SpeechPlugin and RingerPlugin are the other two.
+ * SpeechPlugin, TtsPlugin and RingerPlugin are the other three.
+ *
+ * Speaking is the newest and was the least expected. Android's WebView exposes
+ * the Web Speech synthesis API and does not implement it: `speechSynthesis` is
+ * there, `getVoices()` is empty, `speak()` plays nothing and reports no error.
+ * So every answer appeared as text and none was ever read aloud. TtsPlugin binds
+ * android.speech.tts.TextToSpeech directly, which is the same shape of fix the
+ * microphone needed and for the same reason.
  *
  * Stock Guardian exports backups and CSV reports with a blob URL and a
  * synthetic anchor click, which every browser understands. Android's WebView
@@ -64,6 +71,7 @@ public class MainActivity extends BridgeActivity {
         // reads the plugin list. Registered later, the plugin does not exist as
         // far as the web layer is concerned.
         registerPlugin(SpeechPlugin.class);
+        registerPlugin(TtsPlugin.class);
         registerPlugin(RingerPlugin.class);
 
         super.onCreate(savedInstanceState);

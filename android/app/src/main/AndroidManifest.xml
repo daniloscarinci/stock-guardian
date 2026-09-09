@@ -202,14 +202,18 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
 
     <!--
-        Not a permission, and the only reason it is here.
+        Not permissions, and the only reason they are here.
 
         From Android 11 an application sees no other application it has not
-        named. SpeechPlugin asks SpeechRecognizer.isRecognitionAvailable whether
-        anything on this phone transcribes speech, and then binds the service it
-        finds; both the question and the bind go through package visibility, so
-        without this the microphone would report itself unavailable on every
-        modern phone.
+        named. Two of this application's plugins have to find a system service
+        that lives in another package, and both the finding and the binding go
+        through package visibility.
+
+        android.speech.RecognitionService is the microphone. SpeechPlugin asks
+        SpeechRecognizer.isRecognitionAvailable whether anything on this phone
+        transcribes speech and then binds the service it finds; without this
+        entry the microphone would report itself unavailable on every modern
+        phone.
 
         It names the service rather than the Intent now. The activity action
         android.speech.action.RECOGNIZE_SPEECH used to be here too, because the
@@ -217,15 +221,25 @@
         above - and a query for something nothing asks about is a line that
         cannot be checked.
 
-        This grants nothing and asks the system for nothing. It is not
-        QUERY_ALL_PACKAGES, which is a permission and is not here; it makes
-        visible only the applications that themselves declare they can do speech
-        recognition. The check in the workflow still finds nothing but INTERNET
-        and RECORD_AUDIO.
+        android.intent.action.TTS_SERVICE is the speaker, and it is new.
+        TtsPlugin builds a TextToSpeech, which binds whichever engine the phone
+        has set as its default - on most phones a separate application,
+        com.google.android.tts. Without this line the engine is invisible, the
+        bind fails, onInit reports ERROR and the application is silent: the exact
+        failure this release exists to end, in a new costume.
+
+        Neither grants anything nor asks the system for anything. Neither is
+        QUERY_ALL_PACKAGES, which is a permission and is not here; they make
+        visible only the applications that themselves declare they transcribe or
+        synthesise speech. The check in the workflow still finds nothing but
+        INTERNET, RECORD_AUDIO and POST_NOTIFICATIONS.
     -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
     </queries>
 </manifest>
