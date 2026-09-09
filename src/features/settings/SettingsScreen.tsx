@@ -22,7 +22,7 @@ import {
   speechAvailable,
   type VoiceChoice,
 } from '../../services/speech/speak';
-import { androidIsSilent } from '../../services/speech/ringer';
+import { androidIsSilent, androidMediaMuted } from '../../services/speech/ringer';
 import { LOCALE_TAGS } from '../../i18n/translate';
 import { BackupPanel } from './BackupPanel';
 import { NotificationsPanel } from './NotificationsPanel';
@@ -195,6 +195,13 @@ export function SettingsScreen() {
     setPreviewNote(null);
     if (await androidIsSilent()) {
       setPreviewNote(t('voice.previewSilent'));
+      return;
+    }
+    // Different from the switch above, and worth its own sentence: the ringer
+    // is on, this would speak, and the media stream it speaks on is turned all
+    // the way down. Saying nothing here would be one more unexplained silence.
+    if (await androidMediaMuted()) {
+      setPreviewNote(t('voice.previewMediaMuted'));
       return;
     }
     if (!(await speechAvailable(voiceTag))) {

@@ -562,6 +562,7 @@ export const en = {
     preview: 'Hear it',
     previewSentence: 'You have 12 cans of beans.',
     previewSilent: 'The phone’s silent switch is on, so nothing would play.',
+    previewMediaMuted: 'The media volume is at zero, so nothing would be heard. Turn it up with the volume keys while this screen is open.',
     previewUnavailable:
       'This device has no speech engine for this language, so there is nothing here to hear. Android installs them through its own settings, under Text-to-speech output.',
     settingOfflineOnly: 'Transcribe on this device only — never use the internet',

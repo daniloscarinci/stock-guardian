@@ -25,7 +25,7 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
 
 interface RingerPlugin {
-  isSilent: () => Promise<{ silent: boolean }>;
+  isSilent: () => Promise<{ silent: boolean; mediaVolume?: number }>;
 }
 
 const Ringer = registerPlugin<RingerPlugin>('Ringer');
@@ -46,5 +46,26 @@ export async function androidIsSilent(): Promise<boolean> {
   if (!isNativeAndroid()) return false;
   return Ringer.isSilent()
     .then((r) => r.silent)
+    .catch(() => false);
+}
+
+/**
+ * Whether speech would be inaudible even though the phone is not silenced.
+ *
+ * `TextToSpeech` plays on the media stream, and the ringer switch says nothing
+ * about it - so a phone with the ringer on and media turned all the way down
+ * speaks perfectly and is heard by nobody. That is a different answer from "the
+ * person asked for quiet", and it is the one worth saying out loud: silence
+ * that nobody can explain is the failure this whole feature keeps returning to.
+ *
+ * Fails to false wherever the question cannot be asked - an older APK whose
+ * plugin does not report the field, a browser, a rejected call. Claiming the
+ * volume is down when it is not would send somebody to fix a setting that was
+ * never the problem.
+ */
+export async function androidMediaMuted(): Promise<boolean> {
+  if (!isNativeAndroid()) return false;
+  return Ringer.isSilent()
+    .then((r) => r.mediaVolume === 0)
     .catch(() => false);
 }

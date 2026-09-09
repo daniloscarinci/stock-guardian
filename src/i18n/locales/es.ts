@@ -563,6 +563,7 @@ export const es: LocaleTree = {
     preview: 'Escuchar',
     previewSentence: 'Tienes 12 latas de frijoles.',
     previewSilent: 'El interruptor de silencio del teléfono está activado, así que no sonaría nada.',
+    previewMediaMuted: 'El volumen multimedia está en cero, así que no se oiría nada. Súbelo con los botones de volumen con esta pantalla abierta.',
     previewUnavailable:
       'Este dispositivo no tiene una voz para este idioma, así que no hay nada que escuchar aquí. Android las instala desde sus propios ajustes, en Salida de texto a voz.',
     settingOfflineOnly: 'Transcribir solo en este dispositivo — nunca usar la internet',

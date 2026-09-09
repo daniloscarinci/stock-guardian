@@ -50,6 +50,24 @@ public class RingerPlugin extends Plugin {
         AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
         // A device with no AudioManager is not a device to start talking on.
         boolean silent = audio == null || audio.getRingerMode() != AudioManager.RINGER_MODE_NORMAL;
-        call.resolve(new JSObject().put("silent", silent));
+
+        /*
+         * The media stream is reported separately, because it answers a
+         * different question.
+         *
+         * The ringer says whether the person WANTS quiet, and a phone on silent
+         * should stay silent. The media volume says whether speech CAN be
+         * heard: TextToSpeech plays on STREAM_MUSIC, so a phone with the ringer
+         * on and media turned all the way down passes the check above, speaks
+         * into a muted stream, and says nothing about it.
+         *
+         * That is the failure this application has spent a week removing in
+         * other forms, so the two are answered separately and the interface can
+         * tell somebody why they heard nothing rather than leaving them to
+         * wonder. -1 means the question could not be asked.
+         */
+        int mediaVolume = audio == null ? -1 : audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+
+        call.resolve(new JSObject().put("silent", silent).put("mediaVolume", mediaVolume));
     }
 }

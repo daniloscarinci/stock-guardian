@@ -562,6 +562,7 @@ export const ptBR: LocaleTree = {
     preview: 'Ouvir',
     previewSentence: 'Você tem 12 latas de feijão.',
     previewSilent: 'O botão de silencioso do telefone está ligado, então nada tocaria.',
+    previewMediaMuted: 'O volume de mídia está no zero, então nada seria ouvido. Aumente com os botões de volume com esta tela aberta.',
     previewUnavailable:
       'Este aparelho não tem voz para este idioma, então não há nada para ouvir aqui. O Android instala as vozes nas próprias configurações, em Saída de texto para fala.',
     settingOfflineOnly: 'Transcrever só neste aparelho — nunca usar a internet',
