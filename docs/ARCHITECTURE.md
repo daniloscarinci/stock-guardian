@@ -44,11 +44,20 @@ that nothing above it knows which is listening. It was deleted for one release �
 it was built for a phone whose recognizer refuses to transcribe offline without
 a Portuguese pack, and a button that failed in silence was worse than no button
 — and recovered once the failure could be named and the offline request made
-conditional rather than absolute. `speak.ts` and `ringer.ts` sit beside it and
-are deliberately not part of it: reading an answer aloud is the speaker's
-business, and neither is a seam.
+conditional rather than absolute. `ringer.ts` sits beside it and is deliberately
+not part of it: reading the switch on the side of the phone is the speaker's
+business, and it is not a seam.
 
-**The third seam is the pair of engines behind one box.** A typed question
+**`Speaker` is the third, and it was one module until this release.** `speak.ts`
+called `speechSynthesis` and read nothing aloud inside the APK, because Android's
+WebView exposes that API without implementing it - the same shape of failure the
+microphone took four releases to name. It now stands above a native
+`TextToSpeech` plugin and the browser's own synthesis, choosing per sentence, and
+what both obey - the local-first voice preference above all - lives once in
+`voices.ts`. The browser path is kept rather than replaced: this application
+ships as a website and a PWA as well as an APK.
+
+**The fourth seam is the pair of engines behind one box.** A typed question
 goes to Claude when the assistant is on and a key is stored, and to the twelve
 parser rules otherwise - and to the parser anyway when Claude cannot be reached.
 `useVoice.ts` is where that choice is made, and it is the only place it is made.
@@ -77,7 +86,8 @@ src/
   voice/         transcript → Intent: parser, numbers, dates, one grammar
                  per language and a registry. Pure, zero I/O.
   services/      backup, import, export, reports, download
-    speech/      SpeechRecognizer contract and its three implementations
+    speech/      two seams: SpeechRecognizer and its three implementations,
+                 and Speaker over TextToSpeech and speechSynthesis
     voice/       Intent → Outcome: resolve, execute (reads), commit (writes)
     notifications/  plan (pure: what to say and when) and notifier (the plugin)
   i18n/          three locales and the translation function
@@ -257,9 +267,10 @@ Seven runtime dependencies: `react`, `react-dom`, `react-router-dom`, `zod`,
 `@capacitor/local-notifications`.
 
 `@capacitor/core` arrived with voice control: `services/speech/capacitor.ts`
-needs `registerPlugin` to reach the Android speech plugin, so the package is now
-bundled into the web build as well, where `Capacitor.isNativePlatform()` answers
-false and nothing else in it runs. It was already a dependency of the Android
+needs `registerPlugin` to reach the Android speech plugin, and
+`services/speech/tts.ts` needs it to reach the one that speaks, so the package is
+now bundled into the web build as well, where `Capacitor.isNativePlatform()`
+answers false and nothing else in it runs. It was already a dependency of the Android
 build; what changed is that application source imports it.
 
 `@capacitor/local-notifications` arrived with the expiry reminders, and it is
@@ -269,8 +280,8 @@ implementation holds a `setTimeout` in the open page, which for a reminder that
 has to survive three months of the application being closed is the opposite of
 the feature, so it is never used. It is the first dependency here written in
 Kotlin; the plugin's own Gradle module carries the Kotlin plugin, so the
-application module still has no Kotlin toolchain and `MainActivity`, `SpeechPlugin`
-and `RingerPlugin` are still Java.
+application module still has no Kotlin toolchain and `MainActivity`,
+`SpeechPlugin`, `TtsPlugin` and `RingerPlugin` are still Java.
 
 ---
 

@@ -173,6 +173,19 @@ system voice and is on by default. On Android the silent switch on the side of
 the phone wins over the setting. Speaking is not listening: it opens no
 microphone, asks for no permission and sends nothing anywhere.
 
+On Android it now works. Until this release that setting was on, the phone said
+nothing, and no error was raised anywhere: the WebView exposes the browser's
+speech synthesis API without implementing it. The app speaks through the phone's
+own engine instead, which also means **Settings → Ask → Which voice** finally has
+something in it — the real voices installed on the device, on-device ones
+preferred over any synthesised on a server.
+
+*It says hello when you open it.* One sentence — the time of day, then the one or
+two things that need doing. *"Bom dia. 3 itens vencem hoje."* When nothing needs
+doing it says so and stops. Once per launch, never over an answer you asked for,
+never when the phone is on silent, and off in one press at **Settings → Ask → Say
+hello when the app opens**.
+
 *Two engines answer the same box.* Twelve rules run on the device — exact,
 instant and free — and Claude answers instead when you have switched the
 assistant on and pasted a key. Every exchange says which one answered, because

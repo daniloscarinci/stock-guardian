@@ -412,20 +412,28 @@ and an APK that can speak needs nothing from the plugin that listens.
 
 ### Reading answers aloud
 
-`speechSynthesis` is a system service and `speak.ts` fetches nothing. But the
-Web Speech API offers server-synthesised voices alongside on-device ones, and on
-a desktop browser the remote voice is often both first in the list and the
-better-sounding one. Choosing it would send the sentence — which names what is
-in your pantry — to a synthesis service.
+Speaking is a system service and `speak.ts` fetches nothing. There are two
+implementations behind it — `TextToSpeech` through a hand-written plugin inside
+the APK, `speechSynthesis` in a browser — because the WebView exposes the second
+without implementing it. Neither opens a socket.
 
-`speak.ts` therefore names a voice only when `SpeechSynthesisVoice.localService`
-is true for the requested language, and otherwise names none at all, leaving
-`lang` to the platform. Three tests pin it, including one asserting that a
-remote voice listed ahead of a local one is still not chosen.
+But both platforms offer server-synthesised voices alongside on-device ones, and
+the remote voice is often both first in the list and the better-sounding one.
+Choosing it would send the sentence — which names what is in your pantry — to a
+synthesis service.
+
+The automatic choice therefore names a voice only when it is on the device, and
+otherwise names none at all, leaving the language to the platform. On the web
+that reads `SpeechSynthesisVoice.localService`; on Android it reads
+`Voice.isNetworkConnectionRequired()`, which is the engine stating a requirement
+rather than the browser summarising one — so the guarantee is stronger inside the
+APK than outside it. The rule itself lives once, in `voices.ts`, and both paths
+obey it; tests pin it on both, including one asserting that a network voice
+listed ahead of a local one is still not chosen.
 
 This is a best effort, not a guarantee: with no local voice installed, the
-platform may still resolve `lang` to a remote one, and the API offers no way to
-refuse. On Android the system voice is on the phone. **Settings → Ask → Read
+platform may still resolve the language to a remote one, and neither API offers a
+way to refuse. On Android the system voice is on the phone. **Settings → Ask → Read
 answers aloud** switches it off, and that remains the only certain answer. On
 Android the silent switch on the side of the phone wins over the setting, which
 is what `ringer.ts` is for.

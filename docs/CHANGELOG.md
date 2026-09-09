@@ -1,5 +1,110 @@
 # Changelog
 
+## Unreleased
+
+### The application speaks, on the phone, at last
+
+Answers had been read aloud since 2.0 and the phone had never said one word.
+`speak.ts` called `speechSynthesis.speak()` and that code was correct.
+
+**Android's WebView exposes the Web Speech synthesis API and does not implement
+it.** The object is present, so every guard passed. `getVoices()` returned an
+empty list, which is why the **Which voice** menu added in 2.4.0 has never once
+appeared on a phone. `speak()` accepted every utterance and played silence.
+Nothing anywhere raised an error. Answers arrived as text and the **Ouvir**
+button did nothing at all.
+
+That is the microphone's bug in a new costume - a web API that exists, satisfies
+every check and quietly does nothing while the native path underneath it works -
+and it gets the microphone's fix. `TtsPlugin.java` binds
+`android.speech.tts.TextToSpeech` directly. It is the third hand-written plugin
+here rather than the first, and follows `SpeechPlugin`'s structure: one
+main-thread handler, one settle-once exit, a watchdog on the call that can hang,
+stable codes rather than prose.
+
+**Initialisation is asynchronous, and that was the failure being fixed.** A
+`TextToSpeech` is useless until `onInit` reports success, and `speak` called
+before that returns an error and plays nothing - silently. So nothing touches an
+engine directly: every call is run now, parked until `onInit` answers, or
+rejected because there is no engine to wait for. An engine that binds and then
+says nothing is given up on after five seconds, everything waiting is answered,
+and the state resets so the next call builds a fresh one. `shutdown()` runs on
+activity destroy, because a leaked engine holds a bound service and an audio
+focus handle.
+
+**`speak.ts` is a seam now, the way `recognizer.ts` already was.** Native inside
+the APK, `speechSynthesis` in a desktop browser and the installed PWA - this
+application ships as both, so the browser path was kept rather than replaced. It
+moved to `websynthesis.ts` unchanged. What both paths obey lives once, in
+`voices.ts`.
+
+Every behaviour the browser path had learned the hard way is now true on the
+phone as well, with a test on both sides: the local-first voice preference, so an
+answer naming your pantry is not handed to a synthesis server; the fallback to
+that same choice when a stored voice has gone, which must never mean silence; the
+new sentence replacing the stale one rather than queueing behind it; the empty
+answer that means "nothing to say now" and stops what is playing; the setting
+read per sentence.
+
+**The local-first preference got stronger rather than being lost.** The browser's
+`localService` is a summary; Android's `Voice.isNetworkConnectionRequired()` is
+the engine stating a requirement.
+
+**The voice menu has something in it.** It lists what the engine really has,
+including the `#female` and `#male` markers Android writes into voice names -
+`pt-br-x-afm#female_1-local`. That is the highest-confidence pattern
+`inferVoiceGender` reads, it was written first, and it had never matched anything,
+because the only device that ships those names was the one returning an empty
+list. Voices the engine reports as not installed are left out. **Ouvir** speaks,
+and when it cannot it says why: the silent switch, or no engine for this
+language.
+
+### It says hello when you open it
+
+One sentence, in the interface language, as the application opens: the time of
+day, then the one or two things that need doing.
+
+> Bom dia. 3 itens vencem hoje.
+> Buenas tardes. 2 ítems han vencido. Un ítem vence hoy.
+> Good evening. Nothing needs your attention.
+
+A greeting alone is a novelty that gets switched off within a week, so this is a
+status report with a greeting on the front. Everything in it was already counted
+for the navigation badge - no query was added. At most two facts, in the order
+urgency runs: expired, expiring today, expiring inside the warning window, below
+minimum. Nothing to report is itself worth saying, briefly.
+
+The greeting follows the clock because Portuguese and Spanish distinguish three -
+*bom dia*, *boa tarde*, *boa noite* - and three in the morning is *boa noite*,
+not *bom dia*. English is given the same bands rather than an invented set.
+
+**It ships on**, which makes it the only unprompted thing here that does, and the
+argument is in `domain/settings.ts` beside the switch: a notification arrives on
+a locked phone at an hour of its own choosing while the application is shut,
+whereas this happens in the second after somebody deliberately opened it and
+lasts about three seconds. Shipping it off would have answered a request with a
+switch the person then has to find, which is the same silent nothing the rest of
+this release is about.
+
+Once per launch and never on a navigation. It yields to the phone's silent
+switch, and to an answer that is already being read - a greeting must never talk
+over one. It never delays the interface: the application is drawn and usable
+before a word is said. **Settings → Ask → Say hello when the app opens** switches
+it off, independent of *Read answers aloud* so that both controls mean what their
+labels say.
+
+### No new permission
+
+`TextToSpeech` asks the system for nothing. The gate still allows exactly
+`INTERNET`, `RECORD_AUDIO` and `POST_NOTIFICATIONS`, and the rebuilt APK was
+checked against it - three lines, and nothing else. What was needed instead is
+one more line of package visibility: from Android 11 an application cannot see an
+engine it has not named, and the default engine lives in another package, so
+`android.intent.action.TTS_SERVICE` joins the recognition service already in
+`<queries>`. That grants nothing, and it is not `QUERY_ALL_PACKAGES`.
+
+2058 tests to 2117.
+
 ## 2.4.0
 
 ### Notifications, and the thing they cannot be

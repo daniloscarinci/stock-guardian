@@ -78,7 +78,7 @@ command rather than changing the machine's default:
 JAVA_HOME=/path/to/jdk-21 ./gradlew assembleDebug
 ```
 
-Then run the same check the workflow runs. It should print exactly two lines,
+Then run the same check the workflow runs. It should print exactly three lines,
 in this order, and nothing else:
 
 ```bash
@@ -88,10 +88,12 @@ aapt2 dump permissions android/app/build/outputs/apk/debug/app-debug.apk   | gre
 ```
 android.permission.INTERNET
 android.permission.RECORD_AUDIO
+android.permission.POST_NOTIFICATIONS
 ```
 
-Any third line is a failure. The workflow allows those two names and rejects
-every other, and the section below says why there are two at all.
+Any fourth line is a failure. The workflow allows those three names and rejects
+every other, and the section below says why there are three at all. Speaking is
+not among them: `TextToSpeech` asks the system for nothing.
 
 To see the check bite, add `<uses-permission
 android:name="android.permission.CAMERA" />` to the manifest, rebuild, and run
@@ -293,24 +295,49 @@ microphone this process is now the one holding.
 Android 11 an application sees no other application it has not named, so without
 it `SpeechRecognizer.isRecognitionAvailable` reports nothing and the bind that
 follows would fail — the microphone would report itself unavailable on every
-modern phone. It names `android.speech.RecognitionService` and nothing else; the
-activity action `android.speech.action.RECOGNIZE_SPEECH` was in there too and
-came out with the Intent that used it. It grants no capability and is not
-`QUERY_ALL_PACKAGES`, which is a permission and is not there. The build's
-permission check still finds `INTERNET` and `RECORD_AUDIO` and nothing more.
+modern phone. It names `android.speech.RecognitionService` for that, and
+`android.intent.action.TTS_SERVICE` so the speech engine can be found for the
+same reason. The activity action `android.speech.action.RECOGNIZE_SPEECH` was in
+there too and came out with the Intent that used it. It grants no capability and
+is not `QUERY_ALL_PACKAGES`, which is a permission and is not there. The build's
+permission check still finds `INTERNET`, `RECORD_AUDIO` and
+`POST_NOTIFICATIONS`, and nothing more.
+
+**`TtsPlugin` is why the application can speak at all.** Reading answers aloud
+used `speechSynthesis` and, inside the APK, read nothing: **Android's WebView
+exposes the Web Speech synthesis API without implementing it.** The object is
+there, so every check passed; `getVoices()` returned an empty list, so the voice
+menu in Settings never appeared; `speak()` accepted every sentence and played
+silence; and no error was raised anywhere. That is the microphone's bug in a new
+costume, and it has the microphone's fix — `TtsPlugin` binds
+`android.speech.tts.TextToSpeech` directly.
+
+It asks the system for nothing: `TextToSpeech` needs no permission, and the
+build's check proves that rather than this paragraph. What it did need is one
+more line in `<queries>`. From Android 11 an application cannot see an engine it
+has not named, and the default engine lives in another package — usually
+`com.google.android.tts` — so without `android.intent.action.TTS_SERVICE` the
+bind fails, `onInit` reports an error, and the phone is silent. Like the
+recognition service above it, that is package visibility rather than a
+permission: it grants nothing, and it is not `QUERY_ALL_PACKAGES`.
+
+Two things in that plugin are worth knowing about. **Initialisation is
+asynchronous**, and `speak` called before `onInit` succeeds plays nothing and
+says nothing — the failure being fixed — so every call is parked until the engine
+answers rather than fired at one that is not ready, and an engine that never
+answers is given up on after five seconds and reported. And **`shutdown()` runs
+when the activity is destroyed**, because a leaked engine holds a bound service
+and an audio focus handle.
 
 **`RingerPlugin` is the other half of the sound.** One method, `isSilent`,
 reading `AudioManager.getRingerMode` so that an answer read aloud does not talk
 over a phone somebody has deliberately silenced. It records nothing, opens
-nothing, and needs no permission, which the build's check proves rather than
-this paragraph. It was part of `SpeechPlugin` once, survived that plugin's
-deletion because the speaker could not do without it, and stayed separate when
-the microphone came back.
+nothing, and needs no permission either. It was part of `SpeechPlugin` once,
+survived that plugin's deletion because the speaker could not do without it, and
+stayed separate when the microphone came back.
 
-Reading answers aloud uses `speechSynthesis`, which asks the system for nothing.
-
-`docs/VOICE.md` covers the ask box itself — both ways into it, and what it will
-not do.
+`docs/VOICE.md` covers the ask box itself — both ways into it, what it will not
+do, and the sentence the application says when it opens.
 
 **Expiry reminders are scheduled ahead, and nothing runs in the background.**
 This is the difference between what this feature is and what people assume a
@@ -451,9 +478,24 @@ tells you something different:
    still the assistant's alone: the second attempt travels on the recognition
    service's own connection, not on this application's.
 9. **Answers are read aloud, and the silent switch stops them.** Leave
-   **Settings → Ask → Read answers aloud** on, ask a question, and listen. Then
-   put the phone on silent and ask again: `RingerPlugin` reads the ringer mode,
-   and the phone's own switch wins over the setting.
+   **Settings → Ask → Read answers aloud** on, ask a question, and listen. This
+   is the check that failed silently for every release before this one: the
+   answer appeared as text and the phone said nothing. Then put the phone on
+   silent and ask again: `RingerPlugin` reads the ringer mode, and the phone's
+   own switch wins over the setting.
+
+   Check the two things that could not work before, either. **Settings → Ask →
+   Which voice** should now list the voices this phone actually has, with names
+   like `pt-br-x-afm#female_1-local` and a *Feminino* or *Masculino* label on the
+   ones that say so — that menu has never appeared on a phone until now, because
+   the list behind it was always empty. And **Ouvir** should read one real
+   sentence. If it stays quiet it must say why: silent switch, or no engine for
+   this language.
+
+   Then close the application and open it again. It should say good morning —
+   or boa tarde, or boa noite — and then what needs doing, once, and never again
+   as you move between screens. **Settings → Ask → Falar comigo ao abrir o
+   aplicativo** switches it off.
 10. **The assistant is off, and stays off.** With no key pasted, ask something the
    twelve rules do not know and confirm the answer is "I did not understand
    that" with examples - not a network error, and not a pause while something

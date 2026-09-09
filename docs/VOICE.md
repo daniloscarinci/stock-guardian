@@ -37,9 +37,14 @@ now binds the speech service directly, the way the keyboard does, and that means
 it records and needs `RECORD_AUDIO`. See *The permission, and the design it
 replaced*.
 
-**Answers are read aloud.** Speaking is not listening: `speechSynthesis` opens
-no microphone, asks for no permission, and sends nothing anywhere. See *Reading
-answers aloud*.
+**Answers are read aloud, and on Android they did not use to be.** Speaking is
+not listening: it opens no microphone, asks for no permission, and sends nothing
+anywhere. What it did need was a second implementation — Android's WebView
+exposes `speechSynthesis` and does not implement it, so inside the app every
+answer appeared as text and none was ever spoken. See *Reading answers aloud*.
+
+**And it says hello when you open it.** One sentence: the time of day, then the
+one or two things that need doing. See *The welcome*.
 
 Since the assistant shipped, this engine is one of two behind the same box. It
 answers when the assistant is switched off or has no key, and whenever Claude
@@ -196,16 +201,39 @@ the screen.
 
 ## Reading answers aloud
 
-The **Read answers aloud** setting uses `speechSynthesis`, a system service
-rather than a network request — nothing in `speak.ts` fetches. The Web Speech
-API does offer server-synthesised voices alongside on-device ones, so `speak.ts`
-names a voice only when `SpeechSynthesisVoice.localService` is true for the
-language, and names none at all otherwise.
+The **Read answers aloud** setting speaks through a system service rather than a
+network request — nothing in `speak.ts` fetches.
+
+**It is two implementations behind one seam**, exactly as the microphone is.
+`speak.ts` chooses per sentence: `tts.ts`, which reaches
+`android.speech.tts.TextToSpeech` through the hand-written `TtsPlugin`, inside
+the APK; `websynthesis.ts`, which uses `speechSynthesis`, in a desktop browser
+and in the installed PWA.
+
+**Why there are two.** Until this release there was one, it called
+`speechSynthesis`, and it read nothing aloud on Android. The WebView *exposes*
+the Web Speech synthesis API without implementing it: the object is present, so
+every check passed; `getVoices()` returned an empty list, which is why the voice
+menu below has never appeared on a phone; `speak()` accepted every sentence and
+played silence; and nothing anywhere raised an error. That is the same shape as
+the microphone bug that cost four releases — a web API that exists, satisfies
+every guard and quietly does nothing while the native path underneath it works —
+and it has the same answer.
+
+**A voice is named only when it is on the device.** Both platforms offer
+server-synthesised voices alongside on-device ones, and a remote voice would mean
+the sentence — which names what is in your stock — being sent away to be spoken.
+So the automatic choice takes a local voice or names none at all. On the web that
+rests on `SpeechSynthesisVoice.localService`; on Android it rests on
+`Voice.isNetworkConnectionRequired()`, which is the engine stating a requirement
+rather than the browser summarising one, so the preference is stronger there, not
+weaker. The rule itself lives once, in `src/services/speech/voices.ts`, and both
+paths obey it.
 
 That is a best effort rather than a guarantee. With no local voice installed for
-your language, the platform may still resolve to a remote one, and the API gives
-no way to refuse. On Android the system voice is on the phone. Switching the
-setting off is the only thing here that is certain.
+your language, the platform may still resolve to a remote one, and neither API
+gives a way to refuse. Switching the setting off is the only thing here that is
+certain.
 
 ### Which voice reads them
 
@@ -215,16 +243,25 @@ it reads one real sentence in that language — *"Você tem 12 latas de feijão.
 *"You have 12 cans of beans."*, *"Tienes 12 latas de frijoles."* — so you hear the
 voice saying the kind of thing it is going to say rather than the word "test".
 
-Nothing is downloaded to fill that list. It is `speechSynthesis.getVoices()`,
-filtered to the language, and the choice is stored as one `voiceURI` in
-`speakingVoiceUri`. The default is empty, which means what it always meant: no
-voice named, the language tag left to the platform, and an on-device voice
-preferred where one matches exactly.
+Nothing is downloaded to fill that list. It is whatever this device already has,
+filtered to the language: `TextToSpeech.getVoices()` on Android,
+`speechSynthesis.getVoices()` in a browser. The choice is stored as one
+`voiceURI` in `speakingVoiceUri`. The default is empty, which means what it
+always meant: no voice named, the language tag left to the platform, and an
+on-device voice preferred where one matches exactly.
+
+**On a phone this menu was always empty, and now it is not.** It read
+`speechSynthesis.getVoices()`, which inside the APK returns nothing, so the
+control never appeared at all. It now asks the phone's own engine. Voices the
+engine marks as not installed are left out, because a choice that cannot speak is
+not a choice.
 
 **Hear it** speaks even when *Read answers aloud* is switched off. The press is
 the consent — you are choosing a voice, and a preview button that silently does
-nothing is the failure this whole screen is written against. The phone's silent
-switch still wins, and says so rather than leaving a dead press unexplained.
+nothing is the failure this whole screen is written against. It used to be
+exactly that on Android. Both remaining ways for it to stay quiet now say so: the
+phone's silent switch, which still wins, and a device that has no engine for this
+language — which the browser could never tell us and the plugin can.
 
 ### Female and male are guessed, not known
 
@@ -236,7 +273,14 @@ show a two-way toggle. It shows the voices that exist, labels the ones whose
 **names** admit to a gender, and says underneath the list that those labels are
 guesses.
 
-`inferVoiceGender` in `src/services/speech/speak.ts` reads three patterns, worth
+**Android's names admit to it far more often**, and this is the one place where
+that changed. `TextToSpeech.getVoices()` returns identifiers like
+`pt-br-x-afm#female_1-local`. That `#female` is the top row of the table below,
+the only pattern here that is not a guess — and it had never once matched,
+because the list the guess was reading was empty on the only device that ships
+those names.
+
+`inferVoiceGender` in `src/services/speech/voices.ts` reads three patterns, worth
 progressively less:
 
 | Pattern | Example | Worth |
@@ -276,14 +320,16 @@ without being told.
 
 ### Two things that would otherwise break it
 
-**`getVoices()` is empty on the first call.** It returns what has loaded so far,
-and in Chrome that is nothing at all until the platform fires `voiceschanged` a
-few milliseconds later. `speak.ts` can shrug that off by naming no voice; a menu
-cannot. So SettingsScreen reads the list once, subscribes with `onVoicesChanged`,
-and holds a *settled* flag that decides what an empty list is allowed to mean —
-"still asking this device" before it, "this device has none" after. A 1.5-second
-timer settles it regardless, because a device with no voices that also never
-fires the event would otherwise say "still asking" forever.
+**`getVoices()` is empty on the first call.** In a browser it returns what has
+loaded so far, and in Chrome that is nothing at all until the platform fires
+`voiceschanged` a few milliseconds later. `speak.ts` can shrug that off by naming
+no voice; a menu cannot. So the seam reports, with every list, whether its answer
+is *settled* — which decides what an empty list is allowed to mean: "still asking
+this device" before it, "this device has none" after. The browser says no until
+it has listed something; the plugin always says yes, because it answers only once
+the engine has initialised and its first answer is its last. A 1.5-second timer
+settles it regardless, because a browser with no voices that also never fires the
+event would otherwise say "still asking" forever.
 
 **A chosen voice can vanish.** A language pack is uninstalled, the interface
 language is switched to one the voice does not speak, a phone is restored from
@@ -310,6 +356,64 @@ switch belongs to the speaker; recognizing speech belongs to the microphone.
 Keeping them apart means nothing about playing a sentence pulls a recognizer
 into its module graph, and an APK that can speak needs nothing from the plugin
 that listens.
+
+### An engine that never starts
+
+`TextToSpeech` is useless until its `onInit` callback reports success, and
+`speak` called before that plays nothing and reports nothing — the exact failure
+this release exists to end. So no method in `TtsPlugin` touches an engine
+directly. Every call is either run now, or parked until `onInit` answers, or
+rejected because there is no engine to wait for. A call that arrives early waits;
+it never vanishes.
+
+And an engine that binds and then says nothing would leave every parked call
+pending forever, so there is a five-second ceiling on initialisation. When it
+expires the parked calls are answered, the engine is shut down, and the state
+resets — deliberately not to "failed", because a timeout says this attempt did
+not answer in time, not that the device cannot speak. The next call builds a
+fresh engine. `TextToSpeech.shutdown()` also runs when the activity is destroyed,
+because a leaked engine holds a bound service and an audio focus handle.
+
+---
+
+## The welcome
+
+**The application says one sentence when you open it**, in the interface
+language, and it is not only a greeting:
+
+> Bom dia. 3 itens vencem hoje.
+> Buenas tardes. 2 ítems han vencido. Un ítem vence hoy.
+> Good evening. Nothing needs your attention.
+
+A greeting on its own is a novelty that gets switched off within a week. This is
+the shortest version of why you opened the application, said before you have to
+look for it. Everything in it has already been counted for the navigation badge —
+no query was added, and nothing renders from it.
+
+**At most two facts**, in the order urgency runs: what has expired, what expires
+today, what expires inside your warning window, what is below its minimum. A
+spoken list cannot be scrolled back through, and the screen behind it shows all
+four at once. When there is nothing, it says so and stops.
+
+**The greeting is the time of day.** Portuguese and Spanish have three of them —
+*bom dia*, *boa tarde*, *boa noite* — and being told *bom dia* at four in the
+afternoon is worse than not being greeted, so the bands are theirs: morning until
+noon, afternoon until six, night after that. Three in the morning is *boa noite*,
+not *bom dia*. English is given the same bands rather than an invented set.
+
+**Once per launch, and never again while you move between screens.** It lives in
+the shell, which mounts once while every route inside it comes and goes.
+
+**It is on by default**, and that is the only unprompted thing here that is. The
+switch is **Settings → Ask → Say hello when the app opens**, independent of *Read
+answers aloud* so that each control means what its label says. It stays quiet
+when the phone is on silent, and when something else is already being read — a
+greeting must never talk over an answer you asked for. The reverse is allowed: an
+answer that starts a moment later interrupts the greeting, because between a
+pleasantry and the thing you asked for, the thing you asked for wins.
+
+**It never delays the interface.** It runs after the first paint, and the
+application is drawn, scrollable and usable before a word is said.
 
 ---
 
