@@ -278,8 +278,9 @@ describe('undo', () => {
    * that still holds something, so the deletion would fail and the user would
    * be left with a shelf nobody asked for.
    *
-   * The receipt is built by hand because nothing produces a two-action one
-   * yet; the sentence that will is a later change. The calls underneath it are
+   * The receipt is built by hand here so the ORDER can be tested on its own,
+   * away from whatever `commit` happens to put in one - the test below says a
+   * real sentence produces exactly this pair. The calls underneath it are
    * real, recorded by wrapping the repositories rather than replacing them, so
    * this says both that the order was right and that the rows actually moved.
    */
@@ -316,6 +317,70 @@ describe('undo', () => {
     expect(order).toEqual([`transfer:${feijaoId}`, `removeLocation:${cellar.id}`]);
     expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
     expect(await deps.locations.getById(cellar.id)).toBeUndefined();
+  });
+
+  /**
+   * The sentence the receipt above was written for, said for real.
+   *
+   * "Move the beans to the cellar" against a pantry with no cellar makes the
+   * place and then moves the item, so the way back is both halves in reverse.
+   * A receipt with only the transfer in it would pass every other test in this
+   * file and still leave a shelf nobody asked for.
+   */
+  it('takes back both halves of a move that had to make its destination', async () => {
+    const shelf = await deps.locations.findByName('Despensa');
+    expect(shelf).toBeDefined();
+    if (shelf === undefined) return;
+    await deps.items.update(feijaoId, { locationId: shelf.id });
+
+    const saved = await commit(deps, await write(deps, { kind: 'MOVE_ITEM',
+      item: 'feijao preto', location: 'adega' }));
+
+    const made = await deps.locations.findByName('adega');
+    expect(made).toBeDefined();
+    expect(committedItem(saved).locationId).toBe(made?.id);
+    expect(saved.receipt.undo).toEqual([
+      { kind: 'restoreLocation', itemId: feijaoId, to: shelf.id },
+      { kind: 'deleteLocation', locationId: made?.id },
+    ]);
+
+    await undo(deps, saved.receipt);
+
+    expect((await deps.items.getById(feijaoId))?.locationId).toBe(shelf.id);
+    expect(await deps.locations.getById(made?.id ?? '')).toBeUndefined();
+  });
+
+  /**
+   * The same for a creation, whose two halves go the other way round: the
+   * place is made first and the item filed on it, so the item is deleted first
+   * and the empty place taken away after. Deleting the place first would fail
+   * - `locations.remove` refuses one that still holds something - and leave
+   * both rows behind.
+   */
+  it('takes back both halves of a creation that had to make its shelf', async () => {
+    const saved = await commit(deps, await write(deps, { kind: 'CREATE_ITEM', name: 'quinoa',
+      amount: 2, unit: 'kg', location: 'adega', expiresOn: null }));
+
+    const made = await deps.locations.findByName('adega');
+    expect(made).toBeDefined();
+    expect(saved.receipt.undo).toEqual([
+      { kind: 'deleteItem', itemId: committedItem(saved).id },
+      { kind: 'deleteLocation', locationId: made?.id },
+    ]);
+
+    await undo(deps, saved.receipt);
+
+    expect(await deps.items.getById(committedItem(saved).id)).toBeUndefined();
+    expect(await deps.locations.getById(made?.id ?? '')).toBeUndefined();
+  });
+
+  /** A move onto a shelf that exists makes nothing, so its receipt stays one action long. */
+  it('leaves a move to an existing shelf with a single action', async () => {
+    const saved = await commit(deps, await write(deps, { kind: 'MOVE_ITEM',
+      item: 'feijao preto', location: 'despensa' }));
+
+    expect(saved.receipt.undo).toHaveLength(1);
+    expect(saved.receipt.undo[0]).toMatchObject({ kind: 'restoreLocation' });
   });
 
   /**

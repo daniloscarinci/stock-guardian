@@ -165,8 +165,8 @@ export interface Voice {
  * Written as a switch rather than a spread over `Intent`, so the compiler
  * checks each member individually and a new intent with an `item` slot has to
  * be listed here on purpose. CREATE_ITEM is absent because it never raises a
- * choice: its phrase names a new thing, and only its location can fail to
- * resolve.
+ * choice: its phrase names a new thing, so there is nothing for it to be one
+ * of.
  */
 function aimedAt(intent: Intent, name: string): Intent | null {
   switch (intent.kind) {
@@ -201,6 +201,13 @@ function aimedAt(intent: Intent, name: string): Intent | null {
  * "add five cans of beans" against an empty pantry is not a mistake, it is the
  * first can of beans. The amount survives only where it describes stock the
  * user now has: a removal from nothing creates the item, not a negative one.
+ *
+ * The location is dropped from every one of these because none of them carries
+ * one - the rules that build them have no place slot at all. CREATE_ITEM does
+ * carry one and used to be listed here, to turn its own refusal over an
+ * unknown shelf into a creation with no shelf; it is gone because that refusal
+ * is gone. `execute` proposes making the place instead, so a CREATE_ITEM never
+ * reaches a notFound and there is nothing here for it to be rescued from.
  */
 function creationFrom(intent: Intent): Intent | null {
   switch (intent.kind) {
@@ -231,10 +238,6 @@ function creationFrom(intent: Intent): Intent | null {
         location: null,
         expiresOn: intent.expiresOn,
       };
-    // The item was fine; the shelf was not. Create it unplaced rather than
-    // refusing twice over the same unknown location.
-    case 'CREATE_ITEM':
-      return { ...intent, location: null };
     default:
       return null;
   }

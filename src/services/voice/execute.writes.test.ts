@@ -162,25 +162,46 @@ describe('execute: writes stay pending', () => {
 
       expect(write).toMatchObject({
         kind: 'MOVE', fromLocationId: null, fromLocationName: null,
-        toLocationName: 'Despensa',
+        to: { kind: 'existing', name: 'Despensa' },
       });
       expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
     });
 
+    /** The shelf that was found is named by its id as well, so `commit` needs no second lookup. */
+    it('carries the id of a shelf that exists, not only its name', async () => {
+      const shelf = await deps.locations.findByName('Despensa');
+      const write = await pending(deps, { kind: 'MOVE_ITEM', item: 'feijao preto',
+        location: 'despensa' });
+
+      expect(write).toMatchObject({ kind: 'MOVE', to: { kind: 'existing', id: shelf?.id } });
+    });
+
     /**
-     * A destination that does not exist stops the move.
+     * A destination that does not exist is an offer, not a dead end.
      *
-     * The same refusal a creation makes about a shelf it was told, and here it
-     * matters more: a move that ignored the unknown place would take the item
-     * off the shelf it really is on and put it nowhere, destroying the one
-     * fact the user was trying to change.
+     * This used to come back as notFound, which was the end of the sentence:
+     * the user was told their own words named nothing and left to go and make
+     * the place on another screen. The place is proposed instead, on the same
+     * card, and nothing is written until that card is confirmed - which is
+     * what keeps the old refusal's point intact. The danger was never naming
+     * an unknown shelf; it was moving an item off a real shelf and putting it
+     * nowhere, and a place that is made before the transfer is not nowhere.
      */
-    it('refuses rather than moving an item to nowhere', async () => {
-      const result = await execute(deps, { kind: 'MOVE_ITEM', item: 'feijao preto',
+    it('proposes making the place when the destination is not found', async () => {
+      const outcome = await execute(deps, { kind: 'MOVE_ITEM', item: 'feijao preto',
         location: 'porao' });
 
-      expect(result).toMatchObject({ kind: 'notFound', phrase: 'porao' });
+      expect(outcome).toMatchObject({
+        kind: 'pending',
+        write: {
+          kind: 'MOVE',
+          to: { kind: 'new', name: 'porao' },
+          certainty: 'assumed',
+          assumptions: ['newLocation'],
+        },
+      });
       expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
+      expect(await deps.locations.findByName('porao')).toBeUndefined();
     });
 
     /**
@@ -259,9 +280,28 @@ describe('execute: writes stay pending', () => {
       unit: 'kg', location: 'despensa', expiresOn: '2027-03-01' });
 
     expect(write).toMatchObject({
-      kind: 'CREATE', locationName: 'Despensa', quantity: 2, unit: 'kg',
-      expirationDate: '2027-03-01',
+      kind: 'CREATE', location: { kind: 'existing', name: 'Despensa' }, quantity: 2,
+      unit: 'kg', expirationDate: '2027-03-01',
     });
+  });
+
+  /**
+   * The same offer a move makes, and for the same reason. A creation that was
+   * told an unknown shelf used to come back as notFound, so "add two kilos of
+   * quinoa in the cellar" told the user about the cellar and forgot the
+   * quinoa. Both are proposed together now.
+   */
+  it('proposes making the place a creation was told about', async () => {
+    const write = await pending(deps, { kind: 'CREATE_ITEM', name: 'quinoa', amount: 2,
+      unit: 'kg', location: 'porao', expiresOn: null });
+
+    expect(write).toMatchObject({
+      kind: 'CREATE',
+      location: { kind: 'new', name: 'porao' },
+      certainty: 'assumed',
+      assumptions: ['newItem', 'newLocation'],
+    });
+    expect(await deps.locations.findByName('porao')).toBeUndefined();
   });
 
   /*
@@ -392,6 +432,38 @@ describe('commit', () => {
 
     const history = await deps.items.history(committedItem(saved).id);
     expect(history[0]).toMatchObject({ type: 'transfer', notes: 'Por voz' });
+  });
+
+  /**
+   * The place is made first, then the item moves onto it.
+   *
+   * That order is the whole point of proposing an unknown destination rather
+   * than refusing it: the item never passes through nowhere. The transfer row
+   * is written as it is for any other move, so the log still says where the
+   * item went.
+   */
+  it('makes a place the move named, before moving anything onto it', async () => {
+    const pendingWrite = await write(deps, { kind: 'MOVE_ITEM', item: 'feijao preto',
+      location: 'porao' });
+
+    const saved = await commit(deps, pendingWrite);
+    const made = await deps.locations.findByName('porao');
+    expect(made).toBeDefined();
+    expect(committedItem(saved).locationId).toBe(made?.id);
+
+    const history = await deps.items.history(committedItem(saved).id);
+    expect(history[0]).toMatchObject({ type: 'transfer', notes: 'Por voz' });
+  });
+
+  /** The same, for a creation: the shelf exists by the time the item is filed on it. */
+  it('makes a place a creation named, and files the new item on it', async () => {
+    const pendingWrite = await write(deps, { kind: 'CREATE_ITEM', name: 'quinoa', amount: 2,
+      unit: 'kg', location: 'porao', expiresOn: null });
+
+    const created = await commit(deps, pendingWrite);
+    const made = await deps.locations.findByName('porao');
+    expect(made).toBeDefined();
+    expect(committedItem(created).locationId).toBe(made?.id);
   });
 
   it('sets a minimum, which is what the replenishment list reads', async () => {

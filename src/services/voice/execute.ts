@@ -118,7 +118,49 @@ export type AssumptionReason =
    * about a row Claude picked out of a tool result. The reader has to check a
    * different thing in each case, so they are different reasons.
    */
-  | 'assistant';
+  | 'assistant'
+  /**
+   * No place is called this. Confirming makes it.
+   *
+   * The opposite of `location`, and worth keeping apart from it. `location`
+   * says a place was found by something looser than its name, so the thing to
+   * check is whether the right shelf was picked out of the ones that exist.
+   * This one says none was found at all, so the thing to check is the spelling
+   * of a name that is about to become a row - nobody is choosing between
+   * shelves, they are agreeing to a new one.
+   */
+  | 'newLocation'
+  /**
+   * No category is called this. Confirming makes it.
+   *
+   * Kept apart from `newLocation` because the two do not cost the same thing.
+   * A place is somewhere in the house and holds whatever is put there. A
+   * category is one of the headings the preparedness score is an unweighted
+   * mean OVER - and where the user has picked no tracked set, that is every
+   * category holding an item, so a new one joins the mean as soon as anything
+   * is filed under it. The card names which of the two is being agreed to.
+   */
+  | 'newCategory'
+  /**
+   * A phone number that was heard rather than typed.
+   *
+   * The only slot in this application where a recognizer's mistake is
+   * invisible: a wrong item name reads as the wrong item, and a wrong digit
+   * reads as a number. So it is always shown back before it is stored.
+   */
+  | 'heardDigits';
+
+/**
+ * Where a write is sending something.
+ *
+ * `new` is not an error state. `findLocation` matches on contains and returns
+ * nothing for a place that was never made, and until now that ended the
+ * sentence. It carries the phrase as spoken, and the card says the place will
+ * be made before anything is written.
+ */
+export type Destination =
+  | { readonly kind: 'existing'; readonly id: string; readonly name: string }
+  | { readonly kind: 'new'; readonly name: string };
 
 /**
  * How much of a write was heard, and how much was filled in.
@@ -150,8 +192,8 @@ export type PendingWrite =
       readonly name: string;
       readonly quantity: number;
       readonly unit: string;
-      readonly locationId: string | null;
-      readonly locationName: string | null;
+      /** null where no shelf was named at all, which is not the same as one that has to be made. */
+      readonly location: Destination | null;
       readonly expirationDate: string | null;
     })
   | (Certainty & {
@@ -166,8 +208,7 @@ export type PendingWrite =
       /** Both halves are recorded, because the undo restores the old shelf. */
       readonly fromLocationId: string | null;
       readonly fromLocationName: string | null;
-      readonly toLocationId: string;
-      readonly toLocationName: string;
+      readonly to: Destination;
     })
   /*
    * The two thresholds are separate variants rather than one with a field
@@ -572,23 +613,51 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
     }
 
     /*
-     * A destination that does not exist stops the move.
+     * A destination that does not exist is proposed, not refused.
      *
-     * The same refusal CREATE_ITEM makes about a shelf it was told, and for
-     * the same reason - except that here it matters more. A creation that
-     * ignored the unknown shelf would leave a new item unplaced, which is
-     * visible on the item. A MOVE that ignored it would take an item off a
-     * shelf it really is on and put it nowhere, destroying the one fact the
-     * user was trying to change. So the phrase comes back as notFound and
-     * nothing is proposed.
+     * This used to come back as notFound, on the argument that a MOVE which
+     * ignored an unknown shelf would take an item off the shelf it really is
+     * on and put it nowhere - destroying the one fact the user was trying to
+     * change. That argument is still exactly right, and it is an argument
+     * against DROPPING the place, not against making it. Nothing here is
+     * dropped: the phrase is carried as spoken, `commit` makes the place
+     * before it moves anything, and the item lands somewhere that has a name.
+     *
+     * What the old refusal cost was the sentence. "Move the rice to the
+     * cellar" against a pantry with no cellar told the user their own words
+     * named nothing, and left them to make the cellar on another screen and
+     * say the whole thing again. The confirmation card can ask the one
+     * question that was actually open - shall I make it? - and nothing is
+     * written until it is answered, which is the guarantee the refusal was
+     * really protecting.
      */
     case 'MOVE_ITEM': {
       const found = await one(deps, intent.item, intent);
       if (!found.ok) return found.outcome;
 
       const destination = await findLocation(deps, intent.location);
+      const assumptions: AssumptionReason[] = [];
+      if (!found.exact) assumptions.push('item');
+
+      /*
+       * Nothing matched, so there is nothing that could have matched loosely
+       * and `location` would be a false reason to give. `newLocation` is the
+       * true one, and it asks the reader to check a different thing: not which
+       * of their shelves was picked, but the spelling of a name that is about
+       * to become a row of its own.
+       */
       if (destination === undefined) {
-        return { kind: 'notFound', phrase: intent.location, intent };
+        return {
+          kind: 'pending',
+          write: {
+            kind: 'MOVE',
+            item: found.item,
+            fromLocationId: found.item.locationId,
+            fromLocationName: found.item.locationName,
+            to: { kind: 'new', name: intent.location },
+            ...certaintyOf([...assumptions, 'newLocation']),
+          },
+        };
       }
 
       // Already there. Nothing to write, and `items.transfer` would still
@@ -602,10 +671,7 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
        * `resolve`; the place is checked here, because `findLocation` matches on
        * contains and "porao" happily finds "Porão dos fundos".
        */
-      const exactPlace = foldText(destination.name) === foldText(intent.location);
-      const assumptions: AssumptionReason[] = [];
-      if (!found.exact) assumptions.push('item');
-      if (!exactPlace) assumptions.push('location');
+      if (foldText(destination.name) !== foldText(intent.location)) assumptions.push('location');
 
       return {
         kind: 'pending',
@@ -614,8 +680,7 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
           item: found.item,
           fromLocationId: found.item.locationId,
           fromLocationName: found.item.locationName,
-          toLocationId: destination.id,
-          toLocationName: destination.name,
+          to: { kind: 'existing', id: destination.id, name: destination.name },
           ...certaintyOf(assumptions),
         },
       };
@@ -682,19 +747,33 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
     }
 
     case 'CREATE_ITEM': {
-      let locationId: string | null = null;
-      let locationName: string | null = null;
+      const assumptions: AssumptionReason[] = ['newItem'];
+      let location: Destination | null = null;
 
+      /*
+       * The shelf is proposed too, rather than ending the sentence.
+       *
+       * This refused as well, and its reasoning was sound as far as it went: a
+       * creation that quietly ignored the shelf would leave a new item
+       * unplaced, and the user would have to notice the ABSENCE of something
+       * to find out. That is still avoided - the place is not dropped, it is
+       * offered. What the refusal threw away with it was the rest of the
+       * sentence. "Add two kilos of quinoa in the cellar" told the user about
+       * the cellar and forgot the quinoa, so a phrase naming two new things
+       * produced neither.
+       *
+       * null and a `new` destination are kept apart on the write, because they
+       * are different sentences. null is "no shelf was mentioned at all", and a
+       * card offering to make a place nobody named would be inventing one.
+       */
       if (intent.location !== null) {
-        const location = await findLocation(deps, intent.location);
-        // Refused rather than created unplaced. A speaker who named a shelf and
-        // got an item with no location would have to notice the absence of
-        // something; being told the shelf is unknown is visible and correctable.
-        if (location === undefined) {
-          return { kind: 'notFound', phrase: intent.location, intent };
+        const found = await findLocation(deps, intent.location);
+        if (found === undefined) {
+          location = { kind: 'new', name: intent.location };
+          assumptions.push('newLocation');
+        } else {
+          location = { kind: 'existing', id: found.id, name: found.name };
         }
-        locationId = location.id;
-        locationName = location.name;
       }
 
       // A creation is never a nudge. It puts a row in the inventory that was
@@ -707,10 +786,9 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
           name: intent.name,
           quantity: intent.amount ?? 1,
           unit: intent.unit ?? 'un',
-          locationId,
-          locationName,
+          location,
           expirationDate: intent.expiresOn,
-          ...certaintyOf(['newItem']),
+          ...certaintyOf(assumptions),
         },
       };
     }

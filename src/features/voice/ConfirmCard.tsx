@@ -80,6 +80,11 @@ function describe(
      * it. Every other card shows where the item is; this one shows where it is
      * going, and a "Location: Pantry" line over "Pantry becomes Cellar" reads
      * as though two different places were involved.
+     *
+     * A destination that has still to be made shows its name like any other.
+     * That it does not exist yet is not something this line can carry - it is
+     * said once, in the guesses below, where the reader is already being asked
+     * to check what was filled in.
      */
     case 'MOVE':
       return {
@@ -87,7 +92,7 @@ function describe(
         location: null,
         field: t('common.location'),
         before: write.fromLocationName ?? t('common.none'),
-        after: write.toLocationName,
+        after: write.to.name,
       };
 
     case 'MINIMUM':
@@ -132,7 +137,7 @@ function describe(
     case 'CREATE':
       return {
         name: write.name,
-        location: write.locationName,
+        location: write.location === null ? null : write.location.name,
         field: null,
         before: null,
         after: `${quantity(language, write.quantity)} ${write.unit}`,
@@ -164,7 +169,14 @@ function assumed(
         ? write.quantity
         : 0;
   const date = write.kind === 'EXPIRY' ? formatCalendarDate(write.after, dateFormat) : '';
-  const place = write.kind === 'MOVE' ? write.toLocationName : '';
+  // Both writes that carry a destination, because both can now name one that
+  // has still to be made and the reader has to see the name either way.
+  const place =
+    write.kind === 'MOVE'
+      ? write.to.name
+      : write.kind === 'CREATE'
+        ? (write.location?.name ?? '')
+        : '';
 
   return write.assumptions.map((reason) => {
     switch (reason) {
@@ -188,6 +200,33 @@ function assumed(
       // assistant proposal never did.
       case 'assistant':
         return t('voice.assumedAssistant');
+      /*
+       * The opposite of `location`, and the reader checks a different thing.
+       * `location` picked one of their shelves and asks which; this one found
+       * none and asks about the spelling of a name that is about to become a
+       * row. A MOVE and a CREATE both produce it, and both carry the name.
+       */
+      case 'newLocation':
+        return t('voice.assumedNewLocation', { location: place });
+      /*
+       * Neither of these two is produced by anything yet - the writes that
+       * will make a category and store a contact are later changes. They are
+       * answered anyway because a reason with no case here does not compile:
+       * the switch would fall out returning `undefined`, which this function
+       * has promised not to do. That is the point of the union being total,
+       * and paying it back with a blank line in the list of guesses would
+       * defeat it.
+       *
+       * Neither sentence interpolates anything, because no `PendingWrite`
+       * carries a category or a number to interpolate. They say what the
+       * reason means and nothing more, so they will still be true on the day
+       * something produces them - and a write that then wants to name the
+       * category or read the digits back is a change to make with that write.
+       */
+      case 'newCategory':
+        return t('voice.assumedNewCategory');
+      case 'heardDigits':
+        return t('voice.assumedHeardDigits');
     }
   });
 }

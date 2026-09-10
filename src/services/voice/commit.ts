@@ -12,7 +12,7 @@
 import { CategoryInUseError } from '../../repositories/categories.repository';
 import { LocationInUseError } from '../../repositories/locations.repository';
 import type { Category, Contact, InventoryItem, Location } from '../../types/domain';
-import type { VoiceDeps, PendingWrite } from './execute';
+import type { VoiceDeps, PendingWrite, Destination } from './execute';
 
 /**
  * What it would take to put a write back.
@@ -63,14 +63,13 @@ export type UndoAction =
  * What it would take to put a whole sentence back.
  *
  * A LIST, in the order the actions must run, which is the reverse of the
- * order they were written in. One action is all any sentence produces today;
- * the list is what the second one will need. "Move the rice to the cellar"
- * against a pantry with no cellar will make the place and then move the rice,
- * and an undo that took back only the second half would leave an empty place
- * nobody asked for.
+ * order they were written in. "Move the rice to the cellar" against a pantry
+ * with no cellar makes the place and then moves the rice, so its receipt puts
+ * the rice back and then takes the empty place away; an undo that took back
+ * only the second half would leave a shelf nobody asked for.
  *
- * The item id moved onto each action rather than sitting beside them, because
- * two actions in one receipt need not be about the same row.
+ * The item id sits on each action rather than beside them, because the two
+ * actions of that sentence are not about the same row.
  */
 export interface Receipt {
   readonly undo: readonly UndoAction[];
@@ -147,10 +146,21 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
       const current = await deps.items.getById(write.item.id);
       const before = current === undefined ? write.fromLocationId : current.locationId;
 
-      const item = await deps.items.transfer(write.item.id, write.toLocationId, SPOKEN);
+      /*
+       * The place first, then the move, and the undo list in the reverse
+       * order - put the rice back, then take the empty place away.
+       */
+      const destination = await reach(deps, write.to);
+      const item = await deps.items.transfer(write.item.id, destination.id, SPOKEN);
+
       return {
         wrote: { kind: 'item', item },
-        receipt: { undo: [{ kind: 'restoreLocation', itemId: item.id, to: before }] },
+        receipt: {
+          undo: [
+            { kind: 'restoreLocation', itemId: item.id, to: before },
+            ...undoMaking(destination),
+          ],
+        },
       };
     }
 
@@ -183,19 +193,77 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
     }
 
     case 'CREATE': {
+      /*
+       * The place first again, for the reason MOVE gives, and null stays null:
+       * a creation that named no shelf at all makes none, where one that named
+       * a shelf nobody has made yet makes that.
+       */
+      const destination = write.location === null ? null : await reach(deps, write.location);
+
       const item = await deps.items.create({
         name: write.name,
         quantity: write.quantity,
         unit: write.unit,
-        locationId: write.locationId,
+        locationId: destination?.id ?? null,
         expirationDate: write.expirationDate,
       });
+
+      // The item goes first, which is also what makes the place deletable:
+      // `locations.remove` refuses a shelf that still holds something.
       return {
         wrote: { kind: 'item', item },
-        receipt: { undo: [{ kind: 'deleteItem', itemId: item.id }] },
+        receipt: {
+          undo: [
+            { kind: 'deleteItem', itemId: item.id },
+            ...undoMaking(destination),
+          ],
+        },
       };
     }
   }
+}
+
+/**
+ * A destination, as an id a write can use - making the place first where the
+ * sentence named one that does not exist.
+ *
+ * The row it made comes back beside the id rather than the caller asking the
+ * destination a second time what kind it was. That is not tidiness: an undo
+ * has to name the place that was CREATED, and its id exists nowhere until this
+ * call returns it. A caller that re-read `to.kind` instead would be reading
+ * what the sentence asked for in place of what happened.
+ *
+ * It is also what leaves no room for an id that is not one. Every arm of the
+ * switch supplies a real id, so there is no branch in which the place was
+ * neither found nor made and something has to stand in for it.
+ */
+async function reach(
+  deps: VoiceDeps,
+  to: Destination,
+): Promise<{ readonly id: string; readonly made: Location | null }> {
+  switch (to.kind) {
+    case 'existing':
+      return { id: to.id, made: null };
+    case 'new': {
+      const made = await deps.locations.create({ name: to.name });
+      return { id: made.id, made };
+    }
+  }
+}
+
+/**
+ * The way back from having made a place, or nothing where none was made.
+ *
+ * A list of none or one, so it splices into a receipt at whichever end that
+ * receipt needs it. `null` for the destination itself is a third way of making
+ * nothing - a creation that named no shelf at all - and it is answered here so
+ * that both callers can spread the same call.
+ */
+function undoMaking(
+  destination: { readonly made: Location | null } | null,
+): readonly UndoAction[] {
+  const made = destination === null ? null : destination.made;
+  return made === null ? [] : [{ kind: 'deleteLocation', locationId: made.id }];
 }
 
 /**

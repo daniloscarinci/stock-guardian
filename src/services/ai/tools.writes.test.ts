@@ -213,13 +213,20 @@ describe('ai tools: writes stay proposals', () => {
       const write = await propose('create_item', {
         name: 'quinoa', quantity: 2, unit: 'kg', location: 'despensa',
       });
-      expect(write).toMatchObject({ locationName: 'Despensa', quantity: 2, unit: 'kg' });
+      expect(write).toMatchObject({
+        location: { kind: 'existing', name: 'Despensa' }, quantity: 2, unit: 'kg',
+      });
     });
 
     /*
-     * Refused rather than created unplaced. Someone who named a shelf and got
-     * an item with no location would have to notice an absence; being told the
-     * shelf is unknown is visible, and fixable in the same sentence.
+     * Still refused here, where a parsed sentence now offers to make the place.
+     *
+     * The two paths are not the same conversation. A parsed sentence is all
+     * the user is going to say, so the card is the only chance to settle it.
+     * This tool is inside a loop that can ask, and a person who said "the
+     * garage" about a house that has none is better served by being read their
+     * own shelves than by acquiring a second one under a name they did not
+     * choose.
      */
     it('proposes nothing when the place it was told does not exist', async () => {
       const run = await runTool(deps, 'create_item', { name: 'quinoa', location: 'garagem' });

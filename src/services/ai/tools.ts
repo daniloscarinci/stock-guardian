@@ -23,7 +23,7 @@
  */
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
-import type { AssumptionReason, PendingWrite, VoiceDeps } from '../voice/execute';
+import type { AssumptionReason, Destination, PendingWrite, VoiceDeps } from '../voice/execute';
 import { resolveItem } from '../voice/resolve';
 import { buildReplenishmentList } from '../../domain/replenishment';
 import { evaluatePreparedness } from '../../domain/preparedness';
@@ -1032,22 +1032,27 @@ async function createItem(deps: AiDeps, input: unknown): Promise<ToolRun> {
   if (!parsed.success) return failed('create_item needs at least a name.');
   const fields = parsed.data;
 
-  let locationId: string | null = null;
-  let locationName: string | null = null;
+  let destination: Destination | null = null;
 
   if (fields.location !== undefined && fields.location !== '') {
     const location = await findLocation(deps, fields.location);
-    // Refused rather than created unplaced, as the parser refuses: someone who
-    // named a shelf and got an item with no location would have to notice an
-    // absence, where being told the shelf is unknown is visible and fixable.
+    /*
+     * Still refused here, where the parser now offers to make the place.
+     *
+     * The two paths are not the same conversation. A parsed sentence is all
+     * the user is going to say, so the card asking "shall I make it?" is the
+     * only chance to settle it. This tool is inside a loop that can ask: the
+     * model has `list_locations`, and a person who said "the cellar" about a
+     * house with a Porão is better served by being read their own shelves
+     * than by acquiring a second one under a name they did not choose.
+     */
     if (location === undefined) {
       return ok({
         status: 'not proposed',
         reason: `No place is called "${fields.location}". Call list_locations and ask the user which one.`,
       });
     }
-    locationId = location.id;
-    locationName = location.name;
+    destination = { kind: 'existing', id: location.id, name: location.name };
   }
 
   const reasons: AssumptionReason[] = ['newItem'];
@@ -1058,8 +1063,7 @@ async function createItem(deps: AiDeps, input: unknown): Promise<ToolRun> {
     name: fields.name,
     quantity: fields.quantity ?? 1,
     unit: fields.unit ?? 'un',
-    locationId,
-    locationName,
+    location: destination,
     expirationDate: fields.expires_on ?? null,
     ...assumed(reasons),
   };
@@ -1067,7 +1071,7 @@ async function createItem(deps: AiDeps, input: unknown): Promise<ToolRun> {
   return proposed(
     write,
     proposalNote(
-      `create ${fields.name}, ${String(write.quantity)} ${write.unit}${locationName === null ? '' : ` in ${locationName}`}`,
+      `create ${fields.name}, ${String(write.quantity)} ${write.unit}${destination === null ? '' : ` in ${destination.name}`}`,
     ),
   );
 }
