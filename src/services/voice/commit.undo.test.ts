@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createMemoryDriver } from '../../database/driver/memory.driver';
-import type { SqlDriver } from '../../database/driver/types';
+import { SqlError, type SqlDriver } from '../../database/driver/types';
 import { migrate } from '../../database/migrations/runner';
 import { seedDatabase } from '../../database/seed/seed';
 import { createItemsRepository, type ItemContext } from '../../repositories/items.repository';
@@ -271,16 +271,17 @@ describe('undo', () => {
   /**
    * The order is the whole of it.
    *
-   * One sentence can write twice - "move the rice to the cellar" against a
-   * pantry that has no cellar makes the place and then moves the rice - and
-   * the way back has to run backwards. Taking the place away first would not
-   * merely be untidy: `locations.remove` refuses a place that still holds
-   * something, so the deletion would fail and the user would be left with a
-   * shelf nobody asked for.
+   * One sentence is about to be able to write twice - "move the rice to the
+   * cellar" against a pantry that has no cellar will make the place and then
+   * move the rice - and the way back has to run backwards. Taking the place
+   * away first would not merely be untidy: `locations.remove` refuses a place
+   * that still holds something, so the deletion would fail and the user would
+   * be left with a shelf nobody asked for.
    *
-   * The calls are recorded through the real repositories rather than replaced
-   * by them, so this says both that the order was right and that the rows
-   * actually moved.
+   * The receipt is built by hand because nothing produces a two-action one
+   * yet; the sentence that will is a later change. The calls underneath it are
+   * real, recorded by wrapping the repositories rather than replacing them, so
+   * this says both that the order was right and that the rows actually moved.
    */
   it('unwinds a receipt newest action first', async () => {
     const order: string[] = [];
@@ -315,5 +316,50 @@ describe('undo', () => {
     expect(order).toEqual([`transfer:${feijaoId}`, `removeLocation:${cellar.id}`]);
     expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
     expect(await deps.locations.getById(cellar.id)).toBeUndefined();
+  });
+
+  /**
+   * A place that filled up in the ten seconds Undo was on screen.
+   *
+   * Somebody put something there on purpose, so the place is theirs now rather
+   * than the sentence's, and `locations.remove` refuses to take it. That is
+   * not a failed undo and must not be reported as one: the undo resolves, the
+   * place stands, and what is in it is left alone.
+   */
+  it('leaves a place that filled up, and still reports the undo as done', async () => {
+    const cellar = await deps.locations.create({ name: 'Adega' });
+    await deps.items.transfer(feijaoId, cellar.id, 'Por voz');
+
+    await expect(
+      undo(deps, { undo: [{ kind: 'deleteLocation', locationId: cellar.id }] }),
+    ).resolves.toBeUndefined();
+
+    expect(await deps.locations.getById(cellar.id)).toBeDefined();
+    expect((await deps.items.getById(feijaoId))?.locationId).toBe(cellar.id);
+  });
+
+  /**
+   * The one guard, and nothing else.
+   *
+   * `LocationInUseError` is swallowed because it is not a failure. A database
+   * that would not answer is, and the earlier shape of this - a bare `catch` -
+   * absorbed that too, which left `takeBack` unable to show an error and the
+   * user told "Desfeito" over a place that is still there.
+   */
+  it('reports a failure that is not the place being in use', async () => {
+    const cellar = await deps.locations.create({ name: 'Adega' });
+    const failure = new SqlError({ name: 'SqlError', message: 'database is locked', code: 5 });
+
+    const failing: VoiceDeps = {
+      ...deps,
+      locations: {
+        ...deps.locations,
+        remove: () => Promise.reject(failure),
+      },
+    };
+
+    await expect(
+      undo(failing, { undo: [{ kind: 'deleteLocation', locationId: cellar.id }] }),
+    ).rejects.toBe(failure);
   });
 });

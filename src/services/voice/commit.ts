@@ -9,6 +9,8 @@
  * Every write hands back a `Receipt`, so the caller that stored a change
  * without asking can offer to take it back.
  */
+import { CategoryInUseError } from '../../repositories/categories.repository';
+import { LocationInUseError } from '../../repositories/locations.repository';
 import type { Category, Contact, InventoryItem, Location } from '../../types/domain';
 import type { VoiceDeps, PendingWrite } from './execute';
 
@@ -78,7 +80,9 @@ export interface Receipt {
  *
  * A total union rather than a nullable item, so a write that makes something
  * new is a compile error everywhere that renders a receipt until it has been
- * given a sentence to say.
+ * given a sentence to say. Not yet true of the one production caller, which
+ * takes the receipt and leaves `wrote` alone; it becomes true when the screen
+ * that says what happened starts reading this to say it.
  */
 export type Wrote =
   | { readonly kind: 'item'; readonly item: InventoryItem }
@@ -201,6 +205,25 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
  * sentence are not independent - the item has to leave the new shelf before
  * the shelf can be deleted - so they are awaited in turn rather than started
  * together.
+ *
+ * A failure part-way through stops there and throws, leaving the sentence
+ * half taken back. That is deliberate; neither alternative is better, and one
+ * of them is not available at all:
+ *
+ *  - Carrying on would run actions whose precondition the failed one was. If
+ *    the item never left the new place, deleting that place throws
+ *    `LocationInUseError` - which the case below is right to swallow - and the
+ *    sentence would be reported as taken back when none of it was.
+ *  - Putting back what already succeeded needs a transaction, and there is
+ *    none to be had here: `VoiceDeps` hands out repositories, not the driver,
+ *    so this module cannot open one around a receipt.
+ *
+ * So the caller keeps the receipt - `useVoice` only clears it after `undo`
+ * resolves - and the Undo button survives to be pressed again. Pressing it is
+ * not free: `items.transfer` writes its transfer row unconditionally, so an
+ * action that already succeeded and is run a second time leaves a second
+ * "Por voz (desfeito)" row in the log. A duplicated line in the history is a
+ * smaller lie than a sentence reported as undone that was not.
  */
 export async function undo(deps: VoiceDeps, receipt: Receipt): Promise<void> {
   for (const action of receipt.undo) await undoOne(deps, action);
@@ -279,15 +302,26 @@ async function undoOne(deps: VoiceDeps, action: UndoAction): Promise<void> {
      *
      * `locations.remove` throws `LocationInUseError` when the place holds
      * items or child places and no reassignment was named. That is exactly
-     * the guard this needs and it is already written: if something else was
-     * moved into the new place during the ten seconds Undo is on screen,
-     * the place stays and the rest of the undo still runs.
+     * the guard this needs and it is already written: something moved into
+     * the new place during the ten seconds Undo is on screen was put there on
+     * purpose, and the place is now the user's rather than the sentence's.
+     *
+     * Swallowing it is not about finishing the receipt - the place a sentence
+     * made is undone last, so nothing follows it. It is about what the user
+     * is told. The item did go back, which is the change they asked to take
+     * back; a shelf they have since filled is not a failed undo, and saying
+     * so would send them looking for a problem that is not there.
+     *
+     * Only that one, and the narrowing is the point. A locked database or a
+     * worker that died is a real failure and is rethrown, so `takeBack` can
+     * show it. Catching everything here would make this the one path in the
+     * feature that reports "Desfeito" over a row that is still there.
      */
     case 'deleteLocation':
       try {
         await deps.locations.remove(action.locationId);
-      } catch {
-        return;
+      } catch (cause) {
+        if (!(cause instanceof LocationInUseError)) throw cause;
       }
       return;
 
@@ -296,13 +330,14 @@ async function undoOne(deps: VoiceDeps, action: UndoAction): Promise<void> {
      * `CategoryInUseError` while any item still carries the category. A
      * category something was filed under inside those ten seconds is one the
      * user has started to use, and taking it away would take the filing with
-     * it.
+     * it. Everything else it can throw - `SystemCategoryError` above all -
+     * is rethrown.
      */
     case 'deleteCategory':
       try {
         await deps.categories.remove(action.categoryId);
-      } catch {
-        return;
+      } catch (cause) {
+        if (!(cause instanceof CategoryInUseError)) throw cause;
       }
       return;
 
@@ -313,5 +348,21 @@ async function undoOne(deps: VoiceDeps, action: UndoAction): Promise<void> {
      */
     case 'deleteContact':
       await deps.contacts.remove(action.contactId);
+      return;
+
+    /*
+     * The switch says it is total, because the compiler will not.
+     *
+     * `undoOne` returns void, so a kind with no case falls straight out and
+     * undoes nothing - and the user is still told "Desfeito" over the row it
+     * left behind. The union went from six members to nine in one change and
+     * more are coming, so the gap is closed here the way the total records in
+     * `VoiceSheet.tsx` and `MicNotice.tsx` close theirs: by making the next
+     * member a compile error rather than a silent nothing.
+     */
+    default: {
+      const impossible: never = action;
+      throw new Error(`No way back from ${JSON.stringify(impossible)}.`);
+    }
   }
 }

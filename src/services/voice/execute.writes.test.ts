@@ -15,15 +15,7 @@ const CONTEXT: ItemContext = {
   today: '2026-09-07', defaultThreshold: 5, expiryWindows: [7, 30, 90],
 };
 
-/**
- * The item a sentence produced, or a failure saying what came back instead.
- *
- * `Committed.wrote` says which kind of row was written, because a sentence can
- * now make a place or a contact as well as an item. A test that reached past
- * that with a cast would go on compiling on the day one of these phrases
- * started producing something else; asserting the kind makes that day a
- * failure that names what it got.
- */
+/** The item a sentence produced. See the copy in `commit.undo.test.ts` for why. */
 function committedItem(committed: Committed): InventoryItem {
   if (committed.wrote.kind !== 'item') {
     throw new Error(`expected an item, got a ${committed.wrote.kind}`);
