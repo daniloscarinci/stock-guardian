@@ -85,11 +85,10 @@ Expected: FAIL to compile — `Object literal may only specify known properties,
 
 In `src/services/voice/commit.ts`, replace the `UndoAction`, `Receipt` and `Committed` declarations. Keep every existing explanatory comment on the action variants — they record why each one stores a value rather than an inverse, and that reasoning is unchanged.
 
+All four types live in `src/types/domain.ts` — the repository modules import them from there rather than exporting them.
+
 ```ts
-import type { InventoryItem } from '../../types/domain';
-import type { Location } from '../../repositories/locations.repository';
-import type { Category } from '../../repositories/categories.repository';
-import type { Contact } from '../../repositories/contacts.repository';
+import type { Category, Contact, InventoryItem, Location } from '../../types/domain';
 
 export type UndoAction =
   | { readonly kind: 'restoreQuantity'; readonly itemId: string; readonly to: number }
