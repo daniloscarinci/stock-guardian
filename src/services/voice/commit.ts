@@ -9,7 +9,7 @@
  * Every write hands back a `Receipt`, so the caller that stored a change
  * without asking can offer to take it back.
  */
-import type { InventoryItem } from '../../types/domain';
+import type { Category, Contact, InventoryItem, Location } from '../../types/domain';
 import type { VoiceDeps, PendingWrite } from './execute';
 
 /**
@@ -21,8 +21,8 @@ import type { VoiceDeps, PendingWrite } from './execute';
  * the user was trying to correct. Recording 2 puts back 2.
  */
 export type UndoAction =
-  | { readonly kind: 'restoreQuantity'; readonly to: number }
-  | { readonly kind: 'restoreExpiry'; readonly to: string | null }
+  | { readonly kind: 'restoreQuantity'; readonly itemId: string; readonly to: number }
+  | { readonly kind: 'restoreExpiry'; readonly itemId: string; readonly to: string | null }
   /*
    * The shelf the item was on, by id, and null for "it was on none".
    *
@@ -31,7 +31,7 @@ export type UndoAction =
    * location, and an undo that could only say "move it back somewhere" would
    * have to invent one. Recording null puts back null.
    */
-  | { readonly kind: 'restoreLocation'; readonly to: string | null }
+  | { readonly kind: 'restoreLocation'; readonly itemId: string; readonly to: string | null }
   /*
    * The thresholds, both of which are nullable and neither of which is zero
    * when it is absent.
@@ -42,18 +42,53 @@ export type UndoAction =
    * into the second would silence a warning the user never asked to silence,
    * so the previous value is recorded exactly as it was found.
    */
-  | { readonly kind: 'restoreMinimum'; readonly to: number | null }
-  | { readonly kind: 'restoreTarget'; readonly to: number | null }
-  | { readonly kind: 'deleteItem' };
+  | { readonly kind: 'restoreMinimum'; readonly itemId: string; readonly to: number | null }
+  | { readonly kind: 'restoreTarget'; readonly itemId: string; readonly to: number | null }
+  | { readonly kind: 'deleteItem'; readonly itemId: string }
+  /*
+   * The rows a sentence made that were not items.
+   *
+   * Each one is deleted rather than archived, for the reason `deleteItem`
+   * gives: a row created seconds ago by a misheard sentence was never real,
+   * and leaving it behind would put something nobody asked for into a list
+   * the user trusts.
+   */
+  | { readonly kind: 'deleteLocation'; readonly locationId: string }
+  | { readonly kind: 'deleteCategory'; readonly categoryId: string }
+  | { readonly kind: 'deleteContact'; readonly contactId: string };
 
+/**
+ * What it would take to put a whole sentence back.
+ *
+ * A LIST, in the order the actions must run, which is the reverse of the
+ * order they were written in. One sentence can write twice - "move the rice
+ * to the cellar" against a pantry with no cellar makes the place and then
+ * moves the rice - and an undo that took back only the second half would
+ * leave an empty place nobody asked for.
+ *
+ * The item id moved onto each action rather than sitting beside them, because
+ * two actions in one receipt need not be about the same row.
+ */
 export interface Receipt {
-  readonly itemId: string;
-  readonly undo: UndoAction;
+  readonly undo: readonly UndoAction[];
 }
+
+/**
+ * What a sentence produced.
+ *
+ * A total union rather than a nullable item, so a write that makes something
+ * new is a compile error everywhere that renders a receipt until it has been
+ * given a sentence to say.
+ */
+export type Wrote =
+  | { readonly kind: 'item'; readonly item: InventoryItem }
+  | { readonly kind: 'location'; readonly location: Location }
+  | { readonly kind: 'category'; readonly category: Category }
+  | { readonly kind: 'contact'; readonly contact: Contact };
 
 /** A write that happened, and the way back from it. */
 export interface Committed {
-  readonly item: InventoryItem;
+  readonly wrote: Wrote;
   readonly receipt: Receipt;
 }
 
@@ -76,7 +111,10 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
         type: write.transaction,
         notes: SPOKEN,
       });
-      return { item, receipt: { itemId: item.id, undo: { kind: 'restoreQuantity', to: before } } };
+      return {
+        wrote: { kind: 'item', item },
+        receipt: { undo: [{ kind: 'restoreQuantity', itemId: item.id, to: before }] },
+      };
     }
 
     case 'EXPIRY': {
@@ -84,7 +122,10 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
       const before = current === undefined ? write.before : current.expirationDate;
 
       const item = await deps.items.update(write.item.id, { expirationDate: write.after });
-      return { item, receipt: { itemId: item.id, undo: { kind: 'restoreExpiry', to: before } } };
+      return {
+        wrote: { kind: 'item', item },
+        receipt: { undo: [{ kind: 'restoreExpiry', itemId: item.id, to: before }] },
+      };
     }
 
     /*
@@ -102,7 +143,10 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
       const before = current === undefined ? write.fromLocationId : current.locationId;
 
       const item = await deps.items.transfer(write.item.id, write.toLocationId, SPOKEN);
-      return { item, receipt: { itemId: item.id, undo: { kind: 'restoreLocation', to: before } } };
+      return {
+        wrote: { kind: 'item', item },
+        receipt: { undo: [{ kind: 'restoreLocation', itemId: item.id, to: before }] },
+      };
     }
 
     /*
@@ -116,7 +160,10 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
       const before = current === undefined ? write.before : current.minimumQuantity;
 
       const item = await deps.items.update(write.item.id, { minimumQuantity: write.after });
-      return { item, receipt: { itemId: item.id, undo: { kind: 'restoreMinimum', to: before } } };
+      return {
+        wrote: { kind: 'item', item },
+        receipt: { undo: [{ kind: 'restoreMinimum', itemId: item.id, to: before }] },
+      };
     }
 
     case 'TARGET': {
@@ -124,7 +171,10 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
       const before = current === undefined ? write.before : current.idealQuantity;
 
       const item = await deps.items.update(write.item.id, { idealQuantity: write.after });
-      return { item, receipt: { itemId: item.id, undo: { kind: 'restoreTarget', to: before } } };
+      return {
+        wrote: { kind: 'item', item },
+        receipt: { undo: [{ kind: 'restoreTarget', itemId: item.id, to: before }] },
+      };
     }
 
     case 'CREATE': {
@@ -135,20 +185,28 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
         locationId: write.locationId,
         expirationDate: write.expirationDate,
       });
-      return { item, receipt: { itemId: item.id, undo: { kind: 'deleteItem' } } };
+      return {
+        wrote: { kind: 'item', item },
+        receipt: { undo: [{ kind: 'deleteItem', itemId: item.id }] },
+      };
     }
   }
 }
 
 /**
- * A write, put back.
+ * A whole sentence, put back.
  *
- * It takes the whole receipt rather than the action alone, because an action
- * cannot name the row it belongs to and an undo aimed at no item is not one.
+ * One action at a time, in the order the receipt lists them, which is the
+ * order that takes the last write back first. The two actions of a two-write
+ * sentence are not independent - the item has to leave the new shelf before
+ * the shelf can be deleted - so they are awaited in turn rather than started
+ * together.
  */
 export async function undo(deps: VoiceDeps, receipt: Receipt): Promise<void> {
-  const action = receipt.undo;
+  for (const action of receipt.undo) await undoOne(deps, action);
+}
 
+async function undoOne(deps: VoiceDeps, action: UndoAction): Promise<void> {
   switch (action.kind) {
     /*
      * A compensating adjustment, not a deleted history row.
@@ -160,7 +218,7 @@ export async function undo(deps: VoiceDeps, receipt: Receipt): Promise<void> {
      * thing, the application heard it, and the number is being put right.
      */
     case 'restoreQuantity': {
-      const current = await deps.items.getById(receipt.itemId);
+      const current = await deps.items.getById(action.itemId);
       // Gone already. Nothing to restore, and nothing to complain about: undo
       // is offered for a few seconds and the row can be deleted inside them.
       if (current === undefined) return;
@@ -170,7 +228,7 @@ export async function undo(deps: VoiceDeps, receipt: Receipt): Promise<void> {
       // for it, so this is the same no-op said out loud.
       if (delta === 0) return;
 
-      await deps.items.adjustQuantity(receipt.itemId, delta, {
+      await deps.items.adjustQuantity(action.itemId, delta, {
         type: 'correction',
         notes: UNDONE,
       });
@@ -178,7 +236,7 @@ export async function undo(deps: VoiceDeps, receipt: Receipt): Promise<void> {
     }
 
     case 'restoreExpiry':
-      await deps.items.update(receipt.itemId, { expirationDate: action.to });
+      await deps.items.update(action.itemId, { expirationDate: action.to });
       return;
 
     /*
@@ -188,15 +246,15 @@ export async function undo(deps: VoiceDeps, receipt: Receipt): Promise<void> {
      * sent.
      */
     case 'restoreLocation':
-      await deps.items.transfer(receipt.itemId, action.to, UNDONE);
+      await deps.items.transfer(action.itemId, action.to, UNDONE);
       return;
 
     case 'restoreMinimum':
-      await deps.items.update(receipt.itemId, { minimumQuantity: action.to });
+      await deps.items.update(action.itemId, { minimumQuantity: action.to });
       return;
 
     case 'restoreTarget':
-      await deps.items.update(receipt.itemId, { idealQuantity: action.to });
+      await deps.items.update(action.itemId, { idealQuantity: action.to });
       return;
 
     /*
@@ -213,6 +271,47 @@ export async function undo(deps: VoiceDeps, receipt: Receipt): Promise<void> {
      * is its own creation, which the schema cascades away with it.
      */
     case 'deleteItem':
-      await deps.items.remove(receipt.itemId);
+      await deps.items.remove(action.itemId);
+      return;
+
+    /*
+     * Deleted only while it is still empty.
+     *
+     * `locations.remove` throws `LocationInUseError` when the place holds
+     * items or child places and no reassignment was named. That is exactly
+     * the guard this needs and it is already written: if something else was
+     * moved into the new place during the ten seconds Undo is on screen,
+     * the place stays and the rest of the undo still runs.
+     */
+    case 'deleteLocation':
+      try {
+        await deps.locations.remove(action.locationId);
+      } catch {
+        return;
+      }
+      return;
+
+    /*
+     * The same guard again, from `categories.remove`, which throws
+     * `CategoryInUseError` while any item still carries the category. A
+     * category something was filed under inside those ten seconds is one the
+     * user has started to use, and taking it away would take the filing with
+     * it.
+     */
+    case 'deleteCategory':
+      try {
+        await deps.categories.remove(action.categoryId);
+      } catch {
+        return;
+      }
+      return;
+
+    /*
+     * No guard, because nothing points at a contact. It is a name and a
+     * number in a row of its own, so deleting it takes nothing else with it
+     * and there is no in-use error to catch.
+     */
+    case 'deleteContact':
+      await deps.contacts.remove(action.contactId);
   }
 }

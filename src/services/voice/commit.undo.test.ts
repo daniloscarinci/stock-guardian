@@ -16,12 +16,29 @@ import { createItemsRepository, type ItemContext } from '../../repositories/item
 import { createLocationsRepository } from '../../repositories/locations.repository';
 import { createCategoriesRepository } from '../../repositories/categories.repository';
 import { createContactsRepository } from '../../repositories/contacts.repository';
+import type { InventoryItem } from '../../types/domain';
 import { execute, type PendingWrite, type VoiceDeps } from './execute';
-import { commit, undo } from './commit';
+import { commit, undo, type Committed } from './commit';
 
 const CONTEXT: ItemContext = {
   today: '2026-09-07', defaultThreshold: 5, expiryWindows: [7, 30, 90],
 };
+
+/**
+ * The item a sentence produced, or a failure saying what came back instead.
+ *
+ * `Committed.wrote` says which kind of row was written, because a sentence can
+ * now make a place or a contact as well as an item. A test that reached past
+ * that with a cast would go on compiling on the day one of these phrases
+ * started producing something else; asserting the kind makes that day a
+ * failure that names what it got.
+ */
+function committedItem(committed: Committed): InventoryItem {
+  if (committed.wrote.kind !== 'item') {
+    throw new Error(`expected an item, got a ${committed.wrote.kind}`);
+  }
+  return committed.wrote.item;
+}
 
 describe('undo', () => {
   let db: SqlDriver;
@@ -74,8 +91,8 @@ describe('undo', () => {
 
     const saved = await commit(deps, await write(deps, { kind: 'MOVE_ITEM',
       item: 'feijao preto', location: 'garagem' }));
-    expect(saved.item.locationId).toBe(garage.id);
-    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreLocation', to: shelf.id } });
+    expect(committedItem(saved).locationId).toBe(garage.id);
+    expect(saved.receipt).toMatchObject({ undo: [{ kind: 'restoreLocation', itemId: feijaoId, to: shelf.id }] });
 
     await undo(deps, saved.receipt);
     expect((await deps.items.getById(feijaoId))?.locationId).toBe(shelf.id);
@@ -84,7 +101,7 @@ describe('undo', () => {
   it('puts an item back to having no shelf at all', async () => {
     const saved = await commit(deps, await write(deps, { kind: 'MOVE_ITEM',
       item: 'feijao preto', location: 'despensa' }));
-    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreLocation', to: null } });
+    expect(saved.receipt).toMatchObject({ undo: [{ kind: 'restoreLocation', itemId: feijaoId, to: null }] });
 
     await undo(deps, saved.receipt);
     expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
@@ -99,8 +116,8 @@ describe('undo', () => {
   it('puts a minimum back to never having been set', async () => {
     const saved = await commit(deps, await write(deps, { kind: 'SET_MINIMUM',
       item: 'feijao preto', amount: 8, unit: null }));
-    expect(saved.item.minimumQuantity).toBe(8);
-    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreMinimum', to: null } });
+    expect(committedItem(saved).minimumQuantity).toBe(8);
+    expect(saved.receipt).toMatchObject({ undo: [{ kind: 'restoreMinimum', itemId: feijaoId, to: null }] });
 
     await undo(deps, saved.receipt);
     expect((await deps.items.getById(feijaoId))?.minimumQuantity).toBeNull();
@@ -110,7 +127,7 @@ describe('undo', () => {
     await deps.items.update(feijaoId, { minimumQuantity: 4 });
     const saved = await commit(deps, await write(deps, { kind: 'SET_MINIMUM',
       item: 'feijao preto', amount: 8, unit: null }));
-    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreMinimum', to: 4 } });
+    expect(saved.receipt).toMatchObject({ undo: [{ kind: 'restoreMinimum', itemId: feijaoId, to: 4 }] });
 
     await undo(deps, saved.receipt);
     expect((await deps.items.getById(feijaoId))?.minimumQuantity).toBe(4);
@@ -120,8 +137,8 @@ describe('undo', () => {
     await deps.items.update(feijaoId, { idealQuantity: 15 });
     const saved = await commit(deps, await write(deps, { kind: 'SET_TARGET',
       item: 'feijao preto', amount: 30, unit: null }));
-    expect(saved.item.idealQuantity).toBe(30);
-    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreTarget', to: 15 } });
+    expect(committedItem(saved).idealQuantity).toBe(30);
+    expect(saved.receipt).toMatchObject({ undo: [{ kind: 'restoreTarget', itemId: feijaoId, to: 15 }] });
 
     await undo(deps, saved.receipt);
     expect((await deps.items.getById(feijaoId))?.idealQuantity).toBe(15);
@@ -131,8 +148,8 @@ describe('undo', () => {
     const saved = await commit(deps, await write(deps, { kind: 'ADJUST_QUANTITY',
       item: 'feijao preto', amount: 5, direction: 'up', transaction: 'purchase',
       unit: null, amountAssumed: false }));
-    expect(saved.item.quantity).toBe(7);
-    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreQuantity', to: 2 } });
+    expect(committedItem(saved).quantity).toBe(7);
+    expect(saved.receipt).toMatchObject({ undo: [{ kind: 'restoreQuantity', itemId: feijaoId, to: 2 }] });
 
     await undo(deps, saved.receipt);
     expect((await deps.items.getById(feijaoId))?.quantity).toBe(2);
@@ -150,7 +167,7 @@ describe('undo', () => {
     const saved = await commit(deps, await write(deps, { kind: 'ADJUST_QUANTITY',
       item: 'feijao preto', amount: 5, direction: 'down', transaction: 'consume',
       unit: null, amountAssumed: false }));
-    expect(saved.item.quantity).toBe(0);
+    expect(committedItem(saved).quantity).toBe(0);
 
     await undo(deps, saved.receipt);
     expect((await deps.items.getById(feijaoId))?.quantity).toBe(2);
@@ -177,8 +194,8 @@ describe('undo', () => {
   it('puts back the expiry date that was replaced', async () => {
     const saved = await commit(deps, await write(deps, { kind: 'SET_EXPIRY',
       item: 'feijao preto', expiresOn: '2027-01-01', dateAssumed: false }));
-    expect(saved.item.expirationDate).toBe('2027-01-01');
-    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreExpiry', to: '2026-12-01' } });
+    expect(committedItem(saved).expirationDate).toBe('2027-01-01');
+    expect(saved.receipt).toMatchObject({ undo: [{ kind: 'restoreExpiry', itemId: feijaoId, to: '2026-12-01' }] });
 
     await undo(deps, saved.receipt);
     expect((await deps.items.getById(feijaoId))?.expirationDate).toBe('2026-12-01');
@@ -190,7 +207,7 @@ describe('undo', () => {
 
     const saved = await commit(deps, await write(deps, { kind: 'SET_EXPIRY',
       item: 'arroz branco', expiresOn: '2027-01-01', dateAssumed: false }));
-    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreExpiry', to: null } });
+    expect(saved.receipt).toMatchObject({ undo: [{ kind: 'restoreExpiry', itemId: arroz.id, to: null }] });
 
     await undo(deps, saved.receipt);
     expect((await deps.items.getById(arroz.id))?.expirationDate).toBeNull();
@@ -205,11 +222,11 @@ describe('undo', () => {
   it('takes a creation away entirely, leaving nothing archived', async () => {
     const saved = await commit(deps, await write(deps, { kind: 'CREATE_ITEM', name: 'quinoa',
       amount: 2, unit: 'kg', location: null, expiresOn: null }));
-    expect(saved.receipt).toMatchObject({ undo: { kind: 'deleteItem' } });
+    expect(saved.receipt).toMatchObject({ undo: [{ kind: 'deleteItem', itemId: committedItem(saved).id }] });
 
     await undo(deps, saved.receipt);
 
-    expect(await deps.items.getById(saved.item.id)).toBeUndefined();
+    expect(await deps.items.getById(committedItem(saved).id)).toBeUndefined();
     const everything = await deps.items.list(deps.context, {
       filters: { search: 'quinoa', archived: 'all' },
       lang: 'pt-BR',
@@ -244,10 +261,59 @@ describe('undo', () => {
     await deps.items.adjustQuantity(feijaoId, 3, { type: 'add' });
 
     const saved = await commit(deps, pendingWrite);
-    expect(saved.item.quantity).toBe(6);
-    expect(saved.receipt).toMatchObject({ undo: { kind: 'restoreQuantity', to: 5 } });
+    expect(committedItem(saved).quantity).toBe(6);
+    expect(saved.receipt).toMatchObject({ undo: [{ kind: 'restoreQuantity', itemId: feijaoId, to: 5 }] });
 
     await undo(deps, saved.receipt);
     expect((await deps.items.getById(feijaoId))?.quantity).toBe(5);
+  });
+
+  /**
+   * The order is the whole of it.
+   *
+   * One sentence can write twice - "move the rice to the cellar" against a
+   * pantry that has no cellar makes the place and then moves the rice - and
+   * the way back has to run backwards. Taking the place away first would not
+   * merely be untidy: `locations.remove` refuses a place that still holds
+   * something, so the deletion would fail and the user would be left with a
+   * shelf nobody asked for.
+   *
+   * The calls are recorded through the real repositories rather than replaced
+   * by them, so this says both that the order was right and that the rows
+   * actually moved.
+   */
+  it('unwinds a receipt newest action first', async () => {
+    const order: string[] = [];
+    const cellar = await deps.locations.create({ name: 'Adega' });
+    await deps.items.transfer(feijaoId, cellar.id, 'Por voz');
+
+    const watched: VoiceDeps = {
+      ...deps,
+      items: {
+        ...deps.items,
+        transfer: async (id, to, notes) => {
+          order.push(`transfer:${id}`);
+          return deps.items.transfer(id, to, notes);
+        },
+      },
+      locations: {
+        ...deps.locations,
+        remove: async (id, options) => {
+          order.push(`removeLocation:${id}`);
+          return deps.locations.remove(id, options);
+        },
+      },
+    };
+
+    await undo(watched, {
+      undo: [
+        { kind: 'restoreLocation', itemId: feijaoId, to: null },
+        { kind: 'deleteLocation', locationId: cellar.id },
+      ],
+    });
+
+    expect(order).toEqual([`transfer:${feijaoId}`, `removeLocation:${cellar.id}`]);
+    expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
+    expect(await deps.locations.getById(cellar.id)).toBeUndefined();
   });
 });

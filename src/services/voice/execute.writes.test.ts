@@ -7,12 +7,29 @@ import { createItemsRepository, type ItemContext } from '../../repositories/item
 import { createLocationsRepository } from '../../repositories/locations.repository';
 import { createCategoriesRepository } from '../../repositories/categories.repository';
 import { createContactsRepository } from '../../repositories/contacts.repository';
+import type { InventoryItem } from '../../types/domain';
 import { execute, type PendingWrite, type VoiceDeps } from './execute';
-import { commit } from './commit';
+import { commit, type Committed } from './commit';
 
 const CONTEXT: ItemContext = {
   today: '2026-09-07', defaultThreshold: 5, expiryWindows: [7, 30, 90],
 };
+
+/**
+ * The item a sentence produced, or a failure saying what came back instead.
+ *
+ * `Committed.wrote` says which kind of row was written, because a sentence can
+ * now make a place or a contact as well as an item. A test that reached past
+ * that with a cast would go on compiling on the day one of these phrases
+ * started producing something else; asserting the kind makes that day a
+ * failure that names what it got.
+ */
+function committedItem(committed: Committed): InventoryItem {
+  if (committed.wrote.kind !== 'item') {
+    throw new Error(`expected an item, got a ${committed.wrote.kind}`);
+  }
+  return committed.wrote.item;
+}
 
 describe('execute: writes stay pending', () => {
   let db: SqlDriver;
@@ -290,7 +307,7 @@ describe('execute: writes stay pending', () => {
       assumptions: [],
     });
 
-    expect(result.item.quantity).toBe(4);
+    expect(committedItem(result).quantity).toBe(4);
     expect(await deps.items.history(feijaoId)).toHaveLength(before.length);
   });
 });
@@ -330,9 +347,9 @@ describe('commit', () => {
       amount: 6, direction: 'up', transaction: 'purchase', unit: null, amountAssumed: false });
 
     const saved = await commit(deps, pendingWrite);
-    expect(saved.item.quantity).toBe(10);
+    expect(committedItem(saved).quantity).toBe(10);
 
-    const history = await deps.items.history(saved.item.id);
+    const history = await deps.items.history(committedItem(saved).id);
     expect(history[0]).toMatchObject({ type: 'purchase', notes: 'Por voz', quantity_after: 10 });
   });
 
@@ -341,7 +358,7 @@ describe('commit', () => {
       unit: null, location: null, expiresOn: null });
 
     const created = await commit(deps, pendingWrite);
-    expect(created.item).toMatchObject({
+    expect(committedItem(created)).toMatchObject({
       name: 'quinoa', quantity: 1, unit: 'un', locationId: null, expirationDate: null,
     });
   });
@@ -352,8 +369,10 @@ describe('commit', () => {
 
     const created = await commit(deps, pendingWrite);
     const shelf = await deps.locations.findByName('Despensa');
-    expect(created.item).toMatchObject({ quantity: 2, unit: 'kg', expirationDate: '2027-03-01' });
-    expect(created.item.locationId).toBe(shelf?.id);
+    expect(committedItem(created)).toMatchObject({
+      quantity: 2, unit: 'kg', expirationDate: '2027-03-01',
+    });
+    expect(committedItem(created).locationId).toBe(shelf?.id);
   });
 
   it('sets an expiry date', async () => {
@@ -361,7 +380,7 @@ describe('commit', () => {
       expiresOn: '2027-01-01', dateAssumed: false });
 
     const saved = await commit(deps, pendingWrite);
-    expect(saved.item.expirationDate).toBe('2027-01-01');
+    expect(committedItem(saved).expirationDate).toBe('2027-01-01');
   });
 
   /**
@@ -377,9 +396,9 @@ describe('commit', () => {
 
     const saved = await commit(deps, pendingWrite);
     const shelf = await deps.locations.findByName('Despensa');
-    expect(saved.item.locationId).toBe(shelf?.id);
+    expect(committedItem(saved).locationId).toBe(shelf?.id);
 
-    const history = await deps.items.history(saved.item.id);
+    const history = await deps.items.history(committedItem(saved).id);
     expect(history[0]).toMatchObject({ type: 'transfer', notes: 'Por voz' });
   });
 
@@ -388,7 +407,7 @@ describe('commit', () => {
       amount: 12, unit: null });
 
     const saved = await commit(deps, pendingWrite);
-    expect(saved.item.minimumQuantity).toBe(12);
+    expect(committedItem(saved).minimumQuantity).toBe(12);
   });
 
   it('sets a target', async () => {
@@ -396,6 +415,6 @@ describe('commit', () => {
       amount: 20, unit: null });
 
     const saved = await commit(deps, pendingWrite);
-    expect(saved.item.idealQuantity).toBe(20);
+    expect(committedItem(saved).idealQuantity).toBe(20);
   });
 });
