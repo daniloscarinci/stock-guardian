@@ -63,10 +63,11 @@ export type UndoAction =
  * What it would take to put a whole sentence back.
  *
  * A LIST, in the order the actions must run, which is the reverse of the
- * order they were written in. One sentence can write twice - "move the rice
- * to the cellar" against a pantry with no cellar makes the place and then
- * moves the rice - and an undo that took back only the second half would
- * leave an empty place nobody asked for.
+ * order they were written in. One action is all any sentence produces today;
+ * the list is what the second one will need. "Move the rice to the cellar"
+ * against a pantry with no cellar will make the place and then move the rice,
+ * and an undo that took back only the second half would leave an empty place
+ * nobody asked for.
  *
  * The item id moved onto each action rather than sitting beside them, because
  * two actions in one receipt need not be about the same row.
