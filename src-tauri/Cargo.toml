@@ -19,7 +19,15 @@ serde_json = "1"
 # whatever the host happens to have. For an application whose whole promise is
 # that it keeps working, depending on a system library that may be older than
 # the schema expects is not a trade worth making.
-rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+#
+# `backup` and `serialize` are both needed and are not the same thing.
+# `db_export` uses the backup API to copy a live database into memory, so the
+# copy is consistent even if something else is mid-write, and then asks for
+# that copy's bytes - which is `Connection::serialize`, behind its own feature.
+# Declaring only `backup` compiles everything except the one line that returns
+# the bytes, which is how this went unnoticed: nothing here had ever been
+# compiled until the Windows workflow was written.
+rusqlite = { version = "0.32", features = ["bundled", "backup", "serialize"] }
 
 [features]
 # Kept for `cargo tauri build --features custom-protocol`, per Tauri convention.
