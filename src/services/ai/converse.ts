@@ -3,7 +3,7 @@
  *
  * A hand-written tool-use loop rather than the SDK's runner, and that is not
  * taste. The runner executes the tools it is given, which is exactly right for
- * tools that may run - and exactly wrong for four of these, which must be
+ * tools that may run - and exactly wrong for nine of these, which must be
  * intercepted, turned into proposals, and answered with "the user has not
  * agreed to this yet". Owning the loop is what keeps `tools.ts` free to lie to
  * Claude about having done something, honestly.

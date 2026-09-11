@@ -341,6 +341,7 @@ export const TOOLS: readonly Anthropic.Tool[] = [
       properties: {
         item: { type: 'string', description: 'The item as the user said it.' },
         minimum: { type: 'number', description: 'The level the user stated. Never one they did not.' },
+        unit: { type: 'string', description: 'The unit the user counted in, if they named one.' },
       },
       required: ['item', 'minimum'],
     },
@@ -355,6 +356,7 @@ export const TOOLS: readonly Anthropic.Tool[] = [
       properties: {
         item: { type: 'string', description: 'The item as the user said it.' },
         target: { type: 'number', description: 'The level the user stated. Never one they did not.' },
+        unit: { type: 'string', description: 'The unit the user counted in, if they named one.' },
       },
       required: ['item', 'target'],
     },
@@ -566,11 +568,13 @@ const moveInput = z.object({
 const setMinimumInput = z.object({
   item: z.string().min(1),
   minimum: z.number().min(0),
+  unit: z.string().optional(),
 });
 
 const setTargetInput = z.object({
   item: z.string().min(1),
   target: z.number().min(0),
+  unit: z.string().optional(),
 });
 
 const createLocationInput = z.object({ name: z.string().min(1) });
@@ -1293,19 +1297,37 @@ async function moveItem(deps: AiDeps, input: unknown): Promise<ToolRun> {
  * meaning for an item that had the first, so the stored value travels exactly
  * as it was found.
  *
- * Neither takes a unit, so neither can flag one. `execute.ts` treats a spoken
- * unit the row does not use as an assumption here, and it is right to: "the
- * minimum of rice is 5 cans" against rice kept in kilos stores 5 and reads it
- * as five KILOS for ever. What a parsed sentence never had is the row in front
- * of it. `find_item`, `list_items` and `item_history` all return the unit the
- * item is kept in, so the number Claude sends is one it has had every chance
- * to read in context first - and the description tells it to send only a
- * number the user stated.
+ * Both now take an optional unit, flagged with `unitDiffers` exactly as
+ * `adjust_quantity` and `set_quantity` flag one - a change of mind from this
+ * comment's first version, which left the unit out on the theory that
+ * `find_item`, `list_items` and `item_history` had already shown Claude the
+ * real one, so the number it sent was one it had had every chance to read in
+ * context first. That was a hope about what the model would do standing where
+ * every other safeguard in this file is a check: nothing forces a `find_item`
+ * call before either tool, and `create_item` and `move_item` at least ask for
+ * theirs in words ("check with find_item first", "must come from
+ * list_locations") where these two asked for nothing. `execute.ts` argues at
+ * length that this is the write worth checking most - a wrong adjustment
+ * shows up the next time anyone looks at the quantity, where a wrong minimum
+ * shows up as a replenishment list quietly wrong about what is running out,
+ * which is the one list this application exists to get right - and a hope is
+ * not what that argument earns.
+ *
+ * The flag still cannot be a guarantee, and says so rather than overclaiming:
+ * a unit is optional, so an absent one reads exactly like a matching one, and
+ * only a named WRONG unit is ever caught - the same limit `adjust_quantity`
+ * has always lived with. What is a guarantee, and was true before this
+ * change, is structural rather than hoped for: the card prints the item's own
+ * stored unit beside every number on a MINIMUM or TARGET write regardless of
+ * what Claude sent, so the person confirming it checks the true unit against
+ * their own memory of the shelf; and `proposalNote` below hands that same
+ * stored unit back to Claude in the tool result, before it says anything to
+ * the user at all.
  */
 async function setMinimum(deps: AiDeps, input: unknown): Promise<ToolRun> {
   const parsed = setMinimumInput.safeParse(input);
   if (!parsed.success) return failed('set_minimum needs an item and a level of zero or more.');
-  const { item: phrase, minimum } = parsed.data;
+  const { item: phrase, minimum, unit } = parsed.data;
 
   const found = await locate(deps, phrase);
   if (!found.ok) return found.run;
@@ -1316,12 +1338,16 @@ async function setMinimum(deps: AiDeps, input: unknown): Promise<ToolRun> {
     return ok({ status: 'no change', minimum, item: itemJson(found.item) });
   }
 
+  // `assistant` is added by `assumed`; only what is true on top of it goes here.
+  const reasons: AssumptionReason[] = [];
+  if (unitDiffers(unit, found.item.unit)) reasons.push('unit');
+
   const write: PendingWrite = {
     kind: 'MINIMUM',
     item: found.item,
     before: found.item.minimumQuantity,
     after: minimum,
-    ...assumed([]),
+    ...assumed(reasons),
   };
 
   return proposed(
@@ -1335,7 +1361,7 @@ async function setMinimum(deps: AiDeps, input: unknown): Promise<ToolRun> {
 async function setTarget(deps: AiDeps, input: unknown): Promise<ToolRun> {
   const parsed = setTargetInput.safeParse(input);
   if (!parsed.success) return failed('set_target needs an item and a level of zero or more.');
-  const { item: phrase, target } = parsed.data;
+  const { item: phrase, target, unit } = parsed.data;
 
   const found = await locate(deps, phrase);
   if (!found.ok) return found.run;
@@ -1346,12 +1372,16 @@ async function setTarget(deps: AiDeps, input: unknown): Promise<ToolRun> {
     return ok({ status: 'no change', target, item: itemJson(found.item) });
   }
 
+  // `assistant` is added by `assumed`; only what is true on top of it goes here.
+  const reasons: AssumptionReason[] = [];
+  if (unitDiffers(unit, found.item.unit)) reasons.push('unit');
+
   const write: PendingWrite = {
     kind: 'TARGET',
     item: found.item,
     before: found.item.idealQuantity,
     after: target,
-    ...assumed([]),
+    ...assumed(reasons),
   };
 
   return proposed(
@@ -1411,7 +1441,8 @@ async function createLocation(deps: AiDeps, input: unknown): Promise<ToolRun> {
 
 /*
  * The same sentence about a heading instead of a shelf, answered the same way
- * and for the same reason `createLocation` gives above.
+ * for the same reason `createLocation` gives above - through a strictly
+ * weaker net, and that is worth saying rather than leaving implied.
  *
  * A NAME THAT IS TAKEN IS ANSWERED, NOT MADE TWICE. `findCategory` matches
  * against every language the category is named in, so "tools" finds
@@ -1421,6 +1452,21 @@ async function createLocation(deps: AiDeps, input: unknown): Promise<ToolRun> {
  * filed under both, and neither would then answer "what is in tools"
  * truthfully - and a category is a heading the preparedness score is averaged
  * OVER, so a duplicate does not just confuse a screen, it can move the score.
+ *
+ * That argument is stronger than `createLocation`'s, and the net catching the
+ * duplicate is weaker. `findCategory` here matches only the WHOLE folded
+ * name - unlike `findLocation` above, which tries the whole name and then
+ * CONTAINS, and unlike `execute.ts`'s own `findCategory`, which tries the
+ * whole name, then a prefix, then CONTAINS, against the name in the user's
+ * language with an English fallback. So "Agua" against a household's own
+ * "Água e Bebidas" finds nothing here, where either of those would have found
+ * it, and this tool would propose the very duplicate `create_location` and
+ * the grammar both refuse. Reusing the finder `list_items` and
+ * `search_catalog` already depend on is still the right call - loosening it
+ * here would loosen their filters too, and neither has been asked to accept a
+ * category matched by containing its name rather than being it - but the gap
+ * that leaves is real, not merely theoretical, and is the price of that
+ * choice rather than a case this tool covers as thoroughly as its sibling.
  *
  * `newCategory` is the only reason there could be, for the same reason
  * `createLocation`'s `newLocation` is: nothing was matched loosely because

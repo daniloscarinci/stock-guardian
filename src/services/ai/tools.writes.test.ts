@@ -92,7 +92,7 @@ describe('ai tools: writes stay proposals', () => {
     await propose('set_target', { item: 'feijao preto', target: 20 });
     const create = await propose('create_item', { name: 'quinoa', quantity: 2, unit: 'kg' });
     await propose('create_location', { name: 'cellar' });
-    await propose('create_category', { name: 'pets' });
+    const category = await propose('create_category', { name: 'pets' });
 
     expect(writes(exec.mock.calls)).toHaveLength(0);
     expect(transaction).not.toHaveBeenCalled();
@@ -104,6 +104,10 @@ describe('ai tools: writes stay proposals', () => {
     expect(transaction).toHaveBeenCalledTimes(1);
     await commit(deps, create);
     expect(exec.mock.calls.filter(([sql]) => /^\s*insert/i.test(String(sql)))).not.toHaveLength(0);
+    // `categories.create` writes through `batch` rather than `exec`, which is
+    // the one spy above with nothing yet proving it would catch a real write.
+    await commit(deps, category);
+    expect(batch).toHaveBeenCalledTimes(1);
   });
 
   it('leaves every row exactly as it found it', async () => {
@@ -166,14 +170,14 @@ describe('ai tools: writes stay proposals', () => {
 
   /*
    * `tools.reads.test` asserts this over the four writing tools that came
-   * first; the three added later are asserted here, where they were added.
+   * first; the five added later are asserted here, where they were added.
    * The reason is the same one: the description is everything the model reads
    * before it chooses, so a model that believes it has changed the stock will
    * report that it did, and the user is then shown a confirmation card for a
    * change they have just been told is finished.
    */
-  it('says in each of the three newer writing descriptions that it only proposes', () => {
-    for (const name of ['move_item', 'set_minimum', 'set_target']) {
+  it('says in each of the five newer writing descriptions that it only proposes', () => {
+    for (const name of ['move_item', 'set_minimum', 'set_target', 'create_location', 'create_category']) {
       const tool = TOOLS.find((candidate) => candidate.name === name);
       expect(tool, name).toBeDefined();
       expect(tool?.description, name).toMatch(/PROPOSE/);
@@ -379,6 +383,23 @@ describe('ai tools: writes stay proposals', () => {
       expect(run.isError).toBe(true);
       expect(run.proposal).toBeNull();
     });
+
+    // The best-effort flag `execute.ts` argues this write needs more than
+    // `adjust_quantity` does: a wrong minimum is not caught the next time
+    // someone looks at the quantity, it is caught nowhere but here.
+    it('flags a unit the item is not kept in, because the number means something else', async () => {
+      const write = await propose('set_minimum', {
+        item: 'feijao preto', minimum: 12, unit: 'latas',
+      });
+      expect(write.assumptions).toContain('unit');
+    });
+
+    it('does not flag the unit the item is already kept in', async () => {
+      const write = await propose('set_minimum', {
+        item: 'feijao preto', minimum: 12, unit: 'kg',
+      });
+      expect(write.assumptions).not.toContain('unit');
+    });
   });
 
   describe('set_target', () => {
@@ -404,6 +425,20 @@ describe('ai tools: writes stay proposals', () => {
       const run = await runTool(deps, 'set_target', { item: 'feijao preto', target: 20 });
       expect(run.proposal).toBeNull();
       expect(JSON.parse(run.result)).toMatchObject({ status: 'no change' });
+    });
+
+    it('flags a unit the item is not kept in, because the number means something else', async () => {
+      const write = await propose('set_target', {
+        item: 'feijao preto', target: 20, unit: 'latas',
+      });
+      expect(write.assumptions).toContain('unit');
+    });
+
+    it('does not flag the unit the item is already kept in', async () => {
+      const write = await propose('set_target', {
+        item: 'feijao preto', target: 20, unit: 'kg',
+      });
+      expect(write.assumptions).not.toContain('unit');
     });
   });
 
