@@ -22,7 +22,8 @@
     "generate:sample": "node scripts/generate-sample-backup.mjs",
     "tauri": "tauri",
     "generate:android-icons": "node scripts/generate-android-icons.mjs",
-    "generate:android-key": "node scripts/generate-android-key.mjs"
+    "generate:android-key": "node scripts/generate-android-key.mjs",
+    "generate:desktop-icons": "node scripts/generate-desktop-icons.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
