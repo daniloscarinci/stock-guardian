@@ -395,6 +395,49 @@ describe('VoiceSheet', () => {
     expect(await countOfLocations('cellar')).toBe(0);
   });
 
+  /**
+   * The sentence whose whole content is a place, from the box to the database
+   * and back out as words.
+   *
+   * Every other card in this file is about an item, so this is the one that
+   * shows the card rendering a write with no row behind it: the heading is the
+   * name that was said, the line under it is the kind of thing being made, and
+   * the guess is the only question actually open - whether that is how the user
+   * spells it. There is no quantity and no shelf above it, because there is no
+   * item to have either.
+   *
+   * The read-back is asked of the PLACE, there being no item to ask after.
+   * "There is nothing in cellar" is a thin sentence and a true one, and it is
+   * read out of the database after the write: a name that had not been stored
+   * would have come back as nothing found and said nothing at all, so hearing
+   * this sentence is itself the proof the row is there.
+   */
+  it('makes a place that was asked for on its own, and reads back what is in it', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'new place, cellar');
+
+    const card = await screen.findByRole('group', { name: 'cellar' });
+    expect(within(card).getByText('New location')).toBeTruthy();
+    expect(
+      within(card).getByText('No place is called cellar. Confirming makes it.'),
+    ).toBeTruthy();
+
+    // Nothing is written while the card is on screen, here as everywhere else.
+    expect(await countOfLocations('cellar')).toBe(0);
+
+    // The whole change on the button, for the reader who never sees the card.
+    const confirm = await screen.findByRole('button', { name: /^confirm:/i });
+    expect(confirm.getAttribute('aria-label')).toBe('Confirm: cellar, New location');
+    await user.click(confirm);
+
+    expect(await screen.findByText('There is nothing in cellar.')).toBeTruthy();
+    expect(await countOfLocations('cellar')).toBe(1);
+    // Confirmed on the card, so there is no second chance to refuse it.
+    expect(screen.queryByRole('button', { name: /^undo/i })).toBeNull();
+  });
+
   it('moves focus to Confirm and names the whole change on it', async () => {
     const { user, view } = await setup();
     view(<VoiceSheet open onClose={vi.fn()} />);

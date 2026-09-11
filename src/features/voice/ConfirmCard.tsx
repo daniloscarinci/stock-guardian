@@ -185,9 +185,12 @@ function assumed(
   language: Language,
   dateFormat: DateFormat,
 ): readonly string[] {
-  // A place has no item behind it, and its own name is the only name there is
-  // to give - which is all `newLocation`, the one reason it can produce, asks
-  // for. Its `unit` is blank because no reason it produces reads one.
+  // A place has no item behind it, so neither of these can come off one. Nor
+  // is either ever read for a place: the only reason NEW_LOCATION produces is
+  // `newLocation`, which interpolates `place` below. The branches exist so the
+  // switch below needs no casts, and `write.name` is at least the truthful
+  // thing to sit in a slot nothing reaches for; a unit has no such value, so
+  // it is blank.
   const name =
     write.kind === 'CREATE' || write.kind === 'NEW_LOCATION' ? write.name : write.item.name;
   const unit =

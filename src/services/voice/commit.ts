@@ -249,10 +249,11 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
      *
      * The two cases above that can make a place make it on the WAY to
      * something - an item to file on it, an item to move onto it - which is
-     * why `reach` exists at all: to hand back an id the real write then uses. Here the place is the write, so
-     * there is nothing to hand it to and no second write to fail after it.
-     * That also makes this the one case whose `wrote` is not an item, which is
-     * exactly what the `Wrote` union was widened for.
+     * why `reach` exists at all: to hand back an id the real write then uses.
+     * Here the place is the write, so there is nothing to hand it to and no
+     * second write to fail after it. That also makes this the one case whose
+     * `wrote` is not an item, which is exactly what the `Wrote` union was
+     * widened for.
      *
      * `execute` has already found that no place answers to this name, and
      * nothing re-checks it here. The window is the one MOVE describes above:
