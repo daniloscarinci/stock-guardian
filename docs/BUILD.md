@@ -153,11 +153,29 @@ tag that triggers a build, and what to check on the first install.
 
 ## The desktop application
 
-**No installer has been built, and none is claimed.**
+**The installers exist. Nobody has run them.**
 
-`src-tauri/` is complete and reviewed but has never been compiled: this machine
-has no Rust toolchain. What follows is what will happen and what to do, not a
-report of what was done.
+As of v2.6.0 the release carries `Stock Guardian_2.6.0_x64-setup.exe` and
+`Stock Guardian_2.6.0_x64_en-US.msi`, built and collected by
+`.github/workflows/windows.yml`. This machine still has no Rust toolchain; the
+compiling happens on a runner that does.
+
+The first compile is worth recording, because `src-tauri/` had been complete and
+reviewed for a year and neither fault below is the kind a review catches:
+
+- `tauri-build` refuses to produce a Windows executable without
+  `src-tauri/icons/icon.ico`. `tauri.conf.json` named two PNGs, which is a
+  different question — that list is what the bundler puts *on* the installer,
+  and the `.ico` is what the compiler embeds *in* the executable.
+- `db_export` calls `Connection::serialize`, which sits behind a `rusqlite`
+  feature that was never declared. Only `backup` was. Everything compiled
+  except the one line that returns the bytes.
+
+Both are fixed and the build is green. **What has not happened is anyone
+running it**, and the list under *Check these first* is still entirely
+unchecked — it is about the SQLite driver, which is a different driver from the
+one the phone and the browser use, and compiling a thing is not the same as
+watching it keep somebody's data.
 
 ### CI builds it now, on a runner that has the toolchain
 

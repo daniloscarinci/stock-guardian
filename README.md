@@ -405,16 +405,20 @@ a "coming soon" panel — if it is not built, it is not shown.
   notification that only arrives while you are already looking at the app is not
   a reminder. On the web the expiration centre is the answer, and it is the same
   screen the Android notification opens.
-- **A released Android APK.** The Android project is complete and committed, and
-  GitHub Actions builds and signs the APK when a version tag is pushed. That has
-  not been done yet, and no phone has run this build. **No APK exists yet, and
-  none is claimed.** `docs/ANDROID.md` lists what to check on the first install.
-- **The desktop application.** `src-tauri/` is complete and reviewed, and GitHub
-  Actions now builds the Windows installers on a runner carrying the Rust
-  toolchain this machine does not have, attaching them to the release a version
-  tag makes. That has not been done yet, so the code has never been compiled and
-  the Tauri SQLite driver has never executed. `docs/BUILD.md` says what to check
-  the first time it does. **No installer has been built, and none is claimed.**
+- **A phone that has run the Android APK.** The APK is built and signed by
+  GitHub Actions on every version tag, and the releases page has carried one
+  since v2.2.0 — this line said none existed for four of those releases, which
+  was wrong. What is still true is the part that matters: no phone has been
+  seen running one. `docs/ANDROID.md` lists what to check on the first install.
+- **A machine that has run the desktop application.** As of v2.6.0 the Windows
+  installers are built on a runner carrying the Rust toolchain this machine does
+  not have, and attached to the release — so `.exe` and `.msi` now exist, and
+  `src-tauri/` has been compiled for the first time. Compiling it found two
+  faults a year of review had not: a missing icon, and a `rusqlite` feature the
+  export line needed. **Nobody has installed or run the result.** The Tauri
+  SQLite driver is a different driver from the one the phone and the browser
+  use, and it has still never executed against a real database. `docs/BUILD.md`
+  lists what to check before trusting it with anything.
 
 ---
 
