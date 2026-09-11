@@ -83,7 +83,7 @@ const TRANSACTIONS = ['add', 'remove', 'consume', 'purchase', 'correction'] as c
 
 /*
  * Claude chooses a tool from its description and nothing else, so each one
- * says what it is for AND when to reach for it. The seven writing descriptions
+ * says what it is for AND when to reach for it. The nine writing descriptions
  * lead with the fact that they do not write, because a model that believes it
  * has changed the stock will report back that it did, and the user will read a
  * confirmation card for a change they were told already happened.
@@ -241,7 +241,7 @@ export const TOOLS: readonly Anthropic.Tool[] = [
     },
   },
 
-  // ---- The seven that only propose ---------------------------------------
+  // ---- The nine that only propose -----------------------------------------
   {
     name: 'adjust_quantity',
     description:
@@ -357,6 +357,29 @@ export const TOOLS: readonly Anthropic.Tool[] = [
         target: { type: 'number', description: 'The level the user stated. Never one they did not.' },
       },
       required: ['item', 'target'],
+    },
+  },
+  {
+    name: 'create_location',
+    description:
+      'PROPOSE a new place to keep things. THIS DOES NOT CHANGE ANYTHING - it only proposes. ' +
+      'Call list_locations first: if a place with this name already exists, say so instead of ' +
+      'proposing a second one.',
+    input_schema: {
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'create_category',
+    description:
+      'PROPOSE a new category. THIS DOES NOT CHANGE ANYTHING - it only proposes. Call ' +
+      'list_categories first. The name is stored in the language the interface is set to.',
+    input_schema: {
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      required: ['name'],
     },
   },
 ];
@@ -550,6 +573,10 @@ const setTargetInput = z.object({
   target: z.number().min(0),
 });
 
+const createLocationInput = z.object({ name: z.string().min(1) });
+
+const createCategoryInput = z.object({ name: z.string().min(1) });
+
 // ---------------------------------------------------------------------------
 // Shared lookups
 // ---------------------------------------------------------------------------
@@ -611,7 +638,20 @@ function categoryName(names: Readonly<Record<string, string>>, language: string,
   return names[language] ?? names.en ?? id;
 }
 
-async function findCategory(deps: AiDeps, phrase: string): Promise<string | undefined> {
+/**
+ * A category phrase to a category, matched against every language it is
+ * named in rather than only the interface language.
+ *
+ * `list_items` and `search_catalog` only ever needed the id this used to
+ * return bare. `create_category` needs the name as well - it is what "a
+ * category called X already exists" names back - and `{id, name}` is the pair
+ * `findLocation` already returns for the same reason, so the two finders read
+ * the same way at every call site.
+ */
+async function findCategory(
+  deps: AiDeps,
+  phrase: string,
+): Promise<{ readonly id: string; readonly name: string } | undefined> {
   const folded = foldText(phrase);
   if (folded === '') return undefined;
 
@@ -619,7 +659,9 @@ async function findCategory(deps: AiDeps, phrase: string): Promise<string | unde
   const match = all.find((category) =>
     Object.values(category.names).some((name) => foldText(name) === folded),
   );
-  return match?.id;
+  return match === undefined
+    ? undefined
+    : { id: match.id, name: categoryName(match.names, deps.language, match.id) };
 }
 
 // ---------------------------------------------------------------------------
@@ -642,11 +684,11 @@ async function listItems(deps: AiDeps, input: unknown): Promise<ToolRun> {
 
   let categoryIds: readonly string[] | undefined;
   if (filters.category !== undefined) {
-    const id = await findCategory(deps, filters.category);
-    if (id === undefined) {
+    const category = await findCategory(deps, filters.category);
+    if (category === undefined) {
       return ok({ matched: 0, showing: 0, note: `No category is called "${filters.category}". Call list_categories.`, items: [] });
     }
-    categoryIds = [id];
+    categoryIds = [category.id];
   }
 
   let locationIds: readonly string[] | undefined;
@@ -924,8 +966,8 @@ async function searchCatalog(deps: AiDeps, input: unknown): Promise<ToolRun> {
 
   let categoryIds: readonly string[] | undefined;
   if (filters.category !== undefined) {
-    const id = await findCategory(deps, filters.category);
-    if (id === undefined) {
+    const category = await findCategory(deps, filters.category);
+    if (category === undefined) {
       return ok({
         ...preamble,
         showing: 0,
@@ -933,7 +975,7 @@ async function searchCatalog(deps: AiDeps, input: unknown): Promise<ToolRun> {
         recommendations: [],
       });
     }
-    categoryIds = [id];
+    categoryIds = [category.id];
   }
 
   // One past the cap, so the tool can say the list was cut without a second
@@ -1320,6 +1362,92 @@ async function setTarget(deps: AiDeps, input: unknown): Promise<ToolRun> {
   );
 }
 
+/*
+ * A place named on its own - the one write in this file that is not about an
+ * item, matched and refused exactly as `execute.ts`'s CREATE_LOCATION is.
+ *
+ * A NAME THAT IS TAKEN IS ANSWERED, NOT MADE TWICE. `findLocation` matches on
+ * CONTAINS, so "porao" would find "Porão dos Fundos" here exactly as it does
+ * for `move_item`, and a second cellar a user cannot tell from the first is a
+ * worse outcome than being told the one they have: stock would start landing
+ * on both, and neither would then answer "what is in the cellar" truthfully.
+ * Someone who asks Claude to make a place they already have has almost
+ * certainly forgotten it, not decided to keep a second one.
+ *
+ * The refusal is the shape `create_item` and `move_item` already answer an
+ * unknown place with - `{ status: 'not proposed', reason }` - rather than the
+ * fuller `WHERE_LOCATION` answer `execute.ts` builds, which lists everything
+ * the place holds. That extra look is one `list_items` call away and Claude
+ * has the location's name in hand to make it; duplicating the query here
+ * would answer a question nobody asked when all that changed is which engine
+ * is running.
+ *
+ * `newLocation` is the only reason there could be, for the reason every other
+ * assumption on this write is absent: nothing was matched loosely because
+ * nothing was matched at all, and there is no quantity, unit or date in a bare
+ * name to have filled in.
+ */
+async function createLocation(deps: AiDeps, input: unknown): Promise<ToolRun> {
+  const parsed = createLocationInput.safeParse(input);
+  if (!parsed.success) return failed('create_location needs a name.');
+  const { name } = parsed.data;
+
+  const existing = await findLocation(deps, name);
+  if (existing !== undefined) {
+    return ok({
+      status: 'not proposed',
+      reason: `A place called "${existing.name}" already exists. Call list_locations, or list_items with that location, to see what it holds.`,
+    });
+  }
+
+  const write: PendingWrite = {
+    kind: 'NEW_LOCATION',
+    name,
+    ...assumed(['newLocation']),
+  };
+
+  return proposed(write, proposalNote(`create the place "${name}"`));
+}
+
+/*
+ * The same sentence about a heading instead of a shelf, answered the same way
+ * and for the same reason `createLocation` gives above.
+ *
+ * A NAME THAT IS TAKEN IS ANSWERED, NOT MADE TWICE. `findCategory` matches
+ * against every language the category is named in, so "tools" finds
+ * Ferramentas on a Portuguese phone exactly as `list_items` and
+ * `search_catalog` already rely on it to. Two categories a user cannot tell
+ * apart is worse than being shown the one they have: items would start being
+ * filed under both, and neither would then answer "what is in tools"
+ * truthfully - and a category is a heading the preparedness score is averaged
+ * OVER, so a duplicate does not just confuse a screen, it can move the score.
+ *
+ * `newCategory` is the only reason there could be, for the same reason
+ * `createLocation`'s `newLocation` is: nothing was matched loosely because
+ * nothing was matched at all, and a bare name carries nothing else to assume.
+ */
+async function createCategory(deps: AiDeps, input: unknown): Promise<ToolRun> {
+  const parsed = createCategoryInput.safeParse(input);
+  if (!parsed.success) return failed('create_category needs a name.');
+  const { name } = parsed.data;
+
+  const existing = await findCategory(deps, name);
+  if (existing !== undefined) {
+    return ok({
+      status: 'not proposed',
+      reason: `A category called "${existing.name}" already exists. Call list_categories, or list_items with that category, to see what it holds.`,
+    });
+  }
+
+  const write: PendingWrite = {
+    kind: 'NEW_CATEGORY',
+    name,
+    ...assumed(['newCategory']),
+  };
+
+  return proposed(write, proposalNote(`create the category "${name}"`));
+}
+
 // ---------------------------------------------------------------------------
 
 /**
@@ -1369,6 +1497,10 @@ export async function runTool(deps: AiDeps, name: string, input: unknown): Promi
         return await setMinimum(deps, input);
       case 'set_target':
         return await setTarget(deps, input);
+      case 'create_location':
+        return await createLocation(deps, input);
+      case 'create_category':
+        return await createCategory(deps, input);
       default:
         return failed(`There is no tool called "${name}".`);
     }

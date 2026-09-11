@@ -91,6 +91,8 @@ describe('ai tools: writes stay proposals', () => {
     await propose('set_minimum', { item: 'feijao preto', minimum: 12 });
     await propose('set_target', { item: 'feijao preto', target: 20 });
     const create = await propose('create_item', { name: 'quinoa', quantity: 2, unit: 'kg' });
+    await propose('create_location', { name: 'cellar' });
+    await propose('create_category', { name: 'pets' });
 
     expect(writes(exec.mock.calls)).toHaveLength(0);
     expect(transaction).not.toHaveBeenCalled();
@@ -106,6 +108,8 @@ describe('ai tools: writes stay proposals', () => {
 
   it('leaves every row exactly as it found it', async () => {
     const before = await deps.items.getById(feijaoId);
+    const locationsBefore = await deps.locations.list();
+    const categoriesBefore = await deps.categories.list();
 
     await propose('adjust_quantity', { item: 'feijao preto', amount: 5, direction: 'up' });
     await propose('set_quantity', { item: 'feijao preto', quantity: 99 });
@@ -114,12 +118,20 @@ describe('ai tools: writes stay proposals', () => {
     await propose('set_minimum', { item: 'feijao preto', minimum: 12 });
     await propose('set_target', { item: 'feijao preto', target: 20 });
     await propose('create_item', { name: 'quinoa' });
+    await propose('create_location', { name: 'cellar' });
+    await propose('create_category', { name: 'pets' });
 
     expect(await deps.items.getById(feijaoId)).toEqual(before);
     expect(await deps.items.history(feijaoId)).toHaveLength(0);
 
     const all = await deps.items.list(CONTEXT, { filters: { search: 'quinoa' } });
     expect(all.rows).toHaveLength(0);
+
+    // create_location and create_category each propose a row rather than
+    // insert one, so the tables they would land in are the honest witness -
+    // `getById` above only ever watched the item table.
+    expect(await deps.locations.list()).toEqual(locationsBefore);
+    expect(await deps.categories.list()).toEqual(categoriesBefore);
   });
 
   /*
@@ -137,6 +149,8 @@ describe('ai tools: writes stay proposals', () => {
       await propose('set_minimum', { item: 'feijao preto', minimum: 12 }),
       await propose('set_target', { item: 'feijao preto', target: 20 }),
       await propose('create_item', { name: 'quinoa', quantity: 2 }),
+      await propose('create_location', { name: 'cellar' }),
+      await propose('create_category', { name: 'pets' }),
     ];
 
     for (const proposal of proposals) {
@@ -390,6 +404,72 @@ describe('ai tools: writes stay proposals', () => {
       const run = await runTool(deps, 'set_target', { item: 'feijao preto', target: 20 });
       expect(run.proposal).toBeNull();
       expect(JSON.parse(run.result)).toMatchObject({ status: 'no change' });
+    });
+  });
+
+  /*
+   * A NAME THAT IS TAKEN IS ANSWERED, NOT MADE TWICE - the same rule
+   * `execute.writes.test` asserts over CREATE_LOCATION, and for the same
+   * reason: `findLocation` matches on CONTAINS, so a second "cellar" over a
+   * house that already has one would be indistinguishable from the first on
+   * every screen that lists them, and stock would start landing on either.
+   */
+  describe('create_location', () => {
+    it('proposes a place without writing it', async () => {
+      const before = await deps.locations.list();
+
+      const write = await propose('create_location', { name: 'cellar' });
+      expect(write).toMatchObject({ kind: 'NEW_LOCATION', name: 'cellar' });
+
+      expect(await deps.locations.list()).toEqual(before);
+    });
+
+    it('answers rather than proposing a place that already exists', async () => {
+      const before = await deps.locations.list();
+
+      const run = await runTool(deps, 'create_location', { name: 'despensa' });
+      expect(run.proposal).toBeNull();
+      const body = JSON.parse(run.result) as Record<string, unknown>;
+      expect(body.status).toBe('not proposed');
+      // Names the row that was found, so the model can pass the same name on
+      // to list_items instead of asking the user to describe it again.
+      expect(String(body.reason)).toMatch(/Despensa/);
+
+      expect(await deps.locations.list()).toEqual(before);
+    });
+  });
+
+  /*
+   * The same rule as create_location's, over the other table `execute.ts`
+   * refuses to duplicate: a category is a heading the preparedness score can
+   * be averaged over, and a second "tools" nobody can tell from the first
+   * would file some items under each and answer "what is in tools" falsely
+   * for both.
+   */
+  describe('create_category', () => {
+    it('proposes a category without writing it', async () => {
+      const before = await deps.categories.list();
+
+      const write = await propose('create_category', { name: 'pets' });
+      expect(write).toMatchObject({ kind: 'NEW_CATEGORY', name: 'pets' });
+
+      expect(await deps.categories.list()).toEqual(before);
+    });
+
+    it('answers rather than proposing a category that already exists', async () => {
+      const before = await deps.categories.list();
+
+      // Matched against every language a category is named in, not only the
+      // interface language - "tools" finds the row named Ferramentas in
+      // pt-BR - and the refusal reports the name back in the language this
+      // deps.language is set to, the same as every other tool's answers.
+      const run = await runTool(deps, 'create_category', { name: 'tools' });
+      expect(run.proposal).toBeNull();
+      const body = JSON.parse(run.result) as Record<string, unknown>;
+      expect(body.status).toBe('not proposed');
+      expect(String(body.reason)).toMatch(/Ferramentas/);
+
+      expect(await deps.categories.list()).toEqual(before);
     });
   });
 
