@@ -304,7 +304,17 @@ const MOVE_VERBS = [
   'store', 'stored', 'stash', 'stashed', 'take', 'took',
 ];
 
-/** "the cellar" is a cellar. An article a speaker used is not part of the name. */
+/**
+ * "the cellar" is a cellar. An article a speaker used is not part of the name.
+ *
+ * This can take a real word with it: a user who says "new place called The
+ * Shed" gets a place named "shed". That is accepted rather than fixed -
+ * folding already lower-cased the sentence before this runs, so the
+ * capital that would have marked "The" as part of a proper name is gone
+ * before this function ever sees it, and the Locations screen can rename the
+ * row afterwards - but it is a real cost this function pays, not a case it
+ * happens to get right.
+ */
 function stripLeadingArticle(name: string): string {
   return name.replace(/^(?:the|a|an)\s+/, '').trim();
 }
@@ -331,17 +341,43 @@ const rules: readonly Rule[] = [
      * above it groups the two "new X called Y" rules together; it is not
      * dodging a collision, because there isn't one to dodge.
      *
-     * Safe beside MOVE_ITEM too, which owns "place" as a bare VERB - "place
-     * the rice in the cellar" is a move. This rule can never take that
-     * sentence from it, at any position in the list: the pattern is anchored
-     * to OPEN with create, add, new or make, never with "place" itself, so
-     * the two cannot both match the same sentence.
+     * MOVE_ITEM's own pattern is not anchored on a fixed list of verbs the
+     * way this one is - its verb slot is a bare `[a-z]+`, filtered against
+     * MOVE_VERBS only once a match has already been found. That makes the
+     * two patterns genuinely able to match the same sentence, not merely
+     * alike in shape: "make a new location called storage in the pantry"
+     * satisfies this rule's pattern (verb "make", connector "called") AND
+     * MOVE_ITEM's (verb "make", item "new location called storage",
+     * destination "pantry") at once. What keeps them from fighting over a
+     * sentence like that is not the patterns but the VERB SETS checked at
+     * build time: MOVE_VERBS holds none of create, add, new or make, and
+     * none of MOVE_VERBS is among those four, so whichever rule's `build`
+     * runs first, the loser declines the moment it inspects the verb it
+     * captured. That is also why this rule's position relative to MOVE_ITEM
+     * is not load-bearing - only its position relative to ADJUST_QUANTITY
+     * is, for the reason given above.
+     *
+     * The pattern below is narrower than "a place-ish word, then whatever
+     * comes next" for a reason a first draft of it did not have: "place",
+     * "room", "area" and "spot" are ordinary English nouns that show up
+     * inside product names - "add a room spray", "add spot remover", "add a
+     * placemat" - in a way "item", "product", "entry" and "thing" above never
+     * do. A loose separator after the noun let each of those be misread as a
+     * place called "spray", "remover" or "mat". Two things close that gap.
+     * First, the separator between the noun and the name is a REAL one -
+     * `\s+`, or a colon with optional space around it - never the empty
+     * match that let "placemat" split into a noun and a name with nothing
+     * between them. Second, "called" or "named" (or the colon) is REQUIRED
+     * whenever the sentence opens with create, add or make: "add a room
+     * spray" has a noun and a name back to back with nothing marking the
+     * second as a name, and only "new" is worded plainly enough - "new place
+     * cellar" - to be trusted without one.
      */
     name: 'CREATE_LOCATION',
     pattern:
-      /^(?:create|add|new|make)\s+(?:an?\s+)?(?:new\s+)?(?:place|location|spot|area|room)\s*(?:called\s+|named\s+)?:?\s*(.+)$/,
+      /^(?:new\s+(?:an?\s+)?(?:place|location|spot|area|room)(?:\s+(?:called|named)\s+|\s*:\s*|\s+)(.+)|(?:create|add|make)\s+(?:an?\s+)?(?:new\s+)?(?:place|location|spot|area|room)(?:\s+(?:called|named)\s+|\s*:\s*)(.+))$/,
     build: (match): Intent | null => {
-      const name = stripLeadingArticle((match[1] ?? '').trim());
+      const name = stripLeadingArticle((match[1] ?? match[2] ?? '').trim());
       return name === '' ? null : { kind: 'CREATE_LOCATION', name };
     },
   },

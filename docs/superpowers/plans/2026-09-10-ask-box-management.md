@@ -585,6 +585,8 @@ git commit -m "Read a spoken place to create, in Spanish and Portuguese"
 
 ## Task 5: Execute and commit a created place
 
+**Remove the stub first.** Task 3 added `CREATE_LOCATION` to the `Intent` union, which broke `execute.ts`'s exhaustive switch, and closed it with `case 'CREATE_LOCATION': throw new Error('CREATE_LOCATION is not yet executed');`. That throw is the only thing standing between a user and a "new place, cellar" that works — until this task lands, the sentence parses and then produces an error banner. Replacing it is the first edit here, and nothing of it may survive: grep for `not yet executed` before committing.
+
 **Files:**
 - Modify: `src/services/voice/execute.ts`, `src/services/voice/commit.ts`
 - Test: `src/services/voice/execute.writes.test.ts`, `src/services/voice/commit.undo.test.ts`

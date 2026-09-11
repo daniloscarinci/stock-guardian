@@ -796,11 +796,20 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
     /*
      * Recognized by the English grammar already, executed by nobody yet.
      *
-     * Every other branch of this switch answers a question, proposes a write,
-     * or reports that nothing was found - and every one of those would be a
-     * lie told about a capability that does not exist. There is no
-     * `PendingWrite` for a bare place, and inventing one here would let a
-     * confirmation card offer to store something `commit` has no case for.
+     * Every other branch of this switch answers a question, proposes a
+     * write, asks the user to pick among several items, or reports that
+     * nothing was found - and every one of those would be a lie told about a
+     * capability that does not exist. There is no `PendingWrite` for a bare
+     * place, and inventing one here would let a confirmation card offer to
+     * store something `commit` has no case for.
+     *
+     * `unknown` is not on that list of things this could honestly return
+     * either, though it is the shape a reader would reach for first as the
+     * alternative to throwing: it exists for a transcript the grammar could
+     * not read, and this one was read perfectly. Claiming otherwise would
+     * send the user back to correcting a sentence that was never the
+     * problem.
+     *
      * Throwing is caught by `useVoice`'s `turn`, which is what keeps this
      * from crashing the sheet - it surfaces as the ordinary error text
      * instead of a silent wrong answer. Task 5 replaces this case with the

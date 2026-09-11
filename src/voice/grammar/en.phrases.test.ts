@@ -585,9 +585,49 @@ describe('en phrases: changing', () => {
    * create, add, new or make, never with "place" itself, so a sentence
    * spoken as a bare verb cannot be read as a creation regardless of where
    * the two rules sit relative to each other.
+   *
+   * `toEqual` rather than `toMatchObject`, so a future change to this
+   * pattern that keeps the kind but mangles the item or the location - "the
+   * rice" surviving with its article, say - fails here instead of passing a
+   * check that only ever looked at `kind`.
    */
   it('still reads "place the rice in the cellar" as a move', () => {
-    expect(say('place the rice in the cellar')).toMatchObject({ kind: 'MOVE_ITEM' });
+    expect(say('place the rice in the cellar')).toEqual({
+      kind: 'MOVE_ITEM', item: 'rice', location: 'cellar',
+    });
+  });
+
+  /**
+   * "place", "room", "area" and "spot" are ordinary English nouns inside
+   * ordinary product names, in a way "item", "product", "entry" and "thing"
+   * never are - a household actually has room spray, spot remover and area
+   * rugs on a shelf. An earlier draft of the pattern above read the first of
+   * these as the noun CREATE_LOCATION looks for and everything after it as
+   * the name of a new place, so "add a room spray" made a place called
+   * "spray" instead of putting one more can of spray on the stock. It stays
+   * ADJUST_QUANTITY here because "add" names no place at all without
+   * "called", "named" or a colon after the noun - see the rule's own comment
+   * for why only "new" is trusted without one.
+   */
+  it('does not read "add a room spray" as a place worth making', () => {
+    expect(say('add a room spray')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'room spray', direction: 'up',
+    });
+  });
+
+  /**
+   * The same bug, on the verb that has no fallback reading at all. "make" is
+   * in nobody's verb map - not ADD_VERBS, not REMOVE_VERBS, not MOVE_VERBS -
+   * so where "add a room spray" at least falls back to a stock addition,
+   * "make room in the pantry" fell all the way to UNKNOWN before
+   * CREATE_LOCATION existed. The loose pattern turned that UNKNOWN into a
+   * place called "in the pantry"; the fix is that "make", like "add", is not
+   * "new", so a sentence with neither "called" nor "named" nor a colon in it
+   * cannot be read as a creation and this phrase falls exactly where it did
+   * before CREATE_LOCATION was added.
+   */
+  it('does not read "make room in the pantry" as a place, and stays UNKNOWN', () => {
+    expect(say('make room in the pantry').kind).toBe('UNKNOWN');
   });
 });
 
