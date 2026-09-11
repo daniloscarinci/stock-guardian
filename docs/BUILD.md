@@ -16,7 +16,7 @@ npm install
 npm run dev          # development server, hot reload, http://localhost:5173
 npm run build        # production build → dist/, then the offline audit
 npm run preview      # serve dist/ at http://localhost:4173
-npm test             # 956 unit tests
+npm test             # 2263 unit tests
 npm run smoke        # drive the production build in a real browser
 npm run typecheck    # TypeScript, strict
 npm run lint         # ESLint
@@ -139,10 +139,12 @@ machine has none. `VITE_TARGET=android npm run build` produces a web build with
 no service worker, Capacitor wraps it, and the workflow signs the APK and
 attaches it to a release.
 
-The APK declares one permission, `android.permission.INTERNET`, for the AI
-assistant and nothing else. The workflow allows that one name and fails the
-build on any other, so the check that used to prove "no permissions" now proves
-"this one and no more". See `docs/ANDROID.md`.
+The APK declares three permissions and no others: `android.permission.INTERNET`
+for the AI assistant, `android.permission.RECORD_AUDIO` for the microphone in
+the ask box, and `android.permission.POST_NOTIFICATIONS` for the expiry
+reminders. The workflow allows exactly those three names and fails the build on
+any other, so the check that used to prove "no permissions" now proves "these
+three and no more". See `docs/ANDROID.md`.
 
 **No APK has been produced yet.** `docs/ANDROID.md` covers the signing key, the
 tag that triggers a build, and what to check on the first install.
@@ -151,12 +153,47 @@ tag that triggers a build, and what to check on the first install.
 
 ## The desktop application
 
-**Not built. No installer exists, and none is claimed.**
+**No installer has been built, and none is claimed.**
 
 `src-tauri/` is complete and reviewed but has never been compiled: this machine
-has no Rust toolchain. What follows is what to do, not a report of what was done.
+has no Rust toolchain. What follows is what will happen and what to do, not a
+report of what was done.
 
-### Setting it up
+### CI builds it now, on a runner that has the toolchain
+
+`.github/workflows/windows.yml` builds the Windows installers on a
+`windows-latest` runner, which already carries Rust and the Microsoft C++ build
+tools. That is the same reason `android.yml` exists: several gigabytes of
+toolchain, needed for one artifact, on a machine that does not have it.
+
+Two ways to start it.
+
+- **Push a version tag** — `v2.6.0`, say. The workflow builds the installers and
+  attaches them to the GitHub Release that tag makes. `android.yml` runs on the
+  same tag and attaches the APK to the same release, so one page carries both.
+- **Run it by hand** from the Actions tab, choosing *Build Windows desktop*.
+  That produces the same installers as workflow artifacts, which is how to check
+  a change without minting a version.
+
+The workflow runs the unit suite first, then installs `@tauri-apps/cli` and
+`@tauri-apps/api` with `--no-save`, deletes `src/database/tauri/tauri-api.d.ts`,
+and typechecks against the real package — which by hand is step 3 of *Setting it
+up, on your own machine* below, done in the one place it is actually needed.
+Those two packages are not in `package.json` on purpose: nothing else here
+wants them, and putting them there would put them in front of everybody who runs
+`npm ci` for any other reason. `tauri build` then runs `npm run build` itself,
+through `beforeBuildCommand`, so the offline audit runs as part of it.
+
+**The installers are unsigned.** There is no Windows code-signing certificate
+for this project, so SmartScreen warns on first run and the user has to choose
+*More info* then *Run anyway*. The release notes say so rather than leaving it
+to be discovered. The Android build is signed because that key exists; this one
+is not because no such key does.
+
+None of this has run yet. A workflow that exists is not an installer, and the
+list under *Check these first* is still entirely unchecked.
+
+### Setting it up, on your own machine
 
 1. Install Rust from <https://rustup.rs>.
 2. Install the Tauri prerequisites for your platform —

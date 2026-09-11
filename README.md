@@ -122,7 +122,14 @@ moves, with **Desfazer** offered for ten seconds; say something the application
 had to guess at, and a card appears saying what would change — and changes
 nothing until you press **Confirmar**. It works in all three languages.
 
-Three things about it belong here rather than in a footnote.
+It also makes things the inventory did not have. *"novo lugar, porão"* makes a
+place, *"nova categoria, ferramentas"* makes a category, and *"novo contato ana
+telefone 555 1234"* makes an emergency contact, with the number read back as
+digits rather than added up as a quantity. And a move to a shelf that does not
+exist yet no longer stops there: the same card offers to make the shelf, in one
+press, with an undo that takes back the move and the shelf together.
+
+Five things about it belong here rather than in a footnote.
 
 *The microphone tries your phone first, every time, and uses the internet only
 when your phone could not.* It sits in the sheet next to the box. Every press
@@ -186,7 +193,7 @@ doing it says so and stops. Once per launch, never over an answer you asked for,
 never when the phone is on silent, and off in one press at **Settings → Ask → Say
 hello when the app opens**.
 
-*Two engines answer the same box.* Twelve rules run on the device — exact,
+*Two engines answer the same box.* Twenty-two rules run on the device — exact,
 instant and free — and Claude answers instead when you have switched the
 assistant on and pasted a key. Every exchange says which one answered, because
 one of them costs money per question and the other does not.
@@ -214,7 +221,7 @@ setting, nothing is compiled into the build, and every question is charged to
 the account that key belongs to.
 
 *Offline is the fallback, not a casualty.* With no key, or the assistant
-switched off, the same box runs the twelve rules and nothing is sent. So does a
+switched off, the same box runs those rules and nothing is sent. So does a
 question that Claude could not answer — no signal, a refused key, too many
 questions at once — and the exchange says which of those it was rather than
 quietly pretending the assistant was never on. `docs/OFFLINE.md` sets out what
@@ -313,7 +320,7 @@ import shows you what the file contains and asks before writing anything.
 | `npm run dev` | Development server with hot reload |
 | `npm run build` | Production build, then the offline audit |
 | `npm run preview` | Serve the production build locally |
-| `npm test` | The 956-test unit suite |
+| `npm test` | The 2263-test unit suite |
 | `npm run smoke` | Drive the production build in a real browser (needs Edge or Chrome) |
 | `npm run typecheck` | TypeScript, strict |
 | `npm run lint` | ESLint |
@@ -381,10 +388,13 @@ a "coming soon" panel — if it is not built, it is not shown.
 - **Memory between sessions, for the assistant.** Each question starts fresh.
   What you can see in the history is for you to read, not something the model
   is given back.
-- **Asking for anything but stock.** The box reads the inventory and changes
-  quantities, expiry dates, and creates items. Categories, locations, contacts
-  and settings are screens. Nothing can be deleted or archived from the box, by
-  either engine.
+- **Deleting, archiving or changing a setting from the box.** The box reads the
+  inventory; it changes quantities, expiry dates, minimums and targets; it moves
+  items; and it creates items, places, categories and contacts. It deletes
+  nothing and archives nothing, by either engine, except the **Desfazer** that
+  takes back a row a sentence has just made. Settings are a screen, and so is
+  everything a spoken sentence cannot say: a parent shelf, a colour, a sort
+  order, notes, a priority — and renaming any of it afterwards.
 - **Photographs.** The database stores them; there is no interface for adding
   them yet.
 - **Barcode scanning.** A barcode can be typed in and is searchable. Scanning
@@ -399,10 +409,12 @@ a "coming soon" panel — if it is not built, it is not shown.
   GitHub Actions builds and signs the APK when a version tag is pushed. That has
   not been done yet, and no phone has run this build. **No APK exists yet, and
   none is claimed.** `docs/ANDROID.md` lists what to check on the first install.
-- **The desktop application.** `src-tauri/` is complete and reviewed, but it has
-  never been compiled — this machine has no Rust toolchain. `docs/BUILD.md` says
-  what to install and what to check afterwards. **No installer has been built, and
-  none is claimed.**
+- **The desktop application.** `src-tauri/` is complete and reviewed, and GitHub
+  Actions now builds the Windows installers on a runner carrying the Rust
+  toolchain this machine does not have, attaching them to the release a version
+  tag makes. That has not been done yet, so the code has never been compiled and
+  the Tauri SQLite driver has never executed. `docs/BUILD.md` says what to check
+  the first time it does. **No installer has been built, and none is claimed.**
 
 ---
 

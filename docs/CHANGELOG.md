@@ -1,5 +1,157 @@
 # Changelog
 
+## 2.6.0
+
+### The ask box can make a place, a heading and a person
+
+It could change stock and it could create an item. Everything else this
+application holds - a shelf, a category, an emergency contact - was a screen,
+and a sentence naming one that did not exist was a dead end.
+
+Three rules per language now, in English, Portuguese and Spanish, all the same
+shape: a creating word, a noun the rule watches for, and a name. The name may
+arrive after "called" or "named", after a colon, or after nothing but a space,
+and a leading article comes off it.
+
+> new place, cellar
+> nova categoria, ferramentas
+> nuevo contacto ana telefono 555 1234
+
+**A contact's number is read as digits, never as a quantity.** "five five five"
+is 555 to anybody reading it back and 15 to anything that adds, so the words are
+mapped one at a time. A word that is not a digit refuses the whole sentence:
+"phone five hundred" produces no intent at all, rather than a contact stored
+without the half the speaker cared about. A relationship is kept where the
+sentence gives one - "new contact my sister ana" - because `contacts.search`
+reads that field too, and it is the handle most people ask the number by.
+
+**A name already taken is answered rather than made twice.** "new place, cellar"
+on a pantry that has a cellar reads back what that shelf holds, out of the same
+helper "o que tem na despensa" uses. Two shelves whose names a user cannot tell
+apart is worse than being reminded of the one they have: stock would start
+landing on both, and neither would then answer truthfully. A category behaves
+the same way.
+
+**A category is named in one language, the one the interface is in.** The twenty
+built-in categories ship named in all three, and copying a spoken name into the
+other two columns would be writing English into the Portuguese one and
+presenting it as a translation. The other two fall through to the English name,
+or failing that to the row's id, which is a slug of the name - visible on the
+Categories screen, and fixable there.
+
+### What "new" costs, paid openly rather than quietly
+
+"new place cellar" and "new room spray" are token-for-token identical - a
+creating word, a noun this rule watches for, one more word - and a regex has no
+lexicon to tell a cellar from a spray with. Requiring "called" after "new" would
+refuse the plainest way anybody names a place; leaving the bare space accepts
+both. No pattern keeps the first and loses the second.
+
+So "new room spray" makes a place called "spray", "nuevo grupo electrogeno" a
+category called "electrogeno", and "new contact lenses" a person called
+"lenses". It is a decision rather than an oversight, and the grammars say so
+beside the patterns. "create", "add" and "make" are narrowed instead, because a
+sentence opening with one of them has somewhere else to land: all three need
+"called", "named" or a colon, so "add a room spray" is one more can of spray on
+the stock and "make room in the pantry" stays UNKNOWN exactly as it did before.
+
+Nothing is written on the guess either way. "new room spray" arrives as a card
+headed *spray* reading "No place is called spray. Confirming makes it.", with
+Cancel beside the button that would make it, and the Locations screen can rename
+the row.
+
+### A move to a shelf that is not there
+
+"move the rice to the cellar" with no cellar used to answer "I did not find the
+cellar" and offer nothing to press, having understood every word of it. The card
+carries it now: the place is proposed alongside the move, one press makes both,
+and Cancel makes neither. The reason shown is `newLocation` rather than
+`location`, because the reader is being asked to check a different thing - not
+which of their shelves was picked, but the spelling of a name about to become a
+row.
+
+The same is true of a creation that names a place. "criar item 2 kg de quinoa no
+porao" used to tell the user about the cellar and forget the quinoa, so a phrase
+naming two new things produced neither.
+
+**One receipt takes back more than one write.** A receipt is a list of actions in
+the order they have to run, which is the reverse of the order they were written
+in, so this one puts the rice back on its old shelf and then deletes the empty
+cellar. An undo that took back only the move would leave a shelf nobody asked
+for.
+
+One gap is left open on purpose. The place is written first, and the item can be
+deleted from the Inventory screen while the card is on screen; the move then
+fails, and no receipt comes back to remove the place. What is left is an empty
+shelf carrying the name that was said, listed on the Locations screen and
+deletable there - and saying the sentence again finds it. Compensating would mean
+another write that can fail in its turn, and `commit` is handed repositories
+rather than the driver, so there is no transaction to wrap the pair in.
+
+### Claude gained six tools, and the two engines match
+
+The assistant had four writing tools where the rules on the device had seven,
+which meant the paid engine could not move an item, set a minimum or set a
+target - three things the free one had done all along. It has ten now, the same
+ten: `move_item`, `set_minimum`, `set_target`, `create_location`,
+`create_category` and `create_contact` join the four that were there.
+Twenty-one tools in all, eleven of which only read.
+
+None of the ten writes. `converse.ts` owns its tool-use loop rather than handing
+it to the SDK's runner for exactly this reason: a runner executes the tools it
+is given, and these have to be intercepted, turned into a pending write, and
+answered with "the user has not agreed to this yet". What reaches the screen is
+the card a spoken sentence produces, and `commit` is still the only writer.
+
+Every proposal is `assumed` and never `explicit`, and the first reason on every
+card is `assistant`. The model chose the row and chose the reading; the reader
+is told so, rather than asked to check something they never did.
+
+**The unit on a minimum or a target is a flag, and says so rather than
+overclaiming.** Both tools now take an optional unit and compare it with the one
+the row is kept in, as `adjust_quantity` always has. Because it is optional, an
+absent unit reads exactly like a matching one, and only a unit named and wrong
+is ever caught. What is structural rather than hoped for: the card prints the
+item's own stored unit beside the number whatever Claude sent, and the tool
+result hands that same unit back to Claude before it says anything to the user.
+
+### The examples are shown before anything fails
+
+Twelve example sentences per language existed, translated, every one of them a
+phrase the grammar really accepts - and they were reachable only by asking for
+help outright or by failing to be understood. The answer was being offered to
+people who had already hit the wall.
+
+Six of them are now chips on an empty sheet, under **Try one of these**.
+Pressing one fills the box and puts the cursor in it rather than sending it: a
+first press should show the shape of a sentence this application understands,
+not add five cans of beans to somebody's inventory. Six rather than twelve
+because these are whole sentences, and twelve of them at phone width push the
+microphone and the box off the screen; the six are ordered to carry six
+different shapes. They go once there is a history, because by then the log
+teaches better than six buttons standing in front of it.
+
+### A workflow that builds the Windows desktop application
+
+`.github/workflows/windows.yml` builds the `.msi` and the `.exe` on a
+`windows-latest` runner, which carries Rust and the Microsoft C++ build tools
+already - the same argument `android.yml` makes about the Android SDK. A version
+tag attaches them to the release the APK lands on; the Actions tab runs it by
+hand and keeps them as artifacts instead. It installs `@tauri-apps/cli` and
+`@tauri-apps/api` with `--no-save` and deletes the stub that stands in for them,
+so neither package reaches anybody running `npm ci` for another reason.
+
+It ships unsigned, and the release notes say so rather than leaving it to be
+discovered: there is no Windows code-signing certificate for this project, so
+SmartScreen warns on first run. The Android build is signed because that key
+exists.
+
+**Nothing has been built by it yet.** A workflow that exists is not an
+installer, and the Tauri SQLite driver has still never executed. `docs/BUILD.md`
+keeps its list of what to check the first time it does.
+
+2117 tests to 2263.
+
 ## 2.5.0
 
 ### The application speaks, on the phone, at last

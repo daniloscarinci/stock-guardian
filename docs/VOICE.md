@@ -56,7 +56,7 @@ sets out what the other one sends.
 ## What you can say
 
 Every row below is taken from `src/voice/grammar/*.phrases.test.ts`, which is a
-corpus rather than a sample: 848 rows across the three languages, and a phrase
+corpus rather than a sample: 920 rows across the three languages, and a phrase
 that is not in it is a phrase this document does not claim. They are written the
 way speech arrives - lowercase, and often without accents - because that is what
 the parser has to survive, and it survived it through the release that had no
@@ -67,8 +67,9 @@ Accents, capitals and question marks are all optional. `o que ta vencendo` and
 
 A one-page version of this table, formatted to read on a phone or print for a
 wall, is at <https://claude.ai/code/artifact/fe802827-2be9-46fc-8529-cddf3e5b23c4>.
-It carries the same phrases, and every one of them was run through `parse()`
-before it was published.
+It carries the phrases this table held at 2.5.0, each one run through `parse()`
+before it was published; the three creating sentences added since are not on it
+yet.
 
 ### Asking - eleven questions, none of which writes anything
 
@@ -86,7 +87,7 @@ before it was published.
 | How prepared you are | `como ta minha preparacao` | `how prepared am i` | `que tan preparado estoy` |
 | How much there is of everything | `quantos itens eu tenho` | `how many items do i have` | `cuantos items tengo` |
 
-### Changing - seven, each confirmed or undoable
+### Changing - ten, each confirmed or undoable
 
 | What it does | Português | English | Español |
 |---|---|---|---|
@@ -97,17 +98,117 @@ before it was published.
 | Move it somewhere else | `move o arroz para o porao` | `move the rice to the cellar` | `mueve el arroz al sotano` |
 | Set a minimum | `o minimo de arroz e 5 quilos` | `the minimum for rice is 5 kg` | `el minimo de arroz es 5 kilos` |
 | Set a target | `quero ter 20 latas de feijao` | `i want 20 cans of beans` | `quiero tener 20 latas de frijoles` |
+| Make a place | `novo lugar, porao`<br>`criar area: quintal` | `new place, cellar`<br>`add a place called the cellar` | `nuevo lugar, sotano`<br>`crear zona: garaje` |
+| Make a category | `nova categoria, ferramentas`<br>`criar grupo: agua` | `new category, tools`<br>`make a category: water` | `nueva categoria, herramientas`<br>`crear grupo: agua` |
+| Add an emergency contact | `novo contato, ana`<br>`adiciona um contato chamado ana fone 555 1234` | `new contact, ana`<br>`add a contact called ana phone number 555 1234` | `nuevo contacto, ana`<br>`agrega un contacto llamado ana numero de telefono 555 1234` |
 
 `ajuda` / `help` / `ayuda` lists examples in whichever language the interface is
 set to, drawn from the grammar itself so they cannot drift out of date.
 
+### Six of them are offered before anything fails
+
+Open the sheet with nothing in the log and six of those same examples sit under
+it as chips, headed **Try one of these**. Pressing one puts the sentence in the
+box and the cursor in it. It does not send it, and that is the whole reason they
+are worth having: a first press should not add five cans of beans to somebody's
+inventory, it should show the shape of a sentence this application understands
+so that the next one can be their own.
+
+There are twelve examples per language and the sheet shows the first six. These
+are whole sentences, so at phone width most of them take a row to themselves,
+and every row stands above the microphone and the box. The six are ordered to
+carry six different shapes - one item's quantity, what is going off, what to
+buy, stock arriving, stock going, and a place being made. All twelve are still
+read out by `ajuda` / `help` / `ayuda`, and by any sentence that was not
+understood.
+
+They go once there is a history. By then the log is the better teacher, and six
+buttons would be standing between the reader and their own conversation. They
+sit outside that log rather than at the top of it, because the log is an
+`aria-live` region and six examples appearing and then disappearing is not news.
+
+### Three sentences that make something
+
+The last three rows of the table are the only ones here whose subject is not
+stock, and all three read the same shape: a creating word, a noun the rule
+watches for, and a name. `create`, `add`, `new` and `make` in English; `criar`,
+`cria`, `adicionar`, `adiciona`, `novo` and `nova` in Portuguese; `crear`,
+`crea`, `agregar`, `agrega`, `anadir` and `anade` in Spanish, with `nuevo` or
+`nueva` allowed on either side of the noun. The name may be introduced by
+`called` or `named` - `chamado`, `llamado` - by a colon, or by nothing at all,
+and a leading article comes off, so `add a place called the cellar` names the
+place `cellar`.
+
+**A name that is already taken is answered rather than made twice.** `new place,
+cellar` said on a pantry that has a cellar does not propose a second one; it
+reads back what that shelf holds, from the same helper `o que tem na despensa`
+uses. A category behaves the same way. Two places whose names you cannot tell
+apart is a worse outcome than being reminded of the one you have, because stock
+would start landing on both and neither would then answer "what is in the
+cellar" truthfully.
+
+**A contact carries a spoken phone number, read as digits.** `new contact ana
+phone five five five one two three four` stores `5551234`. A number said one
+digit at a time is not arithmetic - `five five five` is 555 to anybody reading
+it back and 15 to anything that adds - so the words are mapped to digits one by
+one, and a word that is not a digit refuses the whole sentence: `phone five
+hundred` produces no intent at all, rather than a contact stored without the
+half the speaker cared about. A relationship is kept where the sentence gives
+one, as `new contact my sister ana` does. `contacts.search` reads the
+relationship as well as the name, and it is often the handle somebody reaches
+for when they ask for the number later.
+
+A name is all a place and a category take, and a name, a relationship and a
+number are all a contact takes. A parent shelf, a description, an icon, a
+colour, a sort order, notes and a priority are left to the screens, because not
+one of them is a thing anybody says out loud - and neither is an email address,
+which heard aloud is a guess at somebody's spelling.
+
+**A category is named in one language - the one the interface is in.** The
+twenty built-in categories ship named in all three, and copying a spoken name
+into the other two columns would be writing English into the Portuguese one and
+presenting it as a translation. So the other two fall through: to the English
+name where there is one, and otherwise to the row's id, which is a slug of the
+name. A category made in Portuguese as *Kit de fuga* reads as `kit-de-fuga` on
+an English phone until somebody names it there on the Categories screen.
+
+### What the bare space costs
+
+`new place cellar` and `new room spray` are token-for-token identical - a
+creating word, a noun the rule already watches for, and one more word - and a
+regex has no lexicon to tell a cellar from a spray with. The rule can require
+`called` or `named` after `new` as well, which refuses the plainest way anybody
+names a place, or it can leave the bare space and accept both. No pattern here
+keeps the first and loses the second.
+
+So the bare space stays, and this is what it costs. `new room spray` makes a
+place called `spray` rather than one called `room spray`; `new group buy` makes
+a category called `buy`; `new contact lenses` makes a person called `lenses`.
+Spanish pays it on `nuevo grupo electrogeno` - a generator set, filed as a
+category called `electrogeno` - and Portuguese on `novo grupo de risco`, filed
+as `de risco`.
+
+`create`, `add` and `make` are narrowed instead, because a sentence opening with
+one of them has somewhere else to land. All three require `called`, `named` or a
+colon, so `add a room spray` is one more can of spray on the stock, `add contact
+lenses` is one more box of lenses, and `make room in the pantry` stays UNKNOWN
+exactly as it did before any of this existed. The separator is always a real
+space or a colon and never the empty match, so `grouper`, `agrupacion` and
+`contacted` are never split into a noun and a name.
+
+Nothing is written on the guess. `new room spray` arrives as a card headed
+*spray* reading "No place is called spray. Confirming makes it.", with Cancel
+beside the button that would make it - and the Locations screen can rename the
+row afterwards.
+
 ### The two that are not on the list
 
-`MOVE_ITEM` refuses a destination that does not exist rather than moving an item
-to nowhere, and it declines a phrase that names a quantity - `coloca 2 quilos de
-arroz na despensa` is two kilos arriving on a shelf, not a partial move, and an
-item holds one location. A partial move is not something this application can
-perform, so it is not something this parser pretends to understand.
+`MOVE_ITEM` declines a phrase that names a quantity - `coloca 2 quilos de arroz
+na despensa` is two kilos arriving on a shelf, not a partial move, and an item
+holds one location. A partial move is not something this application can
+perform, so it is not something this parser pretends to understand. It no longer
+refuses a destination that does not exist; see *A place the sentence named and
+the pantry does not have*.
 
 `SET_MINIMUM` and `SET_TARGET` ask before storing a number counted in a unit the
 row does not keep. A wrong adjustment shows up the next time anyone looks at the
@@ -146,14 +247,17 @@ confidence that you have none. Four characters survive: `/` for a date, `-` for
 an ISO date, `'` because it belongs to the name carrying it, and `:` because the
 create rules read it.
 
-**Walk the rules.** Each language is one grammar file holding twelve rule
+**Walk the rules.** Each language is one grammar file holding twenty-two rule
 objects, tried in order; the first that both matches and builds wins. A rule may
 decline by returning `null`, which is how `tira zero de arroz` fails to become
 an adjustment rather than becoming a wrong one. Order is load-bearing:
 `agora tenho 12 latas` must reach the SET_QUANTITY rule before the
-QUERY_QUANTITY rule that also matches `tenho`. `parse.test.ts` pins it.
+QUERY_QUANTITY rule that also matches `tenho`, and the rules that make a place,
+a category and a contact must reach `add a place called the cellar` before
+ADJUST_QUANTITY does, whose verb map claims `add`, `adiciona` and `agrega` as
+well. `parse.test.ts` pins it.
 
-**Produce an Intent.** Eleven kinds, plus `UNKNOWN`. An Intent is data and
+**Produce an Intent.** Twenty-one kinds, plus `UNKNOWN`. An Intent is data and
 cannot act — it holds the phrase as typed, not a database identifier. That is what
 makes the whole parser testable with a string and an expectation, and it is why
 `src/voice/` performs no I/O at all.
@@ -196,6 +300,76 @@ After a write lands, the receipt is read back **out of the database** rather tha
 assembled from the request. What you hear is then a statement about what is
 stored, which is the only thing worth saying to someone who is not looking at
 the screen.
+
+### A place the sentence named and the pantry does not have
+
+`move the rice to the cellar` used to end there when no cellar existed. Every
+word had been understood and the item had been found, and the answer was still
+"I did not find the cellar" with nothing to press. That was a dead end, and a
+dead end in the one part of this application built for somebody holding a torch.
+
+The card carries it now. A move, or a creation, naming a place that is not there
+proposes the place alongside the write, under a line reading "No place is called
+cellar. Confirming makes it." One press makes the shelf and moves the rice, and
+Cancel makes neither. The reason shown is `newLocation` rather than `location`,
+and the difference is what it asks you to check: `location` picked one of your
+shelves and asks which one, `newLocation` found none and asks about the spelling
+of a name that is about to become a row. A place named on its own - `new place,
+cellar` - is the same write without the move, and the same card.
+
+**Undo takes back both.** A receipt is a list of actions in the order they have
+to run, which is the reverse of the order they were written in, so this one puts
+the rice on its old shelf and then deletes the empty cellar. An undo that took
+back only the move would leave a shelf nobody asked for.
+
+One gap is left open deliberately. The place is written first and the move
+second, and the item can be deleted from the Inventory screen while the card is
+on screen; the move then fails and no receipt comes back to take the place away.
+What is left behind is an empty shelf carrying the name you said, listed on the
+Locations screen and deletable there like any other - and saying the sentence
+again finds it, so the second attempt is an ordinary move onto a shelf that
+exists. Compensating for it would mean another write that can fail in its turn,
+and `commit` is handed repositories rather than the driver, so there is no
+transaction to wrap the pair in.
+
+---
+
+## What the assistant can propose
+
+Claude is handed twenty-one functions: eleven that read and ten that only
+propose. The ten are the grammar's ten, and matching them is the point of the
+number - `adjust_quantity`, `set_quantity`, `create_item`, `set_expiry`,
+`move_item`, `set_minimum`, `set_target`, `create_location`, `create_category`
+and `create_contact`. Until this release it had the first four, which meant the
+free engine on the device could do three things the paid one could not.
+
+None of them writes. `converse.ts` runs its own tool-use loop rather than the
+SDK's runner for exactly this reason: a runner executes the tools it is given,
+which is right for the eleven that read and wrong for these ten, each of which
+has to be intercepted, turned into a pending write, and answered with "the user
+has not agreed to this yet". What reaches the screen is the same card a spoken
+sentence produces, and `commit` is the same and only writer.
+
+**Every proposal is `assumed`, never `explicit`.** `execute` keeps `explicit`
+for the narrow case where the user's own words named an exact item and an exact
+amount, and a sentence that has been through a model has no such case: the model
+chose the row and chose the reading, and it may have chosen well, but the user
+did not say it. So every proposal carries at least one reason and the first of
+them is `assistant`, which says who chose.
+
+`create_contact` takes an email and a place where the spoken sentence takes
+neither. A model is reading typed text rather than a transcript, so an address
+it was shown is an address it can spell.
+
+**The unit on a minimum or a target is a flag, not a guarantee.** `set_minimum`
+and `set_target` take an optional unit and compare it with the one the row is
+kept in, exactly as `adjust_quantity` does. Because it is optional, an absent
+unit reads exactly like a matching one, and only a unit that is named and wrong
+is ever caught. What is structural rather than hoped for is that the card prints
+the item's own stored unit beside every number on those two writes whatever
+Claude sent, so the person confirming checks the true unit against their memory
+of the shelf; and the tool result hands that same stored unit back to Claude
+before it says anything to the user at all.
 
 ---
 
@@ -619,11 +793,16 @@ code it describes.
 - **No conversation.** The engine answers the forms in the tables above.
   Anything else is UNKNOWN with examples, not a guess. It has no memory between
   sentences: each one is parsed on its own, so "and two more" refers to nothing.
-- **No new categories, locations, contacts or settings from the box.** It reads
-  the inventory and changes quantities, expiry dates, and creates items.
-  Everything else is a screen.
+- **No settings from the box, and no editing of what it made.** It reads the
+  inventory; it changes quantities, expiry dates, minimums and targets; it moves
+  items; and it creates items, places, categories and contacts. A new row
+  carries only what could be asked for, so a parent shelf, a colour, a sort
+  order, notes and a priority are set on the screens - and renaming anything is
+  a screen too.
 - **No deleting or archiving from the box.** Destructive actions stay where they
-  can be read before they are taken.
+  can be read before they are taken. **Desfazer** deletes a row a sentence just
+  made, within the ten seconds it is offered for, and that is the only deletion
+  reachable from here.
 
 ---
 
@@ -635,11 +814,13 @@ write without a press.
 **A preposition is read as a location.** The create rules treat the first
 preposition as a location marker, so `criar item atum em lata` yields the name
 `atum` and the location `lata`, and `create item tuna in oil` yields `tuna` in
-`oil`. What happens next depends on whether a location by that name exists: if
-one does, a confirmation card appears naming a shelf you did not mean; if none
-does — the usual case — the screen answers "I did not find \"lata\"", and the
-**Create** button beside it creates the item unplaced. The cost is the lost half
-of the name, and it is visible before anything is stored.
+`oil`. The card then names a shelf you did not mean. If a location by that name
+happens to exist, it is that one; if none does — the usual case — it is a shelf
+to be made, under the line saying no place is called that, and confirming makes
+the item and the shelf together. So this is the phrase where *A place the
+sentence named and the pantry does not have* costs something rather than saving
+something. **Desfazer** takes back both. The cost is the lost half of the name,
+and all of it is on the card before anything is stored.
 
 **Slashed dates are read day/month in every language.** `12/09` is 12 September
 in English as well as in Portuguese and Spanish. The **Date format** setting is
