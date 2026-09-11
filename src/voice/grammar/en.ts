@@ -370,8 +370,29 @@ const rules: readonly Rule[] = [
      * between them. Second, "called" or "named" (or the colon) is REQUIRED
      * whenever the sentence opens with create, add or make: "add a room
      * spray" has a noun and a name back to back with nothing marking the
-     * second as a name, and only "new" is worded plainly enough - "new place
-     * cellar" - to be trusted without one.
+     * second as a name.
+     *
+     * "new" is not narrowed the same way, and staying loose there is a
+     * decision, not an oversight it would be tidy to close up next.
+     * "new place cellar" and "new room spray" are token-for-token identical -
+     * a creating word, a noun this rule already watches for, and one more
+     * word - and a regex has no lexicon to tell a cellar from a spray with.
+     * It can require the connector after "new" too, which refuses the
+     * plainest way anyone names a place ("new place cellar" itself), or it
+     * can leave the bare space and accept "new room spray" right along with
+     * it; no pattern here can keep one and lose the other. What the bare
+     * space still costs, spelled out because it is a real cost and not an
+     * oversight: "new room spray" makes a place called "spray" rather than
+     * one called "room spray" - the same price Spanish pays on "nueva zona
+     * de cultivo" and Portuguese on "nova area externa", for the same reason.
+     *
+     * Nothing is written on that guess. `CREATE_LOCATION` is one of the
+     * `WRITING_INTENTS`, `execute` proposes a `NEW_LOCATION` rather than
+     * writing one, and "new room spray" reaches the user as a card headed
+     * "spray" that reads "No place is called spray. Confirming makes it." -
+     * with a Cancel button beside the one that would make it - the same check
+     * every other guess in this grammar goes through before anything lands in
+     * the database.
      */
     name: 'CREATE_LOCATION',
     pattern:

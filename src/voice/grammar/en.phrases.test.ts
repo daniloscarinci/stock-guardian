@@ -606,13 +606,33 @@ describe('en phrases: changing', () => {
    * the name of a new place, so "add a room spray" made a place called
    * "spray" instead of putting one more can of spray on the stock. It stays
    * ADJUST_QUANTITY here because "add" names no place at all without
-   * "called", "named" or a colon after the noun - see the rule's own comment
-   * for why only "new" is trusted without one.
+   * "called", "named" or a colon after the noun.
    */
   it('does not read "add a room spray" as a place worth making', () => {
     expect(say('add a room spray')).toMatchObject({
       kind: 'ADJUST_QUANTITY', item: 'room spray', direction: 'up',
     });
+  });
+
+  /**
+   * "new room spray" is a documented cost, not a bug this test is guarding
+   * against fixing.
+   *
+   * "new place cellar" and "new room spray" are the same four words in the
+   * same shape - a creating word, a noun this rule watches for, one more
+   * word - and the rule's own comment explains why no pattern can accept the
+   * first without accepting the second: there is no lexicon in a regex to
+   * tell a cellar from a spray with. Narrowing "new" the way "add" was
+   * narrowed above would also refuse "new place cellar" itself, the plainest
+   * way anyone names a place - and "new" is nowhere in ADD_VERBS, so unlike
+   * "add a room spray" above there is no fallback reading to land on; a
+   * narrower pattern would turn this phrase UNKNOWN, not into a quantity.
+   * The accepted fix is the confirmation card this produces instead, so if a
+   * future reader "fixes" this test to expect UNKNOWN, they have just
+   * reopened "new place cellar" as a sentence this grammar cannot read.
+   */
+  it('reads "new room spray" as a place too, and pays for it on the card', () => {
+    expect(say('new room spray')).toEqual({ kind: 'CREATE_LOCATION', name: 'spray' });
   });
 
   /**
