@@ -1,0 +1,134 @@
+# Builds the Windows desktop application and publishes the installers.
+#
+# Nothing about this build happens on a developer's machine either, and for the
+# same reason android.yml gives: the Rust toolchain and the Microsoft C++ build
+# tools are several gigabytes, needed for one artifact, and a windows-latest
+# runner already carries both.
+#
+# Pushing a tag produces a GitHub Release with the installers attached, which is
+# the copy you install. Running it by hand from the Actions tab produces the same
+# installers as workflow artifacts, for checking a change without minting a
+# version.
+#
+# TWO THINGS THIS BUILD DOES THAT THE OTHER TWO DO NOT.
+#
+# It installs the Tauri tooling here rather than carrying it in package.json.
+# `@tauri-apps/cli` and `@tauri-apps/api` are needed by this workflow and by
+# nothing else - not the web build, not the Android build, not the test suite -
+# and adding them to the manifest would put them in front of everyone who ever
+# runs `npm ci` for any other reason. docs/BUILD.md tells a human to install
+# exactly these two and delete exactly one file; this does the same thing, in
+# the one place it is actually needed.
+#
+# It ships UNSIGNED. There is no Windows code-signing certificate for this
+# project, so SmartScreen warns on first run and the user has to click through
+# it. That is a real cost and it is stated in the release notes rather than left
+# to be discovered. The Android build is signed because that key exists; this
+# one is not because no such key does.
+name: Build Windows desktop
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # windows-latest ships a Rust toolchain, but pinning it here means a
+      # runner image update cannot change the compiler under us between one
+      # release and the next.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # The same suite the other two workflows run. The desktop build shares
+      # every line of application code with them, so a failure here is a failure
+      # everywhere and is worth finding before Rust starts compiling.
+      - run: npm test
+
+      # See the note at the top. The version is pinned to the major the Rust
+      # side asks for - src-tauri/Cargo.toml depends on tauri 2.
+      - name: Add the Tauri tooling this repository does not carry
+        run: npm install --no-save @tauri-apps/cli@^2 @tauri-apps/api@^2
+
+      # This stub exists only so the project typechecks WITHOUT the package
+      # above. With the real @tauri-apps/api installed it is a duplicate
+      # declaration, so it goes - exactly as docs/BUILD.md says to do by hand.
+      - name: Remove the stub the real package replaces
+        shell: bash
+        run: rm -f src/database/tauri/tauri-api.d.ts
+
+      - name: Check the project still typechecks against the real package
+        run: npx tsc --noEmit
+
+      # `tauri build` runs `npm run build` itself, via beforeBuildCommand in
+      # src-tauri/tauri.conf.json - which includes the offline audit. The
+      # desktop build has no service worker and no VITE_TARGET of its own: it
+      # loads from the filesystem through Tauri's own protocol, so the web
+      # build's output is used as it stands.
+      - name: Build the installers
+        run: npx tauri build
+
+      - name: Collect the installers
+        id: bundle
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          mkdir -p out
+          # Tauri writes an .msi and an NSIS .exe. Both are kept: the .exe is
+          # the one to double-click, the .msi is the one to deploy with.
+          find src-tauri/target/release/bundle -type f \( -name '*.msi' -o -name '*.exe' \) \
+            -exec cp {} out/ \;
+          ls -la out/
+          if [ -z "$(ls -A out/)" ]; then
+            echo "Tauri produced no installer. The bundle directory was empty."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the installers when this was run by hand
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-guardian-windows-${{ steps.bundle.outputs.version }}
+          path: out/*
+          if-no-files-found: error
+
+      # Attaches to whatever release the tag made - android.yml creates it for
+      # the same tag, and softprops/action-gh-release updates rather than
+      # replaces, so the APK and the installers land on one page.
+      - name: Attach the installers to the release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          fail_on_unmatched_files: true
+          body: |
+            **Windows is unsigned.** SmartScreen will warn on first run: choose
+            *More info* then *Run anyway*. There is no Windows code-signing
+            certificate for this project. The Android APK is signed.
+
+            **The desktop application keeps its own database.** It does not
+            share data with the phone or with a browser. Nothing syncs between
+            them, by design - see docs/OFFLINE.md.
