@@ -304,12 +304,46 @@ const MOVE_VERBS = [
   'store', 'stored', 'stash', 'stashed', 'take', 'took',
 ];
 
+/** "the cellar" is a cellar. An article a speaker used is not part of the name. */
+function stripLeadingArticle(name: string): string {
+  return name.replace(/^(?:the|a|an)\s+/, '').trim();
+}
+
 const rules: readonly Rule[] = [
   {
     name: 'HELP',
     pattern:
       /^(?:help|what can you do|what do you (?:understand|know)|what can i (?:say|ask)|what commands|how does this work|how do i use this)$/,
     build: (): Intent => ({ kind: 'HELP' }),
+  },
+
+  {
+    /*
+     * Early - specifically before ADJUST_QUANTITY, whose ADD_VERBS map also
+     * claims "add". Without this rule running first, "add a place called the
+     * cellar" is read as one more of an item named "place called cellar"
+     * rather than as a place worth creating - proven by running it through
+     * the grammar with this rule absent, not assumed.
+     *
+     * CREATE_ITEM never competes for the same sentence: its noun list is
+     * item, product, entry and thing, none of which can ever match this
+     * pattern's place, location, spot, area or room. Sitting immediately
+     * above it groups the two "new X called Y" rules together; it is not
+     * dodging a collision, because there isn't one to dodge.
+     *
+     * Safe beside MOVE_ITEM too, which owns "place" as a bare VERB - "place
+     * the rice in the cellar" is a move. This rule can never take that
+     * sentence from it, at any position in the list: the pattern is anchored
+     * to OPEN with create, add, new or make, never with "place" itself, so
+     * the two cannot both match the same sentence.
+     */
+    name: 'CREATE_LOCATION',
+    pattern:
+      /^(?:create|add|new|make)\s+(?:an?\s+)?(?:new\s+)?(?:place|location|spot|area|room)\s*(?:called\s+|named\s+)?:?\s*(.+)$/,
+    build: (match): Intent | null => {
+      const name = stripLeadingArticle((match[1] ?? '').trim());
+      return name === '' ? null : { kind: 'CREATE_LOCATION', name };
+    },
   },
 
   {

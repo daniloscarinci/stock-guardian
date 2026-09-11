@@ -157,6 +157,18 @@ export interface SetTarget {
   readonly unit: string | null;
 }
 
+/**
+ * "new place, cellar".
+ *
+ * A name and nothing else. `CreateLocationInput` takes a description, a parent
+ * and a sort order too, and none of them belong in a sentence: a place said
+ * out loud is a name, and the Locations screen is where a hierarchy is built.
+ */
+export interface CreateLocation {
+  readonly kind: 'CREATE_LOCATION';
+  readonly name: string;
+}
+
 export interface Help {
   readonly kind: 'HELP';
 }
@@ -175,14 +187,14 @@ export type Intent =
   | QueryExpiryOf | QueryScore | QueryCategory | QueryContact
   | QueryHistory | QueryTotal | AdjustQuantity | SetQuantity
   | CreateItem | SetExpiry | MoveItem | SetMinimum | SetTarget
-  | Help | Unknown;
+  | CreateLocation | Help | Unknown;
 
 export type IntentKind = Intent['kind'];
 
 /** Intents that would change data. Used to route to the confirmation card. */
 export const WRITING_INTENTS: readonly IntentKind[] = [
   'ADJUST_QUANTITY', 'SET_QUANTITY', 'CREATE_ITEM', 'SET_EXPIRY',
-  'MOVE_ITEM', 'SET_MINIMUM', 'SET_TARGET',
+  'MOVE_ITEM', 'SET_MINIMUM', 'SET_TARGET', 'CREATE_LOCATION',
 ];
 
 /**

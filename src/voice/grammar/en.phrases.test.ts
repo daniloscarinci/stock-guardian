@@ -557,6 +557,38 @@ describe('en phrases: changing', () => {
       kind: 'CREATE_ITEM', name: 'rice', amount: 10, unit: 'kg', location: 'pantry',
     });
   });
+
+  /**
+   * "new place, cellar" - a place with no item and nowhere else in the
+   * sentence for one to be.
+   *
+   * The comma is not a word the rule sees: `parse.ts` strips a comma that is
+   * not holding a decimal together before any rule runs, so this reaches
+   * CREATE_LOCATION as "new place cellar" - the noun and the name separated
+   * by nothing but the single space the comma leaves behind.
+   */
+  it('reads "new place, cellar" as a place to create', () => {
+    expect(say('new place, cellar')).toEqual({ kind: 'CREATE_LOCATION', name: 'cellar' });
+  });
+
+  it('drops the article from "add a place called the cellar"', () => {
+    expect(say('add a place called the cellar')).toEqual({
+      kind: 'CREATE_LOCATION', name: 'cellar',
+    });
+  });
+
+  /**
+   * The test that actually guards something: "place" is also a verb in
+   * `MOVE_VERBS`, so a sentence that opens with it - "place the rice in the
+   * cellar" - has to keep reaching MOVE_ITEM once CREATE_LOCATION exists.
+   * CREATE_LOCATION never competes for it: its pattern only ever opens with
+   * create, add, new or make, never with "place" itself, so a sentence
+   * spoken as a bare verb cannot be read as a creation regardless of where
+   * the two rules sit relative to each other.
+   */
+  it('still reads "place the rice in the cellar" as a move', () => {
+    expect(say('place the rice in the cellar')).toMatchObject({ kind: 'MOVE_ITEM' });
+  });
 });
 
 describe('en phrases: moving and thresholds', () => {

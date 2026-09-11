@@ -793,6 +793,22 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
       };
     }
 
+    /*
+     * Recognized by the English grammar already, executed by nobody yet.
+     *
+     * Every other branch of this switch answers a question, proposes a write,
+     * or reports that nothing was found - and every one of those would be a
+     * lie told about a capability that does not exist. There is no
+     * `PendingWrite` for a bare place, and inventing one here would let a
+     * confirmation card offer to store something `commit` has no case for.
+     * Throwing is caught by `useVoice`'s `turn`, which is what keeps this
+     * from crashing the sheet - it surfaces as the ordinary error text
+     * instead of a silent wrong answer. Task 5 replaces this case with the
+     * real one.
+     */
+    case 'CREATE_LOCATION':
+      throw new Error('CREATE_LOCATION is not yet executed');
+
     // The examples belong to the grammar, which lives in `src/voice/` and is
     // per-language. `execute` has no grammar and must not grow one.
     case 'HELP':
