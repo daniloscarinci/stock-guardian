@@ -37,4 +37,10 @@ export const enNumbers: NumberWords = {
   literals: { half: 0.5 },
   /** Joins hundreds to the rest: "one hundred and twenty". */
   joiner: 'and',
+  /**
+   * "five oh five" is 505. The letter O read as a zero, which is a thing
+   * English does only while spelling a number out and never means a quantity
+   * by - "oh" is in no other table here for exactly that reason.
+   */
+  digitAliases: { oh: 0 },
 };

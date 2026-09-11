@@ -822,6 +822,65 @@ describe('pt-BR phrases: changing', () => {
       kind: 'CREATE_CONTACT', name: 'de emergencia', relationship: null, phone: null,
     });
   });
+
+  /**
+   * A RELATIONSHIP FOLLOWED STRAIGHT BY THE NUMBER - the sentence the first
+   * shape of this rule got wrong. `en.ts`'s test says what went wrong and why
+   * the pattern no longer carries an optional phone group; this file's own
+   * comment is what makes the sentence first-class, since it names "meu
+   * medico" as the handle a Portuguese speaker reaches for.
+   */
+  it('reads a possessive followed straight by the number as the name', () => {
+    expect(say('novo contato meu medico telefone 5551234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'meu medico', relationship: null, phone: '5551234',
+    });
+    expect(say('novo contato minha irma telefone 5551234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'minha irma', relationship: null, phone: '5551234',
+    });
+    expect(say('novo contato minha irma ana telefone 5551234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: 'irma', phone: '5551234',
+    });
+  });
+
+  it('refuses a number with no name in front of it, and a marker with nothing after it', () => {
+    expect(say('novo contato telefone 5551234').kind).toBe('UNKNOWN');
+    expect(say('novo contato ana fone').kind).toBe('UNKNOWN');
+  });
+
+  /**
+   * "telefone do hospital" is a label somebody really would keep. The marker
+   * stands at the front with nothing that reads as digits behind it, so it
+   * separated nothing and the whole phrase is the name.
+   */
+  it('keeps a name that merely begins with the phone word', () => {
+    expect(say('novo contato telefone do hospital')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'telefone do hospital', relationship: null, phone: null,
+    });
+  });
+
+  /**
+   * "meia" is how a Brazilian dictates a six, and it is half a dozen
+   * everywhere else in this grammar. Both readings stand - see `digitAliases`.
+   */
+  it('reads "meia" as a six inside a phone number', () => {
+    expect(say('novo contato ana telefone cinco meia sete um dois tres quatro')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: '5671234',
+    });
+    expect(say('comprei meia duzia de ovos')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'ovos', amount: 6,
+    });
+  });
+
+  /**
+   * And the separator after the noun is a real one, so the plural is not split
+   * into a noun and a name - which is what keeps the catalog's own emergency
+   * contact list a thing to stock.
+   */
+  it('leaves "contatos" whole', () => {
+    expect(say('adiciona contatos de emergencia')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'contatos emergencia',
+    });
+  });
 });
 
 describe('pt-BR phrases: moving and thresholds', () => {

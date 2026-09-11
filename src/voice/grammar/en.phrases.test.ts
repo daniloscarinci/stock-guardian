@@ -807,9 +807,12 @@ describe('en phrases: changing', () => {
    * And the separator is a REAL one, never the empty match, so a word that
    * merely starts with the noun is not split into a noun and a name.
    */
-  it('leaves "contacted" whole', () => {
+  it('leaves "contacted" and "contactless" whole', () => {
     expect(say('add a contacted item')).toMatchObject({
       kind: 'ADJUST_QUANTITY', item: 'contacted item',
+    });
+    expect(say('add a contactless card')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'contactless card',
     });
   });
 
@@ -845,6 +848,68 @@ describe('en phrases: changing', () => {
   it('reads "new contact lenses" as a contact too, and pays for it on the card', () => {
     expect(say('new contact lenses')).toEqual({
       kind: 'CREATE_CONTACT', name: 'lenses', relationship: null, phone: null,
+    });
+  });
+
+  /**
+   * A RELATIONSHIP FOLLOWED STRAIGHT BY THE NUMBER, which is the sentence the
+   * first shape of this rule got wrong and the reason it no longer has an
+   * optional phone group in its pattern.
+   *
+   * "my doctor" is exactly the handle this rule captures relationships for, so
+   * "new contact my doctor phone 5551234" is first-class rather than exotic.
+   * The old pattern could not attach its phone group at the first character of
+   * the name, so the digits ended up INSIDE the name, the phone field stayed
+   * null, and a null phone field means no `heardDigits` guess - a card telling
+   * nobody to check anything, over a number nobody had seen.
+   *
+   * The reading now is that "my doctor" was never a relationship: with nothing
+   * in front of the marker there is no name for it to be a relationship TO, so
+   * it is the name. That is also what "new contact my doctor" on its own has
+   * always produced, so adding a number to a sentence that worked does not
+   * stop it working.
+   */
+  it('reads a possessive followed straight by the number as the name', () => {
+    expect(say('new contact my doctor phone 5551234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'my doctor', relationship: null, phone: '5551234',
+    });
+    expect(say('new contact my brother phone number 5551234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'my brother', relationship: null, phone: '5551234',
+    });
+    // And with a name after the relationship, nothing changes: that IS a
+    // relationship, because there is a name for it to belong to.
+    expect(say('new contact my sister ana phone 5551234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: 'sister', phone: '5551234',
+    });
+  });
+
+  /**
+   * A number with nobody attached to it is not a contact, and `contacts.create`
+   * would refuse it anyway. The grammar refuses it first.
+   */
+  it('refuses a number with no name in front of it', () => {
+    expect(say('new contact phone 5551234').kind).toBe('UNKNOWN');
+  });
+
+  /**
+   * A marker the recognizer cut the sentence off at. Storing "ana phone" as
+   * somebody's name would be storing a transcription artefact, and this file
+   * already refuses clipped sentences elsewhere for the same reason - see
+   * `canAssumeOne` and the leading partitive.
+   */
+  it('refuses a phone marker with nothing after it', () => {
+    expect(say('new contact ana phone').kind).toBe('UNKNOWN');
+  });
+
+  /**
+   * And a marker at the front with nothing that reads as digits behind it
+   * separated nothing, so it was never a marker: the whole phrase is a name.
+   * This is what keeps "numero de emergencia" and "telefone do hospital" the
+   * plain labels they are in the other two files.
+   */
+  it('keeps a name that merely begins with the phone word', () => {
+    expect(say('new contact called number for the vet')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'number for the vet', relationship: null, phone: null,
     });
   });
 });

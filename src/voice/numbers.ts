@@ -25,6 +25,24 @@ export interface NumberWords {
   readonly groups: Readonly<Record<string, number>>;
   readonly literals: Readonly<Record<string, number>>;
   readonly joiner: string;
+  /**
+   * Words that are a DIGIT when digits are being read out, and something else
+   * the rest of the time.
+   *
+   * Read only by `spokenDigits`, never by `parseNumber`, and that separation is
+   * the whole point of the field. Brazilians dictate a phone number saying
+   * "meia" for six - it is half a dozen - and "meia" is already a `literals`
+   * entry worth 0.5, which is what it means in "meia duzia de ovos". English
+   * says "oh" for zero while reading digits and never means a number by it
+   * anywhere else. Putting either in `units` would fix the phone number and
+   * break the pantry: "meia duzia" would become 6 dozen, and "oh" would become
+   * a spoken zero in every sentence in the grammar.
+   *
+   * Required rather than optional, so a fourth language has to answer the
+   * question instead of inheriting an empty answer. Spanish's is empty because
+   * Spanish has no such word - "cero" is what a Spanish speaker says.
+   */
+  readonly digitAliases: Readonly<Record<string, number>>;
 }
 
 /** Digits, with a comma decimal separator as Portuguese and Spanish write it. */
@@ -126,18 +144,25 @@ export function parseNumber(words: NumberWords, text: string): number | null {
  *   they are refused rather than skipped.
  *
  * Every digit word in all three languages comes out of `units` already -
- * zero/cero, um/uno/one, and the rest - so nothing here carries a table of its
- * own. That table also maps English's article "a" and the Spanish and
- * Portuguese "un"/"una"/"um"/"uma" to 1, which is an overreach this accepts:
- * "uno" IS how a digit is read aloud in two of these languages, and no phone
- * number anybody speaks has an English "a" inside it.
+ * zero/cero, um/uno/one, and the rest - so the tables carry nothing extra for
+ * the ordinary case. That table also maps English's articles "a" and "an", and
+ * the Spanish and Portuguese "un"/"uno"/"una"/"um"/"uma", to 1, which is an
+ * overreach this accepts: "uno" IS how a digit is read aloud in two of these
+ * languages, and no phone number anybody speaks has an English "a" or "an"
+ * inside it.
  *
- * What it will not read is the English "oh" for zero. It is a LETTER being
- * used as a digit, so it has no place in a table of number words - putting it
- * there would make "oh" a spoken zero everywhere else in the grammar - and a
- * shared helper has no language of its own to keep an English-only alias in.
- * A number said that way is refused whole rather than stored with a hole in
- * it, which is what every caller of this function is expected to do with null.
+ * `digitAliases` is for the words that are a digit HERE and something else
+ * everywhere else. Brazilians say "meia" for six when reading a number out -
+ * it is half a dozen - and "meia" is a `literals` entry worth 0.5, which is
+ * what it means in "meia duzia de ovos". English says "oh" for zero while
+ * reading digits and means no number at all by it anywhere else. Both are read
+ * here and neither is read by `parseNumber`, so "cinco meia sete" is 567 and
+ * "meia duzia" is still six eggs.
+ *
+ * A word that is in both tables is a digit here on the alias's terms: the
+ * alias is consulted first, because a table that has to be consulted second to
+ * be worth having would not have been worth adding. In practice only "meia"
+ * is in both, and 0.5 was never a digit anyway.
  *
  * SEPARATORS. A recognizer, and a person typing, put spaces, hyphens and
  * parentheses between the groups of a phone number. None of them carries a
@@ -167,9 +192,9 @@ export function spokenDigits(words: NumberWords, text: string): string | null {
       continue;
     }
 
-    const unit = words.units[token];
-    if (unit === undefined || !Number.isInteger(unit) || unit < 0 || unit > 9) return null;
-    digits += String(unit);
+    const value = words.digitAliases[token] ?? words.units[token];
+    if (value === undefined || !Number.isInteger(value) || value < 0 || value > 9) return null;
+    digits += String(value);
   }
 
   return international ? `+${digits}` : digits;

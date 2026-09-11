@@ -108,9 +108,28 @@ describe('spokenDigits', () => {
   it('refuses anything that is not a number word at all', () => {
     expect(spokenDigits(enNumbers, 'ana')).toBeNull();
     expect(spokenDigits(enNumbers, '')).toBeNull();
-    // The English reading of zero as a letter. Refused whole rather than
-    // stored with a digit missing out of the middle of it.
-    expect(spokenDigits(enNumbers, 'five oh five')).toBeNull();
+    expect(spokenDigits(enNumbers, 'five ana five')).toBeNull();
+  });
+
+  /**
+   * The words that are a digit HERE and something else everywhere else.
+   *
+   * "meia" matters most: it is the ordinary way a Brazilian dictates a six,
+   * and it is a `literals` entry worth 0.5 because that is what it means in
+   * "meia duzia". Both readings have to stand, which is why the aliases are a
+   * table `spokenDigits` reads and `parseNumber` does not - the last two
+   * assertions below are the ones that would break if somebody moved "meia"
+   * into `units` to fix the phone number.
+   */
+  it('reads the words that are a digit only while digits are being read', () => {
+    expect(spokenDigits(ptBRNumbers, 'cinco meia sete')).toBe('567');
+    expect(spokenDigits(enNumbers, 'five oh five')).toBe('505');
+    // Spanish has no such word and its table is empty, so nothing changes.
+    expect(spokenDigits(esNumbers, 'cinco media siete')).toBeNull();
+
+    expect(parseNumber(ptBRNumbers, 'meia duzia')).toBe(6);
+    expect(parseNumber(ptBRNumbers, 'meia')).toBe(0.5);
+    expect(parseNumber(enNumbers, 'oh')).toBeNull();
   });
 
   it('reads a spoken zero, because every units table already has one', () => {

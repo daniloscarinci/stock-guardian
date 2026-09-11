@@ -297,6 +297,57 @@ function stripLeadingArticle(name: string): string {
   return name.replace(/^(?:el|la|los|las|un|una)\s+/, '').trim();
 }
 
+/**
+ * Where a phone number starts in the words after the noun.
+ *
+ * `en.ts` says what this is for and what the longest-form-first ordering is
+ * about. The Spanish list is "numero de telefono", "telefono", "numero" and
+ * "tel", and the long form has to come first or "numero de telefono 5551234"
+ * leaves "de telefono" sitting at the front of the digits.
+ */
+const PHONE_MARKER = /(?:^|\s)(?:numero de telefono|telefono|numero|tel)(?:\s+(.+))?$/;
+
+/**
+ * The words after the noun, read as a name, a relationship and a number.
+ *
+ * `en.ts` sets out the four cases and why each one is answered the way it is;
+ * this is the same reading with this language's words. Two of those cases are
+ * more than theory here. "nuevo contacto mi medico telefono 5551234" is how
+ * somebody actually speaks, and "mi medico" is put back as the NAME rather
+ * than declined, because "nuevo contacto mi medico" with no number already
+ * makes a contact called "mi medico". And "numero de emergencia" is a label a
+ * person really would keep in an emergency contact list: a marker at the front
+ * with no digits behind it separated nothing, so the whole phrase is the name.
+ */
+function readContact(
+  numbers: NumberWords,
+  possessive: string | undefined,
+  relationship: string | undefined,
+  rest: string,
+): Intent | null {
+  const named = (phrase: string, related: string | null, phone: string | null): Intent | null => {
+    const name = stripLeadingArticle(phrase.trim());
+    return name === '' ? null : { kind: 'CREATE_CONTACT', name, relationship: related, phone };
+  };
+
+  const slot = rest.match(PHONE_MARKER);
+  const at = slot?.index;
+  if (slot === null || at === undefined) return named(rest, relationship ?? null, null);
+
+  const before = rest.slice(0, at).trim();
+  const spoken = slot[1];
+  const phone = spoken === undefined ? null : spokenDigits(numbers, spoken);
+
+  if (phone === null) {
+    if (before !== '' || possessive !== undefined) return null;
+    return named(rest, relationship ?? null, null);
+  }
+
+  return before === ''
+    ? named(possessive ?? '', null, phone)
+    : named(before, relationship ?? null, phone);
+}
+
 const rules: readonly Rule[] = [
   {
     name: 'HELP',
@@ -481,8 +532,9 @@ const rules: readonly Rule[] = [
      * that follows the verb, so this pattern never reaches the noun at all.
      * The connector is what closes the case that does: "agrega un contacto
      * bueno" names nobody without it. The separator after the noun is never
-     * the empty match, always a real space or a colon, so "contactos" and
-     * "contactar" stay whole.
+     * the empty match, always a real space or a colon, so "contactos" stays
+     * whole and "agrega contactos de emergencia" stays stock rather than a
+     * person.
      *
      * What the bare space after "nuevo" still costs, spelled out because it is
      * a real cost and not an oversight: everything past the noun becomes the
@@ -492,16 +544,23 @@ const rules: readonly Rule[] = [
      * card asks first, with the name and the number on it.
      *
      * One alternation and one tail, where the place and category rules write
-     * the tail out twice: those capture a name and nothing else, and this one
-     * captures a relationship, a name and a number. "mi" is the handle Spanish
-     * reaches for - "mi hermana", "mi medico" - and one word after it is as
-     * much as a regex can safely claim.
+     * the tail out twice: those capture a name and nothing else. "mi" is the
+     * handle Spanish reaches for - "mi hermana", "mi medico" - and one word
+     * after it is as much as a regex can safely claim. The number is peeled
+     * off the tail in `readContact` rather than by an optional group in the
+     * pattern, for the reason `en.ts` gives at length: such a group cannot
+     * attach at the first character of the name, so "nuevo contacto mi medico
+     * telefono 5551234" stored the digits inside the name and showed no
+     * warning about them.
      *
-     * A PHONE SLOT THAT CANNOT BE READ DECLINES THE WHOLE RULE. `spokenDigits`
-     * returns null for anything that is not digits - "telefono quinientos" is
-     * a quantity, and reading it as 5100 would store a number nobody said -
-     * and somebody who said a number expects the number. Refusing the sentence
-     * whole is what lets them see it was not understood.
+     * WHAT DECLINING ACTUALLY DOES, corrected here as it is in `en.ts`.
+     * Returning null declines the RULE, not the sentence, and `parse` carries
+     * on down the list. "nuevo contacto ana telefono quinientos" reaches
+     * nothing else and the sheet says it did not understand. "agrega un
+     * contacto llamado ana telefono quinientos" still opens with a verb in
+     * `ADD_VERBS`, so ADJUST_QUANTITY takes it, finds no such item, and offers
+     * to create a stock row named after the whole sentence. Nothing is written
+     * either way; the offer is a button.
      *
      * The catalog was swept in Spanish as it was for places and categories:
      * all 194 names in `data/catalog.generated.ts` after the eight creating
@@ -519,20 +578,9 @@ const rules: readonly Rule[] = [
      */
     name: 'CREATE_CONTACT',
     pattern:
-      /^(?:(?:nuevo|nueva)\s+(?:un\s+|una\s+)?contacto(?:\s+(?:llamado|llamada)\s+|\s*:\s*|\s+)|(?:crear|crea|agregar|agrega|anadir|anade)\s+(?:un\s+|una\s+)?(?:nuevo\s+|nueva\s+)?contacto(?:\s+(?:nuevo|nueva))?(?:\s+(?:llamado|llamada)\s+|\s*:\s*))(?:mi\s+([a-z]+)\s+)?(.+?)(?:\s+(?:numero de telefono|telefono|numero|tel)\s+(.+))?$/,
-    build: (match, tools): Intent | null => {
-      const name = stripLeadingArticle((match[2] ?? '').trim());
-      if (name === '') return null;
-
-      const relationship = match[1] ?? null;
-      const spoken = match[3];
-      if (spoken === undefined) {
-        return { kind: 'CREATE_CONTACT', name, relationship, phone: null };
-      }
-
-      const phone = spokenDigits(tools.numbers, spoken);
-      return phone === null ? null : { kind: 'CREATE_CONTACT', name, relationship, phone };
-    },
+      /^(?:(?:nuevo|nueva)\s+(?:un\s+|una\s+)?contacto(?:\s+(?:llamado|llamada)\s+|\s*:\s*|\s+)|(?:crear|crea|agregar|agrega|anadir|anade)\s+(?:un\s+|una\s+)?(?:nuevo\s+|nueva\s+)?contacto(?:\s+(?:nuevo|nueva))?(?:\s+(?:llamado|llamada)\s+|\s*:\s*))(?:(mi\s+([a-z]+))\s+)?(.+)$/,
+    build: (match, tools): Intent | null =>
+      readContact(tools.numbers, match[1], match[2], (match[3] ?? '').trim()),
   },
 
   {

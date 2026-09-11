@@ -37,4 +37,10 @@ export const esNumbers: NumberWords = {
   literals: { medio: 0.5, media: 0.5, mitad: 0.5 },
   /** Joins tens to units: "treinta y cinco". */
   joiner: 'y',
+  /**
+   * Empty, and that is an answer rather than a gap. Portuguese has "meia" for
+   * six and English "oh" for zero; a Spanish speaker reading a number out says
+   * "cero" and "seis", the words already in `units` above.
+   */
+  digitAliases: {},
 };

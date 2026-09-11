@@ -797,6 +797,50 @@ describe('es phrases: changing', () => {
       kind: 'CREATE_CONTACT', name: 'de emergencia', relationship: null, phone: null,
     });
   });
+
+  /**
+   * A RELATIONSHIP FOLLOWED STRAIGHT BY THE NUMBER - the sentence the first
+   * shape of this rule got wrong. `en.ts`'s test says what went wrong and why
+   * the pattern no longer carries an optional phone group; this file's own
+   * comment is what makes the sentence first-class, since it names "mi medico"
+   * as the handle a Spanish speaker reaches for.
+   */
+  it('reads a possessive followed straight by the number as the name', () => {
+    expect(say('nuevo contacto mi medico telefono 5551234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'mi medico', relationship: null, phone: '5551234',
+    });
+    expect(say('nuevo contacto mi hermana ana telefono 5551234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: 'hermana', phone: '5551234',
+    });
+  });
+
+  it('refuses a number with no name in front of it, and a marker with nothing after it', () => {
+    expect(say('nuevo contacto telefono 5551234').kind).toBe('UNKNOWN');
+    expect(say('nuevo contacto ana telefono').kind).toBe('UNKNOWN');
+  });
+
+  /**
+   * "numero de emergencia" is a label somebody really would keep in an
+   * emergency contact list. The marker stands at the front with nothing that
+   * reads as digits behind it, so it separated nothing and the whole phrase is
+   * the name.
+   */
+  it('keeps a name that merely begins with the phone word', () => {
+    expect(say('nuevo contacto numero de emergencia')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'numero de emergencia', relationship: null, phone: null,
+    });
+  });
+
+  /**
+   * And the separator after the noun is a real one, so the plural is not split
+   * into a noun and a name - which is what keeps the catalog's own emergency
+   * contact list a thing to stock.
+   */
+  it('leaves "contactos" whole', () => {
+    expect(say('agrega contactos de emergencia')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'contactos emergencia',
+    });
+  });
 });
 
 describe('es phrases: moving and thresholds', () => {

@@ -319,6 +319,94 @@ function stripLeadingArticle(name: string): string {
   return name.replace(/^(?:the|a|an)\s+/, '').trim();
 }
 
+/**
+ * Where a phone number starts in the words after the noun.
+ *
+ * A whole token, at the front of that phrase or after a space, so a word that
+ * merely contains one of these is left alone: "phones" and "telephones" are
+ * not split. The digits after it are OPTIONAL in the pattern and not in the
+ * reading: a marker with nothing after it is a sentence the recognizer cut
+ * off, and `readContact` refuses it rather than storing "ana phone" as
+ * somebody's name.
+ *
+ * The longest form comes first, because a regex alternation takes the first
+ * branch that matches. With "phone" ahead of "phone number", "ana phone
+ * number 5551234" leaves the word "number" sitting at the front of the digits,
+ * `spokenDigits` refuses it, and the sentence is declined whole.
+ */
+const PHONE_MARKER = /(?:^|\s)(?:phone number|phone|number|tel|telephone)(?:\s+(.+))?$/;
+
+/**
+ * The words after the noun, read as a name, a relationship and a number.
+ *
+ * The pattern hands over three things: the possessive phrase exactly as spoken
+ * ("my doctor"), the bare word inside it ("doctor"), and everything after it.
+ * Deciding which of those is the NAME is this function's whole job, and it is
+ * here rather than in the pattern because a regex gets it wrong in ways that
+ * end with something stored that nobody said.
+ *
+ * A MARKER SEPARATES A NAME FROM A NUMBER, so it needs both. Four cases, each
+ * of them a sentence somebody really says:
+ *
+ *   "ana phone 5551234" - a name, a marker, digits. The ordinary one.
+ *
+ *   "ana phone five hundred" - a name and a marker, and a QUANTITY after it.
+ *   A number was said and this file cannot read it, so the rule declines:
+ *   somebody who said a number expects the number, and keeping the contact
+ *   without it drops the half of the sentence they cared about. "ana phone",
+ *   where the recognizer cut the words off before the digits, is the same case
+ *   with nothing after the marker at all.
+ *
+ *   "phone 5551234" - a marker and digits and NO NAME. A contact with no name
+ *   is not a contact, `contacts.create` refuses one, and so does this. The
+ *   possessive is the exception that makes it worth writing down: "my doctor
+ *   phone 5551234" arrives with "my doctor" already taken off as a
+ *   relationship and nothing left in front of the marker, and the honest
+ *   reading is that "my doctor" was never a relationship - it was the name.
+ *   It is put back as one. "new contact my doctor" with no number is already
+ *   read that way, so adding a number to a sentence that worked does not stop
+ *   it working.
+ *
+ *   "number for the vet" - a marker at the front, nothing before it, and
+ *   nothing after it that reads as digits. It separated nothing, so it was
+ *   never a marker and the whole phrase is the name. That is what keeps
+ *   "numero de emergencia" and "telefone do hospital" the plain names they
+ *   are in the other two files. The cost is a name whose next word happens to
+ *   read as a digit - "number nine" - which is taken for a number with nobody
+ *   attached to it and declines.
+ */
+function readContact(
+  numbers: NumberWords,
+  possessive: string | undefined,
+  relationship: string | undefined,
+  rest: string,
+): Intent | null {
+  const named = (phrase: string, related: string | null, phone: string | null): Intent | null => {
+    const name = stripLeadingArticle(phrase.trim());
+    return name === '' ? null : { kind: 'CREATE_CONTACT', name, relationship: related, phone };
+  };
+
+  const slot = rest.match(PHONE_MARKER);
+  const at = slot?.index;
+  if (slot === null || at === undefined) return named(rest, relationship ?? null, null);
+
+  const before = rest.slice(0, at).trim();
+  const spoken = slot[1];
+  const phone = spoken === undefined ? null : spokenDigits(numbers, spoken);
+
+  if (phone === null) {
+    // Something in front of it, so it really was separating a name from a
+    // number - and the number is one this file could not read.
+    if (before !== '' || possessive !== undefined) return null;
+    // Nothing in front of it and no digits behind it: it separated nothing.
+    return named(rest, relationship ?? null, null);
+  }
+
+  return before === ''
+    ? named(possessive ?? '', null, phone)
+    : named(before, relationship ?? null, phone);
+}
+
 const rules: readonly Rule[] = [
   {
     name: 'HELP',
@@ -517,18 +605,39 @@ const rules: readonly Rule[] = [
      *
      * THE SHAPE IS ONE ALTERNATION AND ONE TAIL, where the place and category
      * rules write the tail out twice. Those capture a name and nothing else,
-     * so duplicating `(.+)` costs a few characters; this one captures a
-     * relationship, a name and a number, and duplicating all three would mean
-     * six groups where three will do - and `build` reading whichever half of
-     * them is not undefined.
+     * so duplicating `(.+)` costs a few characters; this one would have to
+     * duplicate three groups, and leave `build` reading whichever half of them
+     * is not undefined.
      *
-     * A PHONE SLOT THAT CANNOT BE READ DECLINES THE WHOLE RULE. `spokenDigits`
-     * returns null for anything that is not digits - "phone five hundred" is a
-     * quantity, and reading it as 5100 would store a number nobody said - and
-     * somebody who said a number expects the number. Storing the contact
-     * without it would silently drop the half of the sentence they cared
-     * about, so the sentence is refused whole and they can see it was not
-     * understood.
+     * THE NUMBER IS PEELED OFF THE TAIL IN `readContact`, NOT IN THE PATTERN -
+     * the shape CREATE_ITEM below already uses for the expiry date it peels
+     * off its own capture. That is not style, it is a bug this rule shipped
+     * with. An optional phone group inside the pattern cannot attach at the
+     * FIRST character of the name: it has to open with a separator, and a lazy
+     * name has to take at least one character before it. So "new contact my
+     * doctor phone 5551234" - a first-class sentence, since "my doctor" is
+     * exactly the handle this rule captures relationships for - put the whole
+     * of "phone 5551234" into the name, left the phone field null, and by
+     * leaving it null left the card with no `heardDigits` warning either,
+     * because that reason is keyed on there being a number. A blind user heard
+     * "Confirm: phone 5551234, Relationship: doctor, New contact" and was told
+     * to check nothing. `readContact` reads the tail as a whole and can see a
+     * marker standing at the front of it; the four things it does about one
+     * are in its own comment.
+     *
+     * WHAT DECLINING ACTUALLY DOES, spelled out because an earlier draft of
+     * this comment got it wrong. Returning null does not refuse the SENTENCE,
+     * it declines the RULE, and `parse` carries on down the list. After "new
+     * contact ana phone five hundred" nothing else matches and the sheet says
+     * it did not understand, which is what this rule wants. After "add a
+     * contact called ana phone five hundred" the sentence still opens with an
+     * add verb, so ADJUST_QUANTITY takes it, finds no such item, and offers to
+     * create a stock row called "contact called ana phone five hundred". That
+     * is the price of declining inside a rule rather than refusing a sentence
+     * outright, and `parse.ts` has no way to do the second: a rule can decline
+     * or produce an intent, and there is no third answer meaning "this one was
+     * mine and it was wrong". Nothing is written either way - what the user
+     * gets is a button, not a row.
      *
      * The catalog was swept in this language as it was for places and
      * categories: all 194 names in `data/catalog.generated.ts` after the five
@@ -549,20 +658,9 @@ const rules: readonly Rule[] = [
      */
     name: 'CREATE_CONTACT',
     pattern:
-      /^(?:new\s+(?:an?\s+)?contact(?:\s+(?:called|named)\s+|\s*:\s*|\s+)|(?:create|add|make|save)\s+(?:an?\s+)?(?:new\s+)?contact(?:\s+(?:called|named)\s+|\s*:\s*))(?:my\s+([a-z]+)\s+)?(.+?)(?:\s+(?:phone number|phone|number|tel|telephone)\s+(.+))?$/,
-    build: (match, tools): Intent | null => {
-      const name = stripLeadingArticle((match[2] ?? '').trim());
-      if (name === '') return null;
-
-      const relationship = match[1] ?? null;
-      const spoken = match[3];
-      if (spoken === undefined) {
-        return { kind: 'CREATE_CONTACT', name, relationship, phone: null };
-      }
-
-      const phone = spokenDigits(tools.numbers, spoken);
-      return phone === null ? null : { kind: 'CREATE_CONTACT', name, relationship, phone };
-    },
+      /^(?:new\s+(?:an?\s+)?contact(?:\s+(?:called|named)\s+|\s*:\s*|\s+)|(?:create|add|make|save)\s+(?:an?\s+)?(?:new\s+)?contact(?:\s+(?:called|named)\s+|\s*:\s*))(?:(my\s+([a-z]+))\s+)?(.+)$/,
+    build: (match, tools): Intent | null =>
+      readContact(tools.numbers, match[1], match[2], (match[3] ?? '').trim()),
   },
 
   {

@@ -34,4 +34,15 @@ export const ptBRNumbers: NumberWords = {
   literals: { meio: 0.5, meia: 0.5, metade: 0.5 },
   /** Joins tens to units: "vinte e cinco". */
   joiner: 'e',
+  /**
+   * "cinco meia sete" is 567 - "meia" being meia duzia, half a dozen, and the
+   * ordinary way a Brazilian dictates a six so it is not heard as "tres".
+   *
+   * It is a digit ONLY while digits are being read, which is why it lives here
+   * and not in `units`. It is in `literals` above at 0.5, which is what it
+   * means in "meia duzia de ovos", and moving it would turn that phrase into
+   * six dozen eggs. `spokenDigits` reads this table and `parseNumber` does
+   * not, so both readings stand.
+   */
+  digitAliases: { meia: 6 },
 };

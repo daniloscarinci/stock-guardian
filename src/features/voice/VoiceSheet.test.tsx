@@ -607,6 +607,43 @@ describe('VoiceSheet', () => {
   });
 
   /**
+   * The sentence a review found the card lying about.
+   *
+   * "my doctor" is the handle the relationship slot exists to catch, so this
+   * is an ordinary thing to say. The rule's first shape could not attach its
+   * phone group at the front of the name slot, so the digits ended up inside
+   * the name and the phone field stayed null - and with no phone there is no
+   * `heardDigits` guess, so the button read "Confirm: phone 5551234,
+   * Relationship: doctor, New contact" and told a reader who could not see the
+   * screen to check nothing at all.
+   *
+   * Asserted end to end rather than on the intent alone, because the harm was
+   * end to end: what makes it a defect is not where the digits are stored but
+   * what the button says about them.
+   */
+  it('does not melt a number into the name when the relationship comes first', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'new contact my doctor phone five five five one two three four');
+
+    const card = await screen.findByRole('group', { name: 'my doctor' });
+    expect(within(card).getByText('Phone: 5551234')).toBeTruthy();
+    expect(
+      within(card).getByText('I heard this number rather than being shown it. Check every digit.'),
+    ).toBeTruthy();
+
+    const confirm = await screen.findByRole('button', { name: /^confirm:/i });
+    expect(confirm.getAttribute('aria-label')).toBe(
+      'Confirm: my doctor, Phone: 5551234, New contact',
+    );
+    await user.click(confirm);
+
+    expect(await screen.findByText('my doctor: 5551234.')).toBeTruthy();
+    expect(await phoneOf('my doctor')).toBe('5551234');
+  });
+
+  /**
    * A sentence that named a number the grammar could not read as digits is
    * refused whole.
    *
