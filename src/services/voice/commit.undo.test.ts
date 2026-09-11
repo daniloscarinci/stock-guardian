@@ -271,9 +271,9 @@ describe('undo', () => {
   /**
    * The order is the whole of it.
    *
-   * One sentence is about to be able to write twice - "move the rice to the
-   * cellar" against a pantry that has no cellar will make the place and then
-   * move the rice - and the way back has to run backwards. Taking the place
+   * One sentence writes twice - "move the rice to the cellar" against a pantry
+   * that has no cellar makes the place and then moves the rice - and the way
+   * back has to run backwards. Taking the place
    * away first would not merely be untidy: `locations.remove` refuses a place
    * that still holds something, so the deletion would fail and the user would
    * be left with a shelf nobody asked for.

@@ -149,6 +149,24 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
       /*
        * The place first, then the move, and the undo list in the reverse
        * order - put the rice back, then take the empty place away.
+       *
+       * There is a window between those two writes, and nothing here closes
+       * it. `items.transfer` throws outright when the item is gone, and it can
+       * be gone: this write was DESCRIBED when the phrase was executed, and
+       * nothing stops the row being deleted before anybody presses Confirm -
+       * the same gap every case above reads the item back to cover. The place
+       * has been made by then, the sentence fails, and no receipt comes back
+       * to take it away.
+       *
+       * The orphan is left on purpose, for the reason `undo` below gives about
+       * a receipt that fails part-way: a compensating delete is another write
+       * that can fail in its turn, and there is no transaction to reach for -
+       * `VoiceDeps` hands out repositories rather than the driver, so this
+       * module cannot open one around a sentence. What is left behind is an
+       * EMPTY place carrying the name the user said, listed on the Locations
+       * screen and deletable there like any other. And saying the sentence
+       * again finds it, so the second attempt is an ordinary move onto a shelf
+       * that exists.
        */
       const destination = await reach(deps, write.to);
       const item = await deps.items.transfer(write.item.id, destination.id, SPOKEN);
@@ -158,7 +176,7 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
         receipt: {
           undo: [
             { kind: 'restoreLocation', itemId: item.id, to: before },
-            ...undoMaking(destination),
+            ...undoMaking(destination.made),
           ],
         },
       };
@@ -197,6 +215,11 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
        * The place first again, for the reason MOVE gives, and null stays null:
        * a creation that named no shelf at all makes none, where one that named
        * a shelf nobody has made yet makes that.
+       *
+       * The same window is open here, and answered the same way. `items.create`
+       * failing after the place was made leaves an empty shelf with no receipt
+       * to remove it, which is a row the user can see and delete rather than a
+       * second write this module has no transaction to guard.
        */
       const destination = write.location === null ? null : await reach(deps, write.location);
 
@@ -215,7 +238,7 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
         receipt: {
           undo: [
             { kind: 'deleteItem', itemId: item.id },
-            ...undoMaking(destination),
+            ...undoMaking(destination?.made ?? null),
           ],
         },
       };
@@ -254,15 +277,12 @@ async function reach(
 /**
  * The way back from having made a place, or nothing where none was made.
  *
- * A list of none or one, so it splices into a receipt at whichever end that
- * receipt needs it. `null` for the destination itself is a third way of making
- * nothing - a creation that named no shelf at all - and it is answered here so
- * that both callers can spread the same call.
+ * A list of none or one, which is what lets both cases above spread it without
+ * first asking whether there was anything to spread. Its position in a receipt
+ * is not a choice: the place is written before the row that goes in it, so its
+ * deletion is always the last action back.
  */
-function undoMaking(
-  destination: { readonly made: Location | null } | null,
-): readonly UndoAction[] {
-  const made = destination === null ? null : destination.made;
+function undoMaking(made: Location | null): readonly UndoAction[] {
   return made === null ? [] : [{ kind: 'deleteLocation', locationId: made.id }];
 }
 

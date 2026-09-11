@@ -191,7 +191,7 @@ export const WRITING_INTENTS: readonly IntentKind[] = [
  * A subset of `WRITING_INTENTS` rather than the same list, because "I did not
  * find it" means different things to different writes. "comprei arroz" against
  * an empty pantry is the first bag of rice, and creating it is the obvious next
- * step. The three below are not:
+ * step. The ones below are not:
  *
  *   MOVE_ITEM would be left half done. It can only fail on its ITEM now - an
  *   unknown destination is proposed rather than refused - and creating that

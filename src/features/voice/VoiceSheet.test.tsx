@@ -289,6 +289,10 @@ async function beansRow() {
 const quantityOf = async (name: string) =>
   db.selectValue<number>('SELECT quantity FROM items WHERE name = ?', [name]);
 
+/** Asked of the table rather than of a repository, so nothing can normalise it away. */
+const countOfLocations = async (name: string) =>
+  db.selectValue<number>('SELECT COUNT(*) FROM locations WHERE name = ?', [name]);
+
 beforeEach(async () => {
   db = await createMemoryDriver();
   await migrate(db);
@@ -365,6 +369,30 @@ describe('VoiceSheet', () => {
     // The promise the whole feature rests on, asserted against the database
     // rather than against the screen.
     expect(await quantityOf('Beans')).toBe(12);
+  });
+
+  /**
+   * The one guess on a card that names something the user does not have.
+   *
+   * Every other reason points at a row that exists and asks whether it is the
+   * right one. This one says a second row is about to be made, and confirming
+   * writes both - so the card has to say it in the same list it says
+   * everything else in, and the name it shows has to be the name that will be
+   * stored.
+   */
+  it('says on the card that a place a creation named will be made', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'create item 2 kg of quinoa in the cellar');
+
+    const card = await screen.findByRole('group', { name: 'quinoa' });
+    expect(
+      within(card).getByText('No place is called cellar. Confirming makes it.'),
+    ).toBeTruthy();
+
+    // Nothing is written until Confirm, the place least of all.
+    expect(await countOfLocations('cellar')).toBe(0);
   });
 
   it('moves focus to Confirm and names the whole change on it', async () => {
