@@ -43,7 +43,10 @@ interface Described {
    * itself.
    */
   readonly field: string | null;
-  /** null when there is no old value, which is only true of a creation. */
+  /**
+   * null when there is no old value, which is true of the two writes that make
+   * something rather than change it: a new item, and a new place.
+   */
   readonly before: string | null;
   readonly after: string;
 }
@@ -142,6 +145,28 @@ function describe(
         before: null,
         after: `${quantity(language, write.quantity)} ${write.unit}`,
       };
+
+    /*
+     * The only card whose subject is not an item, so most of the shape is
+     * empty rather than filled in: there is no quantity, no unit, and no shelf
+     * to print above it, because the name IS the whole change. `before` is
+     * null for the reason a creation's is - nothing is being replaced.
+     *
+     * `locations.newLocation` rather than a sentence of this card's own. Those
+     * are the words the Locations screen puts over the form that does exactly
+     * this by hand, and a reader who has used that screen should recognise
+     * what they are agreeing to. The name they said is the heading above it,
+     * and the guess below repeats it in full - `voice.assumedNewLocation` is
+     * where the card says no place is called this yet.
+     */
+    case 'NEW_LOCATION':
+      return {
+        name: write.name,
+        location: null,
+        field: null,
+        before: null,
+        after: t('locations.newLocation'),
+      };
   }
 }
 
@@ -160,8 +185,17 @@ function assumed(
   language: Language,
   dateFormat: DateFormat,
 ): readonly string[] {
-  const name = write.kind === 'CREATE' ? write.name : write.item.name;
-  const unit = write.kind === 'CREATE' ? write.unit : write.item.unit;
+  // A place has no item behind it, and its own name is the only name there is
+  // to give - which is all `newLocation`, the one reason it can produce, asks
+  // for. Its `unit` is blank because no reason it produces reads one.
+  const name =
+    write.kind === 'CREATE' || write.kind === 'NEW_LOCATION' ? write.name : write.item.name;
+  const unit =
+    write.kind === 'CREATE'
+      ? write.unit
+      : write.kind === 'NEW_LOCATION'
+        ? ''
+        : write.item.unit;
   const amount =
     write.kind === 'ADJUST'
       ? Math.abs(write.delta)
@@ -169,14 +203,17 @@ function assumed(
         ? write.quantity
         : 0;
   const date = write.kind === 'EXPIRY' ? formatCalendarDate(write.after, dateFormat) : '';
-  // Both writes that carry a destination, because both can now name one that
-  // has still to be made and the reader has to see the name either way.
+  // All three writes that name a place, because any of them can name one that
+  // has still to be made and the reader has to see the name either way. For
+  // the third the place is the write itself, so its own name is the one.
   const place =
     write.kind === 'MOVE'
       ? write.to.name
       : write.kind === 'CREATE'
         ? (write.location?.name ?? '')
-        : '';
+        : write.kind === 'NEW_LOCATION'
+          ? write.name
+          : '';
 
   return write.assumptions.map((reason) => {
     switch (reason) {
@@ -204,7 +241,8 @@ function assumed(
        * The opposite of `location`, and the reader checks a different thing.
        * `location` picked one of their shelves and asks which; this one found
        * none and asks about the spelling of a name that is about to become a
-       * row. A MOVE and a CREATE both produce it, and both carry the name.
+       * row. MOVE, CREATE and NEW_LOCATION all produce it, and all three carry
+       * the name - on the last of them it is the write's own.
        */
       case 'newLocation':
         return t('voice.assumedNewLocation', { location: place });

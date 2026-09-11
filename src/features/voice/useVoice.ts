@@ -245,18 +245,39 @@ function creationFrom(intent: Intent): Intent | null {
 
 /** What to ask the database once a write has landed, so the receipt is a fact. */
 function receiptIntent(write: PendingWrite): Intent {
-  const name = write.kind === 'CREATE' ? write.name : write.item.name;
-
   switch (write.kind) {
     case 'EXPIRY':
-      return { kind: 'QUERY_EXPIRY_OF', item: name };
+      return { kind: 'QUERY_EXPIRY_OF', item: write.item.name };
     // A move changed where the thing is, so the sentence that confirms it has
     // to be about where the thing is. Reading back its quantity would state a
     // number nobody touched and leave the shelf unmentioned.
     case 'MOVE':
-      return { kind: 'QUERY_WHERE', item: name, location: null };
+      return { kind: 'QUERY_WHERE', item: write.item.name, location: null };
+    /*
+     * The one write with no item to ask after, so the question is put to the
+     * PLACE - the same "o que tem no porao" anybody could say out loud.
+     *
+     * What comes back is "there is nothing in Porão", which is thin and is
+     * true: the shelf was made a moment ago and nothing has been put on it.
+     * Saying it at all is the receipt. `execute` answers a place it cannot
+     * find with notFound, which `sentence` renders as nothing, so hearing this
+     * sentence is itself the proof that the row is there.
+     */
+    case 'NEW_LOCATION':
+      return { kind: 'QUERY_WHERE', item: null, location: write.name };
+    case 'CREATE':
+      return { kind: 'QUERY_QUANTITY', item: write.name };
+    /*
+     * ADJUST, MINIMUM and TARGET: three writes about a number on an item, and
+     * the item's quantity is the fact worth stating after any of them.
+     *
+     * A `default` rather than three cases, and it stays safe as the union
+     * grows: it reads `write.item`, which every member that belongs here has
+     * and no member that does not. A write about a category or a contact would
+     * fail to compile here rather than quietly ask the wrong question.
+     */
     default:
-      return { kind: 'QUERY_QUANTITY', item: name };
+      return { kind: 'QUERY_QUANTITY', item: write.item.name };
   }
 }
 

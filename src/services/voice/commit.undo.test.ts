@@ -384,6 +384,37 @@ describe('undo', () => {
   });
 
   /**
+   * A sentence whose whole content was a place: "novo lugar, adega".
+   *
+   * One row goes in and nothing else does, so the receipt is one action long -
+   * there is no item beside it, and `NEW_LOCATION` reaches `commit` only after
+   * `execute` has found that no place already answers to the name.
+   *
+   * The place is empty the second it is made, because nothing in the sentence
+   * put anything in it. So `locations.remove` has nothing to refuse, and Undo
+   * really does leave the Locations screen as it found it - which is the whole
+   * claim the ten-second offer makes.
+   */
+  it('takes back a place it made', async () => {
+    const { wrote, receipt } = await commit(
+      deps,
+      await write(deps, { kind: 'CREATE_LOCATION', name: 'adega' }),
+    );
+
+    expect(wrote.kind).toBe('location');
+    if (wrote.kind !== 'location') return;
+
+    expect(wrote.location.name).toBe('adega');
+    expect(receipt.undo).toEqual([{ kind: 'deleteLocation', locationId: wrote.location.id }]);
+    expect(await deps.locations.getById(wrote.location.id)).toBeDefined();
+
+    await undo(deps, receipt);
+
+    expect(await deps.locations.getById(wrote.location.id)).toBeUndefined();
+    expect(await deps.locations.findByName('adega')).toBeUndefined();
+  });
+
+  /**
    * A place that filled up in the ten seconds Undo was on screen.
    *
    * Somebody put something there on purpose, so the place is theirs now rather

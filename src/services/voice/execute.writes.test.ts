@@ -74,6 +74,7 @@ describe('execute: writes stay pending', () => {
     await execute(deps, { kind: 'MOVE_ITEM', item: 'feijao preto', location: 'despensa' });
     await execute(deps, { kind: 'SET_MINIMUM', item: 'feijao preto', amount: 12, unit: null });
     await execute(deps, { kind: 'SET_TARGET', item: 'feijao preto', amount: 20, unit: null });
+    await execute(deps, { kind: 'CREATE_LOCATION', name: 'porao' });
 
     const written = exec.mock.calls.filter(([sql]) =>
       /^\s*(?:insert|update|delete)/i.test(String(sql)),
@@ -302,6 +303,70 @@ describe('execute: writes stay pending', () => {
       assumptions: ['newItem', 'newLocation'],
     });
     expect(await deps.locations.findByName('porao')).toBeUndefined();
+  });
+
+  /*
+   * A sentence whose whole content is a place: "novo lugar, porão".
+   *
+   * There is no item to resolve and no number to fill in, so the single
+   * question it raises is whether the household already has somewhere called
+   * this - and the two answers to that are a very different sentence each.
+   */
+  describe('a place named on its own', () => {
+    /**
+     * A name that is already taken is answered, not made a second time.
+     *
+     * `findLocation` matches on CONTAINS, so "porao" finds "Porão dos Fundos" -
+     * and two places whose names a user cannot tell apart is a worse outcome
+     * than being shown the one they already have. Somebody with a cellar who
+     * says "new place, cellar" has almost certainly forgotten it rather than
+     * decided to keep two.
+     */
+    it('answers with what is already there rather than making a second place', async () => {
+      await deps.locations.create({ name: 'Porão dos Fundos' });
+      const before = (await deps.locations.list()).length;
+
+      const outcome = await execute(deps, { kind: 'CREATE_LOCATION', name: 'porao' });
+
+      expect(outcome).toMatchObject({
+        kind: 'answer',
+        answer: { kind: 'WHERE_LOCATION', locationName: 'Porão dos Fundos' },
+      });
+      expect(await deps.locations.list()).toHaveLength(before);
+    });
+
+    /**
+     * And the answer is the one "o que tem no porão" gives, listing what the
+     * shelf holds. That is what makes it useful rather than merely a refusal
+     * with better manners: the user hears the contents and can tell at once
+     * whether this is the place they had in mind.
+     */
+    it('lists what the place already holds, as the question about it would', async () => {
+      const cellar = await deps.locations.create({ name: 'Porão dos Fundos' });
+      await deps.items.update(feijaoId, { locationId: cellar.id });
+
+      const outcome = await execute(deps, { kind: 'CREATE_LOCATION', name: 'porao' });
+
+      expect(outcome).toMatchObject({
+        kind: 'answer',
+        answer: { kind: 'WHERE_LOCATION', items: [{ id: feijaoId }] },
+      });
+    });
+
+    it('proposes a place that does not exist yet, and writes nothing', async () => {
+      const outcome = await execute(deps, { kind: 'CREATE_LOCATION', name: 'porao' });
+
+      expect(outcome).toMatchObject({
+        kind: 'pending',
+        write: {
+          kind: 'NEW_LOCATION',
+          name: 'porao',
+          certainty: 'assumed',
+          assumptions: ['newLocation'],
+        },
+      });
+      expect(await deps.locations.findByName('porao')).toBeUndefined();
+    });
   });
 
   /*

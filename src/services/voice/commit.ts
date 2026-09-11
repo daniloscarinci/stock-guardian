@@ -243,6 +243,34 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
         },
       };
     }
+
+    /*
+     * One row, and no `reach` above it.
+     *
+     * The two cases above that can make a place make it on the WAY to
+     * something - an item to file on it, an item to move onto it - which is
+     * why `reach` exists at all: to hand back an id the real write then uses. Here the place is the write, so
+     * there is nothing to hand it to and no second write to fail after it.
+     * That also makes this the one case whose `wrote` is not an item, which is
+     * exactly what the `Wrote` union was widened for.
+     *
+     * `execute` has already found that no place answers to this name, and
+     * nothing re-checks it here. The window is the one MOVE describes above:
+     * the Locations screen could have made the same place while the card was
+     * on screen, and confirming would then leave two. It is left open for the
+     * same reasons - `locations` has no unique index on the name to lean on,
+     * and `VoiceDeps` hands out repositories rather than the driver, so this
+     * module cannot open a transaction around a sentence. The cost is a
+     * duplicate row the user can see on the Locations screen and delete, which
+     * is the price MOVE already pays for its orphan.
+     */
+    case 'NEW_LOCATION': {
+      const location = await deps.locations.create({ name: write.name });
+      return {
+        wrote: { kind: 'location', location },
+        receipt: { undo: [{ kind: 'deleteLocation', locationId: location.id }] },
+      };
+    }
   }
 }
 

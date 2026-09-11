@@ -230,6 +230,25 @@ export type PendingWrite =
       readonly item: InventoryItemView;
       readonly before: number | null;
       readonly after: number;
+    })
+  /*
+   * A place, and nothing else - the one write in this union that is not about
+   * an item.
+   *
+   * It carries a bare name rather than a `Destination`, because a `Destination`
+   * answers "where is this going" and nothing is going anywhere: the shelf
+   * itself is what was asked for. Its `existing` arm would have nothing to
+   * describe either, since `execute` only builds this after looking the name up
+   * and finding nothing - a name that IS taken is answered instead of written.
+   *
+   * `execute` never builds one of these as `explicit`, and cannot sensibly:
+   * the only thing the sentence supplies is a name out of a transcript, and
+   * there is nothing stored to check that name against. So the card always
+   * gets it, and always with `newLocation` as the reason.
+   */
+  | (Certainty & {
+      readonly kind: 'NEW_LOCATION';
+      readonly name: string;
     });
 
 export type Outcome =
@@ -794,29 +813,52 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
     }
 
     /*
-     * Recognized by the English grammar already, executed by nobody yet.
+     * A place named on its own, which is either a question or an offer - and
+     * the database is the only thing that says which.
      *
-     * Every other branch of this switch answers a question, proposes a
-     * write, asks the user to pick among several items, or reports that
-     * nothing was found - and every one of those would be a lie told about a
-     * capability that does not exist. There is no `PendingWrite` for a bare
-     * place, and inventing one here would let a confirmation card offer to
-     * store something `commit` has no case for.
+     * A NAME THAT IS TAKEN IS ANSWERED, NOT MADE TWICE. `findLocation` matches
+     * on contains, so "porao" finds "Porão dos Fundos", and two places whose
+     * names a user cannot tell apart is a worse outcome than being shown the
+     * one they already have: stock would start landing on both, and neither
+     * shelf would then answer "what is in the cellar" truthfully. Somebody
+     * with a cellar who says "new place, cellar" has almost certainly
+     * forgotten it rather than decided to keep a second one.
      *
-     * `unknown` is not on that list of things this could honestly return
-     * either, though it is the shape a reader would reach for first as the
-     * alternative to throwing: it exists for a transcript the grammar could
-     * not read, and this one was read perfectly. Claiming otherwise would
-     * send the user back to correcting a sentence that was never the
-     * problem.
+     * The answer is the one "o que tem no porao" gives, built from the same
+     * `itemsIn` helper QUERY_WHERE uses, so it lists what the shelf holds
+     * rather than merely refusing politely. That is what makes it useful: the
+     * user hears the contents and can tell at once whether this is the place
+     * they meant, and say something else if it is not.
      *
-     * Throwing is caught by `useVoice`'s `turn`, which is what keeps this
-     * from crashing the sheet - it surfaces as the ordinary error text
-     * instead of a silent wrong answer. Task 5 replaces this case with the
-     * real one.
+     * Nothing found is a proposal, and still not a write. This module writes
+     * nothing at all; the row exists only once the card is confirmed and
+     * `commit` runs.
      */
-    case 'CREATE_LOCATION':
-      throw new Error('CREATE_LOCATION is not yet executed');
+    case 'CREATE_LOCATION': {
+      const existing = await findLocation(deps, intent.name);
+      if (existing !== undefined) {
+        return {
+          kind: 'answer',
+          answer: {
+            kind: 'WHERE_LOCATION',
+            locationName: existing.name,
+            items: await itemsIn(deps, existing.id),
+          },
+        };
+      }
+
+      /*
+       * `newLocation`, and it is the only reason there could be. Nothing was
+       * matched loosely - nothing was matched at all - and there is no number
+       * or unit in the sentence to have filled in. What the card asks about is
+       * the spelling of a name that is about to become a row, which is the one
+       * thing nobody can check for the user.
+       */
+      return {
+        kind: 'pending',
+        write: { kind: 'NEW_LOCATION', name: intent.name, ...certaintyOf(['newLocation']) },
+      };
+    }
 
     // The examples belong to the grammar, which lives in `src/voice/` and is
     // per-language. `execute` has no grammar and must not grow one.
