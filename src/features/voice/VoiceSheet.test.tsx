@@ -332,6 +332,54 @@ afterEach(async () => {
 });
 
 describe('VoiceSheet', () => {
+  /**
+   * What the sheet offers somebody who has not said anything yet.
+   *
+   * The examples were always there - nine per language, translated, every one
+   * of them a phrase the grammar accepts - and nothing put them on screen
+   * until a sentence failed or somebody asked for help outright. This is the
+   * whole of that fix, and the assertion that matters is the second one:
+   * pressing a chip FILLS the box. It does not send it. A first reader gets to
+   * see the shape of a sentence and change the noun before anything happens,
+   * which is why the last line here asks the screen for an answer that must
+   * not be on it.
+   */
+  it('offers examples before anything has been asked, and fills the box with one', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    // Named after the line above it, so the list announces what it is for.
+    const hints = screen.getByRole('list', { name: 'Try one of these' });
+    // Six of the grammar's twelve. The rest would push the microphone and the
+    // box off a phone screen; HELP still reads all of them out.
+    expect(within(hints).getAllByRole('button')).toHaveLength(6);
+
+    await user.click(within(hints).getByRole('button', { name: 'how much rice do i have?' }));
+
+    const box = screen.getByRole('textbox') as HTMLInputElement;
+    expect(box.value).toBe('how much rice do i have?');
+    expect(document.activeElement).toBe(box);
+    expect(screen.queryByText(/Rice: 3 kg/i)).toBeNull();
+  });
+
+  /**
+   * And they go once there is a log to read instead.
+   *
+   * By then the exchange above says what this application understood and what
+   * it did about it, which teaches the same lesson better; leaving the chips
+   * would put six buttons between the reader and their own conversation.
+   */
+  it('drops the examples once there is a history', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'how much rice do i have');
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+
+    expect(screen.queryByRole('list', { name: 'Try one of these' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'how much rice do i have?' })).toBeNull();
+  });
+
   it('answers a typed question', async () => {
     const { user, view } = await setup();
     view(<VoiceSheet open onClose={vi.fn()} />);

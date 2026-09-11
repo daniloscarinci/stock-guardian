@@ -1,6 +1,6 @@
 /**
  * The ask sheet: what was asked, what came of it, a microphone and a box to
- * type in.
+ * type in - and, on an empty sheet, a few sentences to start from.
  *
  * Built on `components/ui/Dialog`, which is the native `<dialog>` element. That
  * is where focus trapping, Escape-to-close, inertness of the page behind and
@@ -26,7 +26,7 @@
  * and is tested through this file's typed path, which needs no speech API at
  * all.
  */
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Button } from '../../components/ui/primitives';
@@ -63,10 +63,36 @@ const AI_FAILURES: Readonly<Record<AiFailureReason, TranslationKey>> = {
   api: 'ai.failed',
 };
 
+/**
+ * How many of the grammar's examples are offered as chips on an empty sheet.
+ *
+ * There are twelve per language, and twelve is a lot of sheet. These are whole
+ * sentences rather than words, so at phone width most of them take a row to
+ * themselves and the list is as tall as it is long - and every row of it stands
+ * above the microphone and the box, which are the two things anybody actually
+ * came here for. A hint that buries the controls it is hinting about has cost
+ * more than it gave.
+ *
+ * So the sheet shows an opening run and the grammar chooses what that run is:
+ * `examples` is ordered with this slice in mind and its own comment says so.
+ * Six is small enough to leave the controls in reach and still wide enough to
+ * carry six different SHAPES of sentence - one item's quantity, what is going
+ * off, what to buy, stock arriving, stock going, and a place being made.
+ *
+ * Nothing is hidden by this. The full twelve are still read out by HELP, which
+ * is a question anybody can ask here, and by any sentence that was not
+ * understood.
+ */
+const EXAMPLE_CHIPS = 6;
+
 export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
   const { t, settings } = useApp();
   const [typed, setTyped] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
+  // Names the chip list after the line above it, so a screen reader reaching
+  // the list says what the six buttons in it are for rather than just counting
+  // them.
+  const hintsId = useId();
 
   const speaker = useMemo(
     () =>
@@ -103,15 +129,41 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
   }, [onClose, speaker]);
 
   /**
-   * The failure panel's way out.
+   * Puts the cursor in the typed box.
    *
-   * The cursor lands where the feature still works. A phone with no speech pack
-   * has lost its microphone and nothing else, and the point of saying so is to
-   * put somebody in front of that fact rather than in front of an apology.
+   * Two callers, and they arrive for two different reasons.
+   *
+   * The microphone's failure panel lands here because the cursor belongs where
+   * the feature still works. A phone with no speech pack has lost its
+   * microphone and nothing else, and the point of saying so is to put somebody
+   * in front of that fact rather than in front of an apology.
+   *
+   * An example chip lands here because it has just filled the box, and the
+   * next thing anybody does with a filled box is change a word in it.
    */
-  const typeInstead = useCallback(() => {
+  const focusBox = useCallback(() => {
     formRef.current?.querySelector('input')?.focus();
   }, []);
+
+  /**
+   * An example, put in the box rather than sent.
+   *
+   * This is the whole reason the chips are worth having, and filling rather
+   * than sending is deliberate. A first-time reader does not want beans added
+   * to their inventory; they want to see the SHAPE of a sentence this
+   * application understands, and then say their own. "add five cans of beans"
+   * in the box, with the cursor in it, is an invitation to change three words
+   * and press Send. The same chip wired to `run` would instead perform a write
+   * nobody asked for, on somebody's first press, in the one part of this
+   * application whose entire design is about not doing that.
+   */
+  const fillBox = useCallback(
+    (example: string) => {
+      setTyped(example);
+      focusBox();
+    },
+    [focusBox],
+  );
 
   const submit = () => {
     const value = typed.trim();
@@ -131,6 +183,49 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
         <Alert tone="critical" role="alert">
           {voice.error}
         </Alert>
+      )}
+
+      {/*
+        Something to say, for somebody who has not said anything yet.
+
+        The hard part of a box you can say anything into is knowing what to
+        say, and these sentences already existed - nine per language, now
+        twelve, translated, and every one of them a phrase the grammar really
+        accepts. Until now they were reachable only by asking for help outright
+        or by failing to be understood, which is to say: the answer was only
+        offered to people who had already hit the wall.
+
+        They go once there is a history. By then the log itself is the better
+        teacher - it says what this application understood and what it did
+        about it - and the chips would be six buttons standing between the
+        reader and their own conversation.
+
+        OUTSIDE the log below, deliberately. That `<ol>` is an `aria-live`
+        region, and anything placed inside it is read out when it changes; six
+        example sentences appearing and then disappearing is not news.
+      */}
+      {voice.history.length === 0 && (
+        <div className={styles.hints}>
+          <p className={styles.hintsTitle} id={hintsId}>
+            {t('voice.examplesTitle')}
+          </p>
+          <ul className={styles.chips} role="list" aria-labelledby={hintsId}>
+            {voice.examples.slice(0, EXAMPLE_CHIPS).map((example) => (
+              <li key={example}>
+                <button
+                  type="button"
+                  className={styles.chip}
+                  disabled={voice.busy}
+                  onClick={() => {
+                    fillBox(example);
+                  }}
+                >
+                  {example}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {/*
@@ -160,7 +255,7 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
         onHeard={(transcript, online) => {
           void run(transcript, online);
         }}
-        onTypeInstead={typeInstead}
+        onTypeInstead={focusBox}
         busy={voice.busy}
       />
 

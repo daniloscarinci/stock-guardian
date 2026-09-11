@@ -39,6 +39,12 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * The examples as a bulleted list, under a sentence that was not understood.
+ * The same strings appear as chips at the top of an empty sheet, and the two
+ * are styled apart on purpose: this one is part of a paragraph explaining a
+ * failure and is read, the other is a row of things to press. See `.chips`.
+ */
 .examples {
   display: flex;
   flex-direction: column;
@@ -47,6 +53,83 @@
   padding-left: var(--space-5);
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+/* ---- Something to say, on a sheet nobody has said anything into yet ------ */
+
+.hints {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+/* The line the chip list is named after - see `hintsId` in VoiceSheet.tsx. */
+.hintsTitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/*
+ * Wrapping, never scrolling sideways.
+ *
+ * Each chip is a whole sentence, so on a phone most of them take a row to
+ * themselves and the list is several rows tall however it is arranged. A
+ * horizontal scroller would fit it on one line at the price of hiding half the
+ * examples behind a gesture nothing on screen advertises - and the whole point
+ * of this list is that somebody who does not know what to say can SEE what to
+ * say. What keeps it from swallowing the sheet is the count, not the layout:
+ * `EXAMPLE_CHIPS` in VoiceSheet.tsx holds it to six of the twelve.
+ */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * A chip fills the box rather than sending it, so it is deliberately quieter
+ * than the Send button further down: sunken rather than raised, secondary
+ * text, and no accent anywhere. Pressing one is not an action, it is a
+ * starting point.
+ *
+ * `--tap-target` is a MINIMUM height rather than a fixed one. A long example
+ * wraps to two lines on a narrow phone, and a fixed height would crop it; the
+ * floor is what keeps a one-line chip big enough to hit with a thumb, which is
+ * the condition this application is actually used in. The flex box around the
+ * label is what keeps that label centred in a chip taller than it is - the
+ * same arrangement `.button` uses in primitives.module.css.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-target);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.chip:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* Matches the buttons: everything in this sheet goes quiet while it is busy. */
+.chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* ---- The confirmation card ------------------------------------------------ */

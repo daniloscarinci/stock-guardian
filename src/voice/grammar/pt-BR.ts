@@ -970,15 +970,42 @@ export const ptBRGrammar: Grammar = {
   dates: ptBRDates,
   units: UNITS,
   fillers: FILLERS,
+  /**
+   * The sentences this file offers a reader who does not know what to say.
+   *
+   * `en.ts` carries the full note. The order here is the same one and is
+   * load-bearing for the same reason: `VoiceSheet` shows the opening run as
+   * tappable chips the moment the sheet opens, while HELP and an unrecognised
+   * sentence read out the whole list.
+   *
+   * THIS IS THE ONE PLACE IN THIS FILE THAT KEEPS ITS ACCENTS, and the rule at
+   * the top of the file is not being broken by it. That rule is about
+   * PATTERNS: they run against folded text, so an accent written into one
+   * produces a rule that can never match. These strings are matched against
+   * nothing. They are shown to a reader and dropped into the box for that
+   * reader to send, and `parse` folds on the way back in - `o que está
+   * vencendo?` reaches the rules as `o que esta vencendo`, exactly as the same
+   * sentence typed or spoken would. Writing them folded would put misspelt
+   * Portuguese in front of a Portuguese speaker as the first thing the sheet
+   * says.
+   *
+   * Every line is a phrase the rules above actually accept, worded after the
+   * forms pinned in `pt-BR.phrases.test.ts` rather than invented;
+   * `registry.test.ts` parses every example of every grammar and refuses
+   * UNKNOWN.
+   */
   examples: [
     'quanto arroz eu tenho?',
-    'o que esta vencendo?',
+    'o que está vencendo?',
     'o que falta?',
-    'adiciona cinco latas de feijao',
+    'adiciona cinco latas de feijão',
     'usei 3 ovos',
-    'onde esta o arroz?',
+    'novo lugar, porão',
+    'onde está o arroz?',
     'quantos itens eu tenho?',
-    'o minimo de arroz e 5 quilos',
-    'move o arroz para o porao',
+    'o mínimo de arroz é 5 quilos',
+    'move o arroz para o porão',
+    'nova categoria, ferramentas',
+    'novo contato ana telefone 555 1234',
   ],
 };

@@ -1001,15 +1001,38 @@ export const enGrammar: Grammar = {
   dates: enDates,
   units: UNITS,
   fillers: FILLERS,
+  /**
+   * The sentences this file offers a reader who does not know what to say.
+   *
+   * They are read in two places, and the difference between them is why the
+   * ORDER below is load-bearing rather than decorative. `VoiceSheet` puts the
+   * first few on screen as tappable chips the moment the sheet opens, before
+   * anything has been asked; HELP and a sentence that was not understood read
+   * out the whole list. So the opening run is chosen to teach as many
+   * different SHAPES as it can in as few lines - one item's quantity, what is
+   * going off, what to buy, stock arriving, stock going, and a place being
+   * made - and the tail carries the rarer forms and the longest sentence here.
+   * Moving one of these is a change to what the sheet shows on open. See the
+   * chip list in `features/voice/VoiceSheet.tsx`.
+   *
+   * Every line is a phrase the rules above actually accept, worded after the
+   * forms pinned in `en.phrases.test.ts` rather than invented. An example that
+   * did not parse would be worse than offering none at all, so the whole list
+   * is held to it: `registry.test.ts` parses every example of every grammar
+   * and refuses UNKNOWN.
+   */
   examples: [
     'how much rice do i have?',
     'what is expiring?',
     'what do i need to buy?',
     'add five cans of beans',
     'i used 3 eggs',
+    'new place, cellar',
     'where is the rice?',
     'how many items do i have?',
     'the minimum for rice is 5 kg',
     'move the rice to the cellar',
+    'new category, tools',
+    'new contact ana phone number 555 1234',
   ],
 };
