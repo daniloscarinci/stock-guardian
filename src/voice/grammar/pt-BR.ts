@@ -273,12 +273,104 @@ const MOVE_VERBS = [
   'poe', 'bota',
 ];
 
+/**
+ * "o porao" is a porao. An article a speaker used is not part of the name.
+ *
+ * This can take a real word with it: a user who says "novo lugar chamado A
+ * Casinha" gets a place named "casinha". That is accepted rather than fixed -
+ * folding already lower-cased the sentence before this runs, so the capital
+ * that would have marked "A" as part of a proper name is gone before this
+ * function ever sees it, and the Locations screen can rename the row
+ * afterwards - but it is a real cost this function pays, not a case it happens
+ * to get right.
+ *
+ * NOT `cleanItemPhrase`, which would also drop "de", "do" and "da" from the
+ * middle of the name: a shelf called "quarto de despejo" has to keep its "de".
+ */
+function stripLeadingArticle(name: string): string {
+  return name.replace(/^(?:o|a|os|as|um|uma)\s+/, '').trim();
+}
+
 const rules: readonly Rule[] = [
   {
     name: 'HELP',
     pattern:
       /^(?:ajuda|me ajuda|socorro|o que (?:voce|vc) (?:entende|sabe|faz|pode fazer)|o que (?:eu )?posso (?:dizer|falar|perguntar)|quais (?:sao os )?comandos|como (?:se )?(?:usa|funciona)|como (?:eu )?uso(?: isso)?)$/,
     build: (): Intent => ({ kind: 'HELP' }),
+  },
+
+  {
+    /*
+     * Early - specifically before ADJUST_QUANTITY, whose `ADD_VERBS` map also
+     * claims "adiciona" and "adicionar". Without this rule running first,
+     * "adiciona um local chamado a garagem" is read as one more of an item
+     * named "local chamado garagem" rather than as a place worth creating -
+     * checked by running that sentence through this grammar with this rule
+     * taken back out, not assumed. The other openers - criar, cria, novo,
+     * nova - are in neither verb map, so "cria um local chamado o porao"
+     * simply reached UNKNOWN before this rule existed.
+     *
+     * CREATE_ITEM never competes for the same sentence: its noun list is item,
+     * produto and coisa, none of which can ever match this pattern's lugar,
+     * local, area, comodo or prateleira. Sitting immediately above it groups
+     * the two "cria um X chamado Y" rules together; it is not dodging a
+     * collision, because there isn't one to dodge.
+     *
+     * MOVE_ITEM's own pattern is not anchored on a fixed list of verbs the way
+     * this one is - its verb slot is a bare `[a-z]+`, filtered against
+     * MOVE_VERBS only once a match has already been found. That makes the two
+     * patterns genuinely able to match the same sentence, not merely alike in
+     * shape: "cria uma area chamada deposito na garagem" satisfies this rule's
+     * pattern (verb "cria", connector "chamada") AND MOVE_ITEM's (verb "cria",
+     * item "uma area chamada deposito", destination "garagem") at once, which
+     * was checked by running the sentence against both patterns rather than
+     * reasoned about. What keeps them from fighting over it is not the
+     * patterns but the VERB SETS checked at build time: MOVE_VERBS holds none
+     * of criar, cria, adicionar, adiciona, novo or nova, and none of
+     * MOVE_VERBS is among those six, so whichever rule's build runs first, the
+     * loser declines the moment it inspects the verb it captured. That is also
+     * why this rule's position relative to MOVE_ITEM is not load-bearing -
+     * only its position relative to ADJUST_QUANTITY is.
+     *
+     * The shape below is English's, mapped onto Portuguese rather than copied
+     * word for word. "novo" and "nova" are this language's "new" and may be
+     * followed by a bare space - "novo lugar porao" is plainly a place being
+     * named - while "criar" and "adicionar" are its "add" and have to carry
+     * "chamado", "chamada" or a colon before anything after the noun is read
+     * as the name of a place. The adjective stands on either side of the noun
+     * - Portuguese says both "um novo local" and "um local novo" - and
+     * allowing both loosens nothing, because on this branch the connector is
+     * required either way.
+     *
+     * English needed that narrowing because "room", "spot" and "area" sit
+     * inside ordinary product names. Portuguese was swept for the same
+     * collision before the narrowing was kept: every one of the 194 catalog
+     * names in `data/catalog.generated.ts`, after every creating verb and
+     * every article, and the loose CREATE_ITEM-shaped form stole none of them,
+     * because no Portuguese name in that file begins with lugar, local, area,
+     * comodo or prateleira. The narrowing earns its place on the shelf the
+     * catalog happens not to stock: the loose form read "adiciona uma
+     * prateleira de aco" - a real thing to own one more of - as a place called
+     * "de aco", and "adiciona area de lazer" as one called "de lazer".
+     *
+     * The separator between the noun and the name is never the empty match -
+     * always a real space, or a colon - so a word that merely starts with one
+     * of the nouns cannot be split into a noun and a name. "localizador" and
+     * "localizacao" stay whole.
+     *
+     * What the bare space after "novo" still costs, spelled out because it is
+     * a real cost and not an oversight: everything past the noun becomes the
+     * name, so "nova area externa" makes a place called "externa" rather than
+     * one called "area externa". English pays the same price on "new room
+     * spray", and the Locations screen can rename the row.
+     */
+    name: 'CREATE_LOCATION',
+    pattern:
+      /^(?:(?:novo|nova)\s+(?:um\s+|uma\s+)?(?:lugar|local|area|comodo|prateleira)(?:\s+chamad[oa]\s+|\s*:\s*|\s+)(.+)|(?:criar|cria|adicionar|adiciona)\s+(?:um\s+|uma\s+)?(?:novo\s+|nova\s+)?(?:lugar|local|area|comodo|prateleira)(?:\s+(?:novo|nova))?(?:\s+chamad[oa]\s+|\s*:\s*)(.+))$/,
+    build: (match): Intent | null => {
+      const name = stripLeadingArticle((match[1] ?? match[2] ?? '').trim());
+      return name === '' ? null : { kind: 'CREATE_LOCATION', name };
+    },
   },
 
   {

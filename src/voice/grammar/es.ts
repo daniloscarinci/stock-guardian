@@ -279,12 +279,105 @@ const MOVE_VERBS = [
   'coloca', 'colocar', 'coloque',
 ];
 
+/**
+ * "el sotano" is a sotano. An article a speaker used is not part of the name.
+ *
+ * This can take a real word with it: a user who says "nuevo lugar llamado La
+ * Cueva" gets a place named "cueva". That is accepted rather than fixed -
+ * folding already lower-cased the sentence before this runs, so the capital
+ * that would have marked "La" as part of a proper name is gone before this
+ * function ever sees it, and the Locations screen can rename the row
+ * afterwards - but it is a real cost this function pays, not a case it happens
+ * to get right.
+ *
+ * NOT `cleanItemPhrase`, which would also drop "de" and "mas" from the middle
+ * of the name: a shelf called "cuarto de servicio" has to keep its "de".
+ */
+function stripLeadingArticle(name: string): string {
+  return name.replace(/^(?:el|la|los|las|un|una)\s+/, '').trim();
+}
+
 const rules: readonly Rule[] = [
   {
     name: 'HELP',
     pattern:
       /^(?:ayuda|ayudame|socorro|que puedes hacer|que entiendes|que sabes hacer|que puedo (?:decir|preguntar)|cuales son los comandos|que comandos hay|como funciona|como se usa)$/,
     build: (): Intent => ({ kind: 'HELP' }),
+  },
+
+  {
+    /*
+     * Early - specifically before ADJUST_QUANTITY, whose `ADD_VERBS` map also
+     * claims "agrega", "agregar", "anade" and "anadir". Without this rule
+     * running first, "agrega un lugar llamado el sotano" is read as one more
+     * of an item named "lugar llamado sotano" rather than as a place worth
+     * creating - checked by running that sentence through this grammar with
+     * this rule taken back out, not assumed. The other four openers are in
+     * neither verb map, so "crea un lugar llamado el sotano" simply reached
+     * UNKNOWN before this rule existed.
+     *
+     * CREATE_ITEM never competes for the same sentence: its noun list is item,
+     * articulo, producto and cosa, none of which can ever match this pattern's
+     * lugar, sitio, ubicacion, zona or habitacion. Sitting immediately above
+     * it groups the two "crea un X llamado Y" rules together; it is not
+     * dodging a collision, because there isn't one to dodge.
+     *
+     * MOVE_ITEM's own pattern is not anchored on a fixed list of verbs the way
+     * this one is - its verb slot is a bare `[a-z]+`, filtered against
+     * MOVE_VERBS only once a match has already been found. That makes the two
+     * patterns genuinely able to match the same sentence, not merely alike in
+     * shape: "crea una zona llamada deposito en el garaje" satisfies this
+     * rule's pattern (verb "crea", connector "llamada") AND MOVE_ITEM's (verb
+     * "crea", item "una zona llamada deposito", destination "garaje") at once,
+     * which was checked by running the sentence against both patterns rather
+     * than reasoned about. What keeps them from fighting over it is not the
+     * patterns but the VERB SETS checked at build time: MOVE_VERBS holds none
+     * of crear, crea, agregar, agrega, anadir, anade, nuevo or nueva, and none
+     * of MOVE_VERBS is among those eight, so whichever rule's build runs
+     * first, the loser declines the moment it inspects the verb it captured.
+     * That is also why this rule's position relative to MOVE_ITEM is not
+     * load-bearing - only its position relative to ADJUST_QUANTITY is.
+     *
+     * The shape below is English's, mapped onto Spanish rather than copied
+     * word for word. "nuevo" and "nueva" are this language's "new" and may be
+     * followed by a bare space - "nuevo lugar sotano" is plainly a place being
+     * named - while "crear", "agregar" and "anadir" are its "add" and have to
+     * carry "llamado", "llamada" or a colon before anything after the noun is
+     * read as the name of a place. The adjective stands on either side of the
+     * noun - Spanish says both "un nuevo lugar" and "un lugar nuevo" - and
+     * allowing both loosens nothing, because on this branch the connector is
+     * required either way.
+     *
+     * English needed that narrowing because "room", "spot" and "area" sit
+     * inside ordinary product names. Spanish was swept for the same collision
+     * before the narrowing was kept: every one of the 194 catalog names in
+     * `data/catalog.generated.ts`, after every creating verb and every
+     * article, and the loose CREATE_ITEM-shaped form stole none of them,
+     * because no Spanish name in that file begins with lugar, sitio,
+     * ubicacion, zona or habitacion. The narrowing earns its place on a second
+     * failure the catalog cannot show: the loose form read "agrega un sitio
+     * web" as a place called "web" and "agrega una zona de cultivo" as one
+     * called "de cultivo", naming a shelf after the tail of a phrase it had
+     * only half understood.
+     *
+     * The separator between the noun and the name is never the empty match -
+     * always a real space, or a colon - so a word that merely starts with one
+     * of the nouns cannot be split into a noun and a name. "lugareno" and
+     * "zonificacion" stay whole.
+     *
+     * What the bare space after "nuevo" still costs, spelled out because it is
+     * a real cost and not an oversight: everything past the noun becomes the
+     * name, so "nueva zona de cultivo" makes a place called "de cultivo"
+     * rather than one called "zona de cultivo". English pays the same price on
+     * "new room spray", and the Locations screen can rename the row.
+     */
+    name: 'CREATE_LOCATION',
+    pattern:
+      /^(?:(?:nuevo|nueva)\s+(?:un\s+|una\s+)?(?:lugar|sitio|ubicacion|zona|habitacion)(?:\s+(?:llamado|llamada)\s+|\s*:\s*|\s+)(.+)|(?:crear|crea|agregar|agrega|anadir|anade)\s+(?:un\s+|una\s+)?(?:nuevo\s+|nueva\s+)?(?:lugar|sitio|ubicacion|zona|habitacion)(?:\s+(?:nuevo|nueva))?(?:\s+(?:llamado|llamada)\s+|\s*:\s*)(.+))$/,
+    build: (match): Intent | null => {
+      const name = stripLeadingArticle((match[1] ?? match[2] ?? '').trim());
+      return name === '' ? null : { kind: 'CREATE_LOCATION', name };
+    },
   },
 
   {

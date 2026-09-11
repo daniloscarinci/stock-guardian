@@ -561,6 +561,77 @@ describe('pt-BR phrases: changing', () => {
       kind: 'CREATE_ITEM', name: 'arroz', amount: 10, unit: 'kg', location: 'despensa',
     });
   });
+
+  /**
+   * "novo lugar, porao" - a place with no item and nowhere else in the
+   * sentence for one to be.
+   *
+   * The comma is not a word the rule sees: `parse.ts` strips a comma that is
+   * not holding a decimal together before any rule runs, so this reaches
+   * CREATE_LOCATION as "novo lugar porao" - the noun and the name separated by
+   * nothing but the single space the comma leaves behind. The tilde goes the
+   * same way: `foldText` runs first, so "porao" is what the pattern sees and
+   * what the name is captured from.
+   */
+  it('reads "novo lugar, porao" as a place to create', () => {
+    expect(say('novo lugar, porão')).toEqual({ kind: 'CREATE_LOCATION', name: 'porao' });
+  });
+
+  /**
+   * The connector form, on the verb that proves this rule has to sit above
+   * ADJUST_QUANTITY: "adiciona" is in `ADD_VERBS`, so with the rules the other
+   * way round the sentence is one more of a product called "local chamado
+   * garagem".
+   */
+  it('drops the article from "adiciona um local chamado a garagem"', () => {
+    expect(say('adiciona um local chamado a garagem')).toEqual({
+      kind: 'CREATE_LOCATION', name: 'garagem',
+    });
+  });
+
+  /** The colon is the written form of the same connector, and survives the strip. */
+  it('reads "criar area: quintal" as a place to create', () => {
+    expect(say('criar area: quintal')).toEqual({ kind: 'CREATE_LOCATION', name: 'quintal' });
+  });
+
+  /** Portuguese puts the adjective on either side of the noun, and means the same thing. */
+  const bothSides = ['cria um novo local chamado o porao', 'cria um local novo chamado o porao'];
+  for (const phrase of bothSides) {
+    it(`"${phrase}" creates a place called porao`, () => {
+      expect(say(phrase)).toEqual({ kind: 'CREATE_LOCATION', name: 'porao' });
+    });
+  }
+
+  /**
+   * The sweep that earned this test: every one of the 194 catalog names in
+   * `data/catalog.generated.ts` was spoken after every creating verb and
+   * every article, and the loose CREATE_ITEM-shaped pattern stole none of
+   * them - no Portuguese product name in that file begins with lugar, local,
+   * area, comodo or prateleira. The collision it did find is the shelf the
+   * catalog happens not to stock: with a loose separator, "adiciona uma
+   * prateleira de aco" became a place called "de aco" instead of one more
+   * steel shelf on the stock. It stays an addition here, because "adiciona"
+   * names no place at all without "chamado", "chamada" or a colon after the
+   * noun.
+   */
+  it('does not read "adiciona uma prateleira de aco" as a place worth making', () => {
+    expect(say('adiciona uma prateleira de aco')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'prateleira aco', direction: 'up',
+    });
+  });
+
+  /**
+   * The same bug on a verb with no fallback reading at all. "criar" is in
+   * nobody's verb map - not ADD_VERBS, not REMOVE_VERBS, not MOVE_VERBS - so
+   * where "adiciona uma prateleira de aco" at least falls back to a stock
+   * addition, "criar uma area de servico" fell all the way to UNKNOWN before
+   * CREATE_LOCATION existed. The loose pattern turned that UNKNOWN into a
+   * place called "de servico"; requiring a connector after "criar" leaves the
+   * phrase exactly where it was.
+   */
+  it('does not read "criar uma area de servico" as a place, and stays UNKNOWN', () => {
+    expect(say('criar uma area de servico').kind).toBe('UNKNOWN');
+  });
 });
 
 describe('pt-BR phrases: moving and thresholds', () => {

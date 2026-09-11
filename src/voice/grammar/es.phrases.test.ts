@@ -537,6 +537,76 @@ describe('es phrases: changing', () => {
       kind: 'CREATE_ITEM', name: 'arroz', amount: 10, unit: 'kg', location: 'despensa',
     });
   });
+
+  /**
+   * "nuevo lugar, sotano" - a place with no item and nowhere else in the
+   * sentence for one to be.
+   *
+   * The comma is not a word the rule sees: `parse.ts` strips a comma that is
+   * not holding a decimal together before any rule runs, so this reaches
+   * CREATE_LOCATION as "nuevo lugar sotano" - the noun and the name separated
+   * by nothing but the single space the comma leaves behind. The accent goes
+   * the same way: `foldText` runs first, so "sotano" is what the pattern sees
+   * and what the name is captured from.
+   */
+  it('reads "nuevo lugar, sotano" as a place to create', () => {
+    expect(say('nuevo lugar, sótano')).toEqual({ kind: 'CREATE_LOCATION', name: 'sotano' });
+  });
+
+  /**
+   * The connector form, on the verb that proves this rule has to sit above
+   * ADJUST_QUANTITY: "agrega" is in `ADD_VERBS`, so with the rules the other
+   * way round the sentence is one more of a product called "lugar llamado
+   * sotano".
+   */
+  it('drops the article from "agrega un lugar llamado el sotano"', () => {
+    expect(say('agrega un lugar llamado el sotano')).toEqual({
+      kind: 'CREATE_LOCATION', name: 'sotano',
+    });
+  });
+
+  /** The colon is the written form of the same connector, and survives the strip. */
+  it('reads "crear zona: garaje" as a place to create', () => {
+    expect(say('crear zona: garaje')).toEqual({ kind: 'CREATE_LOCATION', name: 'garaje' });
+  });
+
+  /** Spanish puts the adjective on either side of the noun, and means the same thing. */
+  const bothSides = ['crea un nuevo lugar llamado el sotano', 'crea un lugar nuevo llamado el sotano'];
+  for (const phrase of bothSides) {
+    it(`"${phrase}" creates a place called sotano`, () => {
+      expect(say(phrase)).toEqual({ kind: 'CREATE_LOCATION', name: 'sotano' });
+    });
+  }
+
+  /**
+   * The sweep that earned this test: every one of the 194 catalog names in
+   * `data/catalog.generated.ts` was spoken after every creating verb and
+   * every article, and the loose CREATE_ITEM-shaped pattern stole none of
+   * them - no Spanish product name in that file begins with lugar, sitio,
+   * ubicacion, zona or habitacion. The collision it did find was a different
+   * one: with a loose separator, "agrega un sitio web" became a place called
+   * "web", because everything after the noun was read as the name of a shelf.
+   * It stays an addition here, because "agrega" names no place at all without
+   * "llamado", "llamada" or a colon after the noun.
+   */
+  it('does not read "agrega un sitio web" as a place worth making', () => {
+    expect(say('agrega un sitio web')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'sitio web', direction: 'up',
+    });
+  });
+
+  /**
+   * The same bug on a verb with no fallback reading at all. "crear" is in
+   * nobody's verb map - not ADD_VERBS, not REMOVE_VERBS, not MOVE_VERBS - so
+   * where "agrega un sitio web" at least falls back to a stock addition,
+   * "crear una zona de cultivo" fell all the way to UNKNOWN before
+   * CREATE_LOCATION existed. The loose pattern turned that UNKNOWN into a
+   * place called "de cultivo"; requiring a connector after "crear" leaves the
+   * phrase exactly where it was.
+   */
+  it('does not read "crear una zona de cultivo" as a place, and stays UNKNOWN', () => {
+    expect(say('crear una zona de cultivo').kind).toBe('UNKNOWN');
+  });
 });
 
 describe('es phrases: moving and thresholds', () => {
