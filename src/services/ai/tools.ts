@@ -83,7 +83,7 @@ const TRANSACTIONS = ['add', 'remove', 'consume', 'purchase', 'correction'] as c
 
 /*
  * Claude chooses a tool from its description and nothing else, so each one
- * says what it is for AND when to reach for it. The four writing descriptions
+ * says what it is for AND when to reach for it. The seven writing descriptions
  * lead with the fact that they do not write, because a model that believes it
  * has changed the stock will report back that it did, and the user will read a
  * confirmation card for a change they were told already happened.
@@ -241,7 +241,7 @@ export const TOOLS: readonly Anthropic.Tool[] = [
     },
   },
 
-  // ---- The four that only propose ----------------------------------------
+  // ---- The seven that only propose ---------------------------------------
   {
     name: 'adjust_quantity',
     description:
@@ -314,6 +314,49 @@ export const TOOLS: readonly Anthropic.Tool[] = [
         expires_on: { type: 'string', description: 'A calendar date, YYYY-MM-DD.' },
       },
       required: ['item', 'expires_on'],
+    },
+  },
+  {
+    name: 'move_item',
+    description:
+      'PROPOSE moving an item to a place. THIS DOES NOT CHANGE ANYTHING - it only proposes. ' +
+      'The place must come from list_locations. If none matches, say so and ask - do not ' +
+      'choose the nearest one.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        item: { type: 'string', description: 'The item as the user said it.' },
+        location: { type: 'string', description: 'A place from list_locations.' },
+      },
+      required: ['item', 'location'],
+    },
+  },
+  {
+    name: 'set_minimum',
+    description:
+      'PROPOSE the level below which the replenishment list speaks up about an item. THIS DOES ' +
+      'NOT CHANGE ANYTHING - it only proposes. The number must be one the user stated.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        item: { type: 'string', description: 'The item as the user said it.' },
+        minimum: { type: 'number', description: 'The level the user stated. Never one they did not.' },
+      },
+      required: ['item', 'minimum'],
+    },
+  },
+  {
+    name: 'set_target',
+    description:
+      'PROPOSE the level the user is stocking towards. THIS DOES NOT CHANGE ANYTHING - it only ' +
+      'proposes. The number must be one the user stated.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        item: { type: 'string', description: 'The item as the user said it.' },
+        target: { type: 'number', description: 'The level the user stated. Never one they did not.' },
+      },
+      required: ['item', 'target'],
     },
   },
 ];
@@ -480,6 +523,31 @@ const createItemInput = z.object({
 const setExpiryInput = z.object({
   item: z.string().min(1),
   expires_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date, YYYY-MM-DD.'),
+});
+
+const moveInput = z.object({
+  item: z.string().min(1),
+  location: z.string().min(1),
+});
+
+/*
+ * Both thresholds take zero and refuse anything below it.
+ *
+ * Zero is a level a person can mean, and it is not the same as having none
+ * set. `evaluateStock` is where the difference shows: a null minimum is
+ * replaced by the global threshold, where a zero one stays zero. A negative is
+ * not a level at all, and is refused rather than clamped to zero, because
+ * clamping would store one of those two meanings for a number that meant
+ * neither.
+ */
+const setMinimumInput = z.object({
+  item: z.string().min(1),
+  minimum: z.number().min(0),
+});
+
+const setTargetInput = z.object({
+  item: z.string().min(1),
+  target: z.number().min(0),
 });
 
 // ---------------------------------------------------------------------------
@@ -1097,6 +1165,161 @@ async function setExpiry(deps: AiDeps, input: unknown): Promise<ToolRun> {
   return proposed(write, proposalNote(`${found.item.name} would expire on ${expiresOn}`));
 }
 
+async function moveItem(deps: AiDeps, input: unknown): Promise<ToolRun> {
+  const parsed = moveInput.safeParse(input);
+  if (!parsed.success) return failed('move_item needs an item and a place.');
+  const { item: phrase, location: place } = parsed.data;
+
+  const found = await locate(deps, phrase);
+  if (!found.ok) return found.run;
+
+  const destination = await findLocation(deps, place);
+
+  /*
+   * Refused here, where the parser offers to make the place - the same split
+   * `create_item` makes above, and for the same reason.
+   *
+   * A parsed sentence gets one shot at what it heard: it is all the user is
+   * going to say, so the card asking "shall I make it?" is the only way "move
+   * the rice to the cellar" gets anywhere at all. This tool is inside a loop
+   * that can ask. It has `list_locations`, so it can find out what the shelves
+   * are called and then say what it means. A model that invented the place
+   * would be choosing twice over - which place, and how to word it - and the
+   * user would be shown one card covering both.
+   */
+  if (destination === undefined) {
+    return ok({
+      status: 'not proposed',
+      reason: `No place is called "${place}". Call list_locations and ask the user which one.`,
+    });
+  }
+
+  // Already there. `items.transfer` writes the shelf and a `transfer` row in
+  // one transaction whatever the shelves are, so confirming this would record
+  // a movement from a place to itself. There is nothing to confirm.
+  if (found.item.locationId === destination.id) {
+    return ok({ status: 'no change', item: itemJson(found.item) });
+  }
+
+  /*
+   * `location` on top of `assistant`, where the place was matched by
+   * containing its name rather than by being it.
+   *
+   * `findLocation` matches on CONTAINS, so "porao" finds "Porão dos fundos"
+   * and would find the wrong one of two cellars just as readily. A move is the
+   * one write whose whole content is a place, so a place matched loosely is
+   * exactly the part worth showing the reader. The same check `execute.ts`
+   * makes on a spoken move, for the same reason.
+   */
+  const reasons: AssumptionReason[] = [];
+  if (foldText(destination.name) !== foldText(place)) reasons.push('location');
+
+  // The shelf it is leaving, by id and by name, because the two are read by
+  // different things: `commit` falls back to the id when it cannot re-read the
+  // row, and the card shows the name beside the new one. null is not missing
+  // information in either - it is "it was on none", which the undo has to put
+  // back as null and the card renders as "none".
+  const write: PendingWrite = {
+    kind: 'MOVE',
+    item: found.item,
+    fromLocationId: found.item.locationId,
+    fromLocationName: found.item.locationName,
+    to: { kind: 'existing', id: destination.id, name: destination.name },
+    ...assumed(reasons),
+  };
+
+  return proposed(
+    write,
+    proposalNote(
+      `${found.item.name} would move to ${destination.name}` +
+        (found.item.locationName === null ? '' : ` from ${found.item.locationName}`),
+    ),
+  );
+}
+
+/*
+ * The two thresholds, and the one thing `before` has to get right.
+ *
+ * It is read from `minimumQuantity` and `idealQuantity` - the stored columns,
+ * which are nullable - and never from `effectiveMinimum`, which is never null
+ * because the fallback to the global threshold has already been applied to it.
+ * The difference is the whole point of the field. `commit.ts` re-reads the row
+ * when the card is confirmed and falls back to this value, and whichever it
+ * ends with is what the undo restores; `null` there means no threshold was
+ * ever set and the global one stands in, where `0` means one was set to
+ * nothing. A `before` of 0 standing in for null would hand the undo the second
+ * meaning for an item that had the first, so the stored value travels exactly
+ * as it was found.
+ *
+ * Neither takes a unit, so neither can flag one. `execute.ts` treats a spoken
+ * unit the row does not use as an assumption here, and it is right to: "the
+ * minimum of rice is 5 cans" against rice kept in kilos stores 5 and reads it
+ * as five KILOS for ever. What a parsed sentence never had is the row in front
+ * of it. `find_item`, `list_items` and `item_history` all return the unit the
+ * item is kept in, so the number Claude sends is one it has had every chance
+ * to read in context first - and the description tells it to send only a
+ * number the user stated.
+ */
+async function setMinimum(deps: AiDeps, input: unknown): Promise<ToolRun> {
+  const parsed = setMinimumInput.safeParse(input);
+  if (!parsed.success) return failed('set_minimum needs an item and a level of zero or more.');
+  const { item: phrase, minimum } = parsed.data;
+
+  const found = await locate(deps, phrase);
+  if (!found.ok) return found.run;
+
+  // Already that. A card for a change of nothing asks the reader to approve a
+  // sentence with no content, and the true answer is the level itself.
+  if (found.item.minimumQuantity === minimum) {
+    return ok({ status: 'no change', minimum, item: itemJson(found.item) });
+  }
+
+  const write: PendingWrite = {
+    kind: 'MINIMUM',
+    item: found.item,
+    before: found.item.minimumQuantity,
+    after: minimum,
+    ...assumed([]),
+  };
+
+  return proposed(
+    write,
+    proposalNote(
+      `${found.item.name}: the minimum would become ${String(minimum)} ${found.item.unit}`,
+    ),
+  );
+}
+
+async function setTarget(deps: AiDeps, input: unknown): Promise<ToolRun> {
+  const parsed = setTargetInput.safeParse(input);
+  if (!parsed.success) return failed('set_target needs an item and a level of zero or more.');
+  const { item: phrase, target } = parsed.data;
+
+  const found = await locate(deps, phrase);
+  if (!found.ok) return found.run;
+
+  // The stored target is reported alongside, because `itemJson` does not carry
+  // one at all - without it "no change" would name no number.
+  if (found.item.idealQuantity === target) {
+    return ok({ status: 'no change', target, item: itemJson(found.item) });
+  }
+
+  const write: PendingWrite = {
+    kind: 'TARGET',
+    item: found.item,
+    before: found.item.idealQuantity,
+    after: target,
+    ...assumed([]),
+  };
+
+  return proposed(
+    write,
+    proposalNote(
+      `${found.item.name}: the target would become ${String(target)} ${found.item.unit}`,
+    ),
+  );
+}
+
 // ---------------------------------------------------------------------------
 
 /**
@@ -1140,6 +1363,12 @@ export async function runTool(deps: AiDeps, name: string, input: unknown): Promi
         return await createItem(deps, input);
       case 'set_expiry':
         return await setExpiry(deps, input);
+      case 'move_item':
+        return await moveItem(deps, input);
+      case 'set_minimum':
+        return await setMinimum(deps, input);
+      case 'set_target':
+        return await setTarget(deps, input);
       default:
         return failed(`There is no tool called "${name}".`);
     }

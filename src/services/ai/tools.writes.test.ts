@@ -22,7 +22,7 @@ import { createContactsRepository } from '../../repositories/contacts.repository
 import { createCatalogRepository } from '../../repositories/catalog.repository';
 import { commit } from '../voice/commit';
 import type { PendingWrite } from '../voice/execute';
-import { runTool, type AiDeps } from './tools';
+import { TOOLS, runTool, type AiDeps } from './tools';
 
 const CONTEXT: ItemContext = {
   today: '2026-09-07', defaultThreshold: 5, expiryWindows: [7, 30, 90],
@@ -34,6 +34,7 @@ describe('ai tools: writes stay proposals', () => {
   let db: SqlDriver;
   let deps: AiDeps;
   let feijaoId: string;
+  let despensaId: string;
 
   beforeEach(async () => {
     db = await createMemoryDriver();
@@ -45,8 +46,12 @@ describe('ai tools: writes stay proposals', () => {
     const categories = createCategoriesRepository(db);
     const contacts = createContactsRepository(db);
     const catalog = createCatalogRepository(db);
-    await locations.create({ name: 'Despensa' });
+    const despensa = await locations.create({ name: 'Despensa' });
+    despensaId = despensa.id;
 
+    // No location and no target, on purpose. "On no shelf" and "no target set"
+    // are the two absences `move_item` and `set_target` have to carry through
+    // as null, and a row that had either would never exercise that path.
     const feijao = await items.create({
       name: 'Feijão Preto', quantity: 4, unit: 'kg', minimumQuantity: 10,
     });
@@ -82,6 +87,9 @@ describe('ai tools: writes stay proposals', () => {
     });
     await propose('set_quantity', { item: 'feijao preto', quantity: 3 });
     await propose('set_expiry', { item: 'feijao preto', expires_on: '2027-01-01' });
+    await propose('move_item', { item: 'feijao preto', location: 'despensa' });
+    await propose('set_minimum', { item: 'feijao preto', minimum: 12 });
+    await propose('set_target', { item: 'feijao preto', target: 20 });
     const create = await propose('create_item', { name: 'quinoa', quantity: 2, unit: 'kg' });
 
     expect(writes(exec.mock.calls)).toHaveLength(0);
@@ -102,6 +110,9 @@ describe('ai tools: writes stay proposals', () => {
     await propose('adjust_quantity', { item: 'feijao preto', amount: 5, direction: 'up' });
     await propose('set_quantity', { item: 'feijao preto', quantity: 99 });
     await propose('set_expiry', { item: 'feijao preto', expires_on: '2027-01-01' });
+    await propose('move_item', { item: 'feijao preto', location: 'despensa' });
+    await propose('set_minimum', { item: 'feijao preto', minimum: 12 });
+    await propose('set_target', { item: 'feijao preto', target: 20 });
     await propose('create_item', { name: 'quinoa' });
 
     expect(await deps.items.getById(feijaoId)).toEqual(before);
@@ -122,6 +133,9 @@ describe('ai tools: writes stay proposals', () => {
       await propose('adjust_quantity', { item: 'feijao preto', amount: 5, direction: 'up' }),
       await propose('set_quantity', { item: 'feijão preto', quantity: 3 }),
       await propose('set_expiry', { item: 'feijao preto', expires_on: '2027-01-01' }),
+      await propose('move_item', { item: 'feijao preto', location: 'despensa' }),
+      await propose('set_minimum', { item: 'feijao preto', minimum: 12 }),
+      await propose('set_target', { item: 'feijao preto', target: 20 }),
       await propose('create_item', { name: 'quinoa', quantity: 2 }),
     ];
 
@@ -133,6 +147,23 @@ describe('ai tools: writes stay proposals', () => {
       // nothing true about a row a model picked out of a tool result.
       expect(proposal.assumptions[0], proposal.kind).toBe('assistant');
       expect(proposal.assumptions, proposal.kind).not.toContain('item');
+    }
+  });
+
+  /*
+   * `tools.reads.test` asserts this over the four writing tools that came
+   * first; the three added later are asserted here, where they were added.
+   * The reason is the same one: the description is everything the model reads
+   * before it chooses, so a model that believes it has changed the stock will
+   * report that it did, and the user is then shown a confirmation card for a
+   * change they have just been told is finished.
+   */
+  it('says in each of the three newer writing descriptions that it only proposes', () => {
+    for (const name of ['move_item', 'set_minimum', 'set_target']) {
+      const tool = TOOLS.find((candidate) => candidate.name === name);
+      expect(tool, name).toBeDefined();
+      expect(tool?.description, name).toMatch(/PROPOSE/);
+      expect(tool?.description, name).toMatch(/THIS DOES NOT CHANGE ANYTHING - it only proposes/);
     }
   });
 
@@ -232,6 +263,133 @@ describe('ai tools: writes stay proposals', () => {
       const run = await runTool(deps, 'create_item', { name: 'quinoa', location: 'garagem' });
       expect(run.proposal).toBeNull();
       expect(JSON.parse(run.result)).toMatchObject({ status: 'not proposed' });
+    });
+  });
+
+  describe('move_item', () => {
+    it('proposes a move without writing it', async () => {
+      const write = await propose('move_item', { item: 'feijao preto', location: 'despensa' });
+
+      expect(write).toMatchObject({
+        kind: 'MOVE',
+        // The shelf it is leaving, by id for the undo and by name for the
+        // card. null is the answer, not a gap in one: it was on none.
+        fromLocationId: null,
+        fromLocationName: null,
+        to: { kind: 'existing', id: despensaId, name: 'Despensa' },
+      });
+
+      // `commit` moves an item with `items.transfer`, which writes the shelf
+      // and a `transfer` row inside one transaction. Neither happened.
+      expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
+      expect(await deps.items.history(feijaoId)).toHaveLength(0);
+    });
+
+    it('flags a place matched by containing its name, not by being it', async () => {
+      const write = await propose('move_item', { item: 'feijao preto', location: 'desp' });
+      expect(write.assumptions).toContain('location');
+    });
+
+    it('does not flag a place named exactly, accents and case aside', async () => {
+      const write = await propose('move_item', { item: 'feijao preto', location: 'despensa' });
+      expect(write.assumptions).not.toContain('location');
+    });
+
+    /*
+     * Refused here, where a parsed sentence now offers to make the place - the
+     * same split `create_item` makes, for the same reason.
+     *
+     * A parsed sentence gets one shot: it is all the user is going to say, so
+     * the card asking "shall I make it?" is the only way "move the rice to the
+     * cellar" gets anywhere. This tool sits in a loop with `list_locations` in
+     * reach, so it can find out and then say what it means. A model that
+     * invented the place would be choosing twice over - the place and the
+     * wording - with one card shown for both.
+     */
+    it('proposes nothing when the place it was told does not exist', async () => {
+      const run = await runTool(deps, 'move_item', { item: 'feijao preto', location: 'garagem' });
+      expect(run.proposal).toBeNull();
+      expect(JSON.parse(run.result)).toMatchObject({ status: 'not proposed' });
+      expect((await deps.items.getById(feijaoId))?.locationId).toBeNull();
+    });
+
+    // `items.transfer` records a `transfer` row whatever the shelves are, so a
+    // move onto the shelf the item is already on is a history entry saying it
+    // went from a place to itself. There is nothing to confirm.
+    it('answers rather than proposing a move to where the item already is', async () => {
+      await deps.items.transfer(feijaoId, despensaId);
+
+      const run = await runTool(deps, 'move_item', { item: 'feijao preto', location: 'despensa' });
+      expect(run.proposal).toBeNull();
+      expect(JSON.parse(run.result)).toMatchObject({ status: 'no change' });
+    });
+  });
+
+  describe('set_minimum', () => {
+    it('proposes the level without writing it, and says which one it replaces', async () => {
+      const write = await propose('set_minimum', { item: 'feijao preto', minimum: 12 });
+
+      expect(write).toMatchObject({ kind: 'MINIMUM', before: 10, after: 12 });
+      expect((await deps.items.getById(feijaoId))?.minimumQuantity).toBe(10);
+    });
+
+    /*
+     * null and 0 are different answers, and the undo is where the difference
+     * shows. `null` means no minimum was ever set, so `evaluateStock` stands
+     * the global threshold in its place; `0` means one was set to nothing, and
+     * stays zero. An undo handed 0 where it should have had null would lower
+     * the bar on an item whose owner never touched it, so the stored value is
+     * read as it is - `minimumQuantity`, and never `effectiveMinimum`, which
+     * is never null because it is the one the fallback has been applied to.
+     */
+    it('carries null, not zero, for an item that never had a minimum', async () => {
+      await deps.items.create({ name: 'Arroz', quantity: 2, unit: 'kg' });
+
+      const write = await propose('set_minimum', { item: 'arroz', minimum: 5 });
+      expect(write).toMatchObject({ kind: 'MINIMUM', before: null, after: 5 });
+    });
+
+    it('proposes a minimum of zero, which is a level and not an absence', async () => {
+      const write = await propose('set_minimum', { item: 'feijao preto', minimum: 0 });
+      expect(write).toMatchObject({ kind: 'MINIMUM', before: 10, after: 0 });
+    });
+
+    it('answers rather than proposing the level the item already has', async () => {
+      const run = await runTool(deps, 'set_minimum', { item: 'feijao preto', minimum: 10 });
+      expect(run.proposal).toBeNull();
+      expect(JSON.parse(run.result)).toMatchObject({ status: 'no change' });
+    });
+
+    it('refuses a level below zero rather than clamping one', async () => {
+      const run = await runTool(deps, 'set_minimum', { item: 'feijao preto', minimum: -1 });
+      expect(run.isError).toBe(true);
+      expect(run.proposal).toBeNull();
+    });
+  });
+
+  describe('set_target', () => {
+    it('proposes the level without writing it', async () => {
+      const write = await propose('set_target', { item: 'feijao preto', target: 20 });
+
+      // null, because nothing set one - the same distinction the minimum makes,
+      // against the `idealQuantity` column rather than `minimumQuantity`.
+      expect(write).toMatchObject({ kind: 'TARGET', before: null, after: 20 });
+      expect((await deps.items.getById(feijaoId))?.idealQuantity).toBeNull();
+    });
+
+    it('says which level it would replace when the item has one', async () => {
+      await deps.items.update(feijaoId, { idealQuantity: 20 });
+
+      const write = await propose('set_target', { item: 'feijao preto', target: 30 });
+      expect(write).toMatchObject({ kind: 'TARGET', before: 20, after: 30 });
+    });
+
+    it('answers rather than proposing the level the item already has', async () => {
+      await deps.items.update(feijaoId, { idealQuantity: 20 });
+
+      const run = await runTool(deps, 'set_target', { item: 'feijao preto', target: 20 });
+      expect(run.proposal).toBeNull();
+      expect(JSON.parse(run.result)).toMatchObject({ status: 'no change' });
     });
   });
 
