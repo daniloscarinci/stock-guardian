@@ -93,6 +93,7 @@ describe('ai tools: writes stay proposals', () => {
     const create = await propose('create_item', { name: 'quinoa', quantity: 2, unit: 'kg' });
     await propose('create_location', { name: 'cellar' });
     const category = await propose('create_category', { name: 'pets' });
+    await propose('create_contact', { name: 'Ana', relationship: 'doctor', phone: '555 1234' });
 
     expect(writes(exec.mock.calls)).toHaveLength(0);
     expect(transaction).not.toHaveBeenCalled();
@@ -114,6 +115,7 @@ describe('ai tools: writes stay proposals', () => {
     const before = await deps.items.getById(feijaoId);
     const locationsBefore = await deps.locations.list();
     const categoriesBefore = await deps.categories.list();
+    const contactsBefore = await deps.contacts.list();
 
     await propose('adjust_quantity', { item: 'feijao preto', amount: 5, direction: 'up' });
     await propose('set_quantity', { item: 'feijao preto', quantity: 99 });
@@ -124,6 +126,7 @@ describe('ai tools: writes stay proposals', () => {
     await propose('create_item', { name: 'quinoa' });
     await propose('create_location', { name: 'cellar' });
     await propose('create_category', { name: 'pets' });
+    await propose('create_contact', { name: 'Ana', relationship: 'doctor', phone: '555 1234' });
 
     expect(await deps.items.getById(feijaoId)).toEqual(before);
     expect(await deps.items.history(feijaoId)).toHaveLength(0);
@@ -131,11 +134,12 @@ describe('ai tools: writes stay proposals', () => {
     const all = await deps.items.list(CONTEXT, { filters: { search: 'quinoa' } });
     expect(all.rows).toHaveLength(0);
 
-    // create_location and create_category each propose a row rather than
-    // insert one, so the tables they would land in are the honest witness -
-    // `getById` above only ever watched the item table.
+    // create_location, create_category and create_contact each propose a row
+    // rather than insert one, so the tables they would land in are the honest
+    // witness - `getById` above only ever watched the item table.
     expect(await deps.locations.list()).toEqual(locationsBefore);
     expect(await deps.categories.list()).toEqual(categoriesBefore);
+    expect(await deps.contacts.list()).toEqual(contactsBefore);
   });
 
   /*
@@ -155,6 +159,7 @@ describe('ai tools: writes stay proposals', () => {
       await propose('create_item', { name: 'quinoa', quantity: 2 }),
       await propose('create_location', { name: 'cellar' }),
       await propose('create_category', { name: 'pets' }),
+      await propose('create_contact', { name: 'Ana', phone: '555 1234' }),
     ];
 
     for (const proposal of proposals) {
@@ -170,14 +175,21 @@ describe('ai tools: writes stay proposals', () => {
 
   /*
    * `tools.reads.test` asserts this over the four writing tools that came
-   * first; the five added later are asserted here, where they were added.
+   * first; the six added later are asserted here, where they were added.
    * The reason is the same one: the description is everything the model reads
    * before it chooses, so a model that believes it has changed the stock will
    * report that it did, and the user is then shown a confirmation card for a
    * change they have just been told is finished.
    */
-  it('says in each of the five newer writing descriptions that it only proposes', () => {
-    for (const name of ['move_item', 'set_minimum', 'set_target', 'create_location', 'create_category']) {
+  it('says in each of the six newer writing descriptions that it only proposes', () => {
+    for (const name of [
+      'move_item',
+      'set_minimum',
+      'set_target',
+      'create_location',
+      'create_category',
+      'create_contact',
+    ]) {
       const tool = TOOLS.find((candidate) => candidate.name === name);
       expect(tool, name).toBeDefined();
       expect(tool?.description, name).toMatch(/PROPOSE/);
@@ -505,6 +517,133 @@ describe('ai tools: writes stay proposals', () => {
       expect(String(body.reason)).toMatch(/Ferramentas/);
 
       expect(await deps.categories.list()).toEqual(before);
+    });
+  });
+
+  /*
+   * The tenth writing tool, and the one that differs most from the sentence
+   * that does the same job.
+   *
+   * Two of its fields exist for this path alone. `NEW_CONTACT` declares five
+   * and the grammar fills three, because an address heard aloud is a guess at
+   * somebody's spelling and a place is free text no pattern can tell from a
+   * name - the variant's own comment says so. A typed sentence has neither
+   * problem, so the email and the place are asked for here and asserted here.
+   *
+   * The number is the other difference. The parser reads spoken words through
+   * `spokenDigits` and marks what it heard `heardDigits`, which the card
+   * renders as "I heard this number rather than being shown it". Claude is
+   * handed the characters, so that sentence would be false, and the card
+   * prints the number under the name for every NEW_CONTACT regardless of the
+   * reason - so nothing is hidden by leaving it off.
+   */
+  describe('create_contact', () => {
+    it('proposes a contact without writing it', async () => {
+      const write = await propose('create_contact', {
+        name: 'Ana', relationship: 'doctor', phone: '555 1234',
+      });
+
+      expect(write).toMatchObject({
+        kind: 'NEW_CONTACT', name: 'Ana', relationship: 'doctor', phone: '555 1234',
+      });
+      expect(await deps.contacts.count()).toBe(0);
+    });
+
+    // The two the grammar always leaves null. They are declared on the variant
+    // for this caller, so a tool that dropped them would leave the type
+    // carrying fields nothing on earth could fill.
+    it('carries the email and the place, which a spoken sentence cannot', async () => {
+      const write = await propose('create_contact', {
+        name: 'Ana', email: 'ana@example.com', location: 'Rua das Flores 12',
+      });
+
+      expect(write).toMatchObject({
+        kind: 'NEW_CONTACT', email: 'ana@example.com', location: 'Rua das Flores 12',
+      });
+    });
+
+    // null is what `commit` writes for an absent field and what the card knows
+    // not to print. An empty string is a field the row HAS, blank.
+    it('carries null, not an empty string, for what it was not given', async () => {
+      const write = await propose('create_contact', { name: 'Ana', phone: '   ' });
+
+      expect(write).toMatchObject({
+        kind: 'NEW_CONTACT', relationship: null, phone: null, email: null, location: null,
+      });
+    });
+
+    /*
+     * Character for character, because the description promises exactly that.
+     * A number is free text in the column and in every screen that shows it;
+     * the brackets, the country code and the extension are how its owner reads
+     * it back, and a tidier version of somebody's phone number is a different
+     * string on the card from the one they typed.
+     */
+    it('passes the number through exactly as it was given', async () => {
+      const write = await propose('create_contact', {
+        name: 'Ana', phone: '+55 (11) 98765-4321 r. 22',
+      });
+      expect(write).toMatchObject({ phone: '+55 (11) 98765-4321 r. 22' });
+    });
+
+    /*
+     * A name of nothing is refused rather than looked up. `contacts.search`
+     * hands back EVERYONE for a term that folds to empty, so a blank name
+     * would be answered with "somebody already matches" and the whole phone
+     * book attached to it.
+     */
+    it('refuses a name that is nothing but spaces', async () => {
+      await deps.contacts.create({ name: 'Ana Ferreira', phone: '11 3333-0001' });
+
+      const run = await runTool(deps, 'create_contact', { name: '   ' });
+      expect(run.isError).toBe(true);
+      expect(run.proposal).toBeNull();
+    });
+
+    it('does not say the number was heard, because it was typed', async () => {
+      const write = await propose('create_contact', { name: 'Ana', phone: '555 1234' });
+
+      expect(write.assumptions).toEqual(['assistant']);
+      expect(write.assumptions).not.toContain('heardDigits');
+    });
+
+    /*
+     * A NAME THAT IS TAKEN IS ANSWERED, NOT MADE TWICE - `execute.ts`'s rule
+     * for CREATE_CONTACT, and it matters more here than for a place or a
+     * heading: two rows called Ana split the number of somebody who may need
+     * reaching in an emergency, and which one is opened first is a coin toss.
+     */
+    it('answers rather than proposing somebody already in the contacts', async () => {
+      await deps.contacts.create({
+        name: 'Ana Ferreira', relationship: 'Médica', phone: '11 3333-0001',
+      });
+
+      const run = await runTool(deps, 'create_contact', { name: 'ana', phone: '555 1234' });
+      expect(run.proposal).toBeNull();
+      const body = JSON.parse(run.result) as Record<string, unknown>;
+      expect(body.status).toBe('not proposed');
+      // With the row itself, so the model can read back the number the user
+      // was about to write down instead of refusing with better manners.
+      expect(run.result).toMatch(/Ana Ferreira/);
+      expect(run.result).toMatch(/11 3333-0001/);
+      expect(await deps.contacts.count()).toBe(1);
+    });
+
+    /*
+     * And it is stopped by a match in ANY field, notes included, which is a
+     * real cost and not an oversight: `contacts.search` is the lookup
+     * QUERY_CONTACT and `execute.ts`'s CREATE_CONTACT both use, so the two
+     * engines agree on what "this contact already exists" means. The result
+     * names whoever it found, which is what lets the model see it is not the
+     * person who was meant and say so.
+     */
+    it('is stopped by a match in another field, as the spoken path is', async () => {
+      await deps.contacts.create({ name: 'João Souza', notes: 'primo da Ana' });
+
+      const run = await runTool(deps, 'create_contact', { name: 'Ana' });
+      expect(run.proposal).toBeNull();
+      expect(JSON.parse(run.result)).toMatchObject({ status: 'not proposed' });
+      expect(run.result).toMatch(/João Souza/);
     });
   });
 

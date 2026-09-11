@@ -83,7 +83,7 @@ const TRANSACTIONS = ['add', 'remove', 'consume', 'purchase', 'correction'] as c
 
 /*
  * Claude chooses a tool from its description and nothing else, so each one
- * says what it is for AND when to reach for it. The nine writing descriptions
+ * says what it is for AND when to reach for it. The ten writing descriptions
  * lead with the fact that they do not write, because a model that believes it
  * has changed the stock will report back that it did, and the user will read a
  * confirmation card for a change they were told already happened.
@@ -241,7 +241,7 @@ export const TOOLS: readonly Anthropic.Tool[] = [
     },
   },
 
-  // ---- The nine that only propose -----------------------------------------
+  // ---- The ten that only propose ------------------------------------------
   {
     name: 'adjust_quantity',
     description:
@@ -381,6 +381,23 @@ export const TOOLS: readonly Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: { name: { type: 'string' } },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'create_contact',
+    description:
+      'PROPOSE a new emergency contact. THIS DOES NOT CHANGE ANYTHING - it only proposes. Only ' +
+      'the name is required. Never invent a phone number, and never reformat one the user gave.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        relationship: { type: 'string', description: 'Doctor, neighbour, and so on.' },
+        phone: { type: 'string', description: 'Exactly as the user gave it.' },
+        email: { type: 'string' },
+        location: { type: 'string', description: 'Free text: where this person is.' },
+      },
       required: ['name'],
     },
   },
@@ -580,6 +597,30 @@ const setTargetInput = z.object({
 const createLocationInput = z.object({ name: z.string().min(1) });
 
 const createCategoryInput = z.object({ name: z.string().min(1) });
+
+/*
+ * A contact, and the one schema here that validates a phone number no further
+ * than "it is a string".
+ *
+ * Nothing in this application parses a number: the column is free text, the
+ * Contacts screen shows it as typed, and `contacts.search` folds it like any
+ * other field. What a person types carries meaning no digit test keeps - a
+ * country code, the brackets they read it back in, "r. 22" for an extension,
+ * or a second number after a slash - so a pattern strict enough to catch a
+ * typo would refuse more real numbers than it caught, and each refusal would
+ * reach the user as Claude saying their own phone number was wrong.
+ *
+ * The name is trimmed because `contacts.create` trims it before storing, and a
+ * card headed with a name the row will not have is a card about a different
+ * write. Nothing else is: see `textOrNull` below.
+ */
+const createContactInput = z.object({
+  name: z.string().trim().min(1),
+  relationship: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  location: z.string().optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Shared lookups
@@ -1494,6 +1535,109 @@ async function createCategory(deps: AiDeps, input: unknown): Promise<ToolRun> {
   return proposed(write, proposalNote(`create the category "${name}"`));
 }
 
+/**
+ * Free text as it was given, or null where nothing was.
+ *
+ * The trim decides only WHETHER there is a value; it never becomes one. A
+ * field of spaces is a field the model filled with nothing, and null is what
+ * `commit` writes for an absent one and what the card knows not to print - an
+ * empty string would put a blank line under somebody's name and a blank column
+ * in their row. What is kept is the original string, spaces and all, because
+ * this is the funnel every field of a contact passes through and one of them
+ * is a phone number.
+ */
+function textOrNull(value: string | undefined): string | null {
+  return value === undefined || value.trim() === '' ? null : value;
+}
+
+/*
+ * A person, which is the third write here that is not about an item and the
+ * first that is more than a name.
+ *
+ * TWO FIELDS ARE ASKED FOR HERE THAT THE GRAMMAR NEVER FILLS, and the reason
+ * is not this tool's to make: `NEW_CONTACT` declares all five and says in its
+ * own comment that the spoken path leaves the email and the place null because
+ * an address heard aloud is a guess at somebody's spelling and a place is free
+ * text no pattern can tell apart from a name. A typed sentence has neither
+ * problem. The variant was written so that the tool filling them would be a
+ * new caller rather than a new field, and this is that caller.
+ *
+ * THE NUMBER IS PASSED THROUGH UNTOUCHED - not normalised, and validated no
+ * further than `createContactInput` does. The parser's path has to convert:
+ * spoken words are not digits until `spokenDigits` makes them, and it declines
+ * the whole rule when they cannot be read as any, because somebody who said a
+ * number expects the number. Claude is handed the characters, so there is
+ * nothing to convert and the only thing left to do to them is change them. The
+ * description promises the user's own formatting back, the column is free
+ * text, and nothing downstream reads a number as anything but a string.
+ *
+ * SO IT DOES NOT CARRY `heardDigits` EITHER, and that is the same fact rather
+ * than a second decision. The reason means heard rather than shown - the card
+ * renders it as "I heard this number rather than being shown it, check every
+ * digit" - and a number Claude was handed in text was shown. Nothing is lost
+ * by leaving it off: `ConfirmCard`'s `details` prints the number under the
+ * name for every NEW_CONTACT whatever the reasons say, so the reader still
+ * sees the digits. `assistant` is left as the only reason, which is the true
+ * one - the model chose to make this row, and chose what went in it.
+ *
+ * A NAME THAT IS TAKEN IS ANSWERED, NOT MADE TWICE, through `contacts.search`
+ * - the lookup `execute.ts`'s CREATE_CONTACT uses and the one QUERY_CONTACT
+ * answers with, so both engines mean the same thing by "you already have
+ * this person". It searches wider than `findLocation` and `findCategory` do:
+ * every field, notes included, so "Ana" is stopped by a João whose note
+ * mentions her. `execute.ts` weighed that cost and took it, and the reasoning
+ * carries here unchanged - two rows called Ana split the number of somebody
+ * who may need reaching in an emergency, and narrowing the check to the name
+ * would give the ask box a second idea of what a duplicate is from the one it
+ * already answers questions with. What makes the cost bearable is the same
+ * thing there and here: the answer NAMES whoever it found. The user hears who
+ * it was, sees it is not the person they meant, and says something else - and
+ * a model reading these rows back can say the note matched rather than that
+ * the contact exists.
+ */
+async function createContact(deps: AiDeps, input: unknown): Promise<ToolRun> {
+  const parsed = createContactInput.safeParse(input);
+  if (!parsed.success) return failed('create_contact needs at least a name.');
+  const fields = parsed.data;
+
+  const existing = await deps.contacts.search(fields.name);
+  if (existing.length > 0) {
+    return ok({
+      status: 'not proposed',
+      reason:
+        `"${fields.name}" already matches a contact this household has. Say who was found, and ` +
+        'their number, rather than proposing a second row. The search covers every field, notes ' +
+        'included, so a match can be somebody else who merely mentions this person - if that is ' +
+        'what happened, say so and ask the user what to do.',
+      contacts: existing.slice(0, LIST_LIMIT).map((contact) => ({
+        name: contact.name,
+        relationship: contact.relationship,
+        phone: contact.phone,
+        email: contact.email,
+      })),
+    });
+  }
+
+  const write: PendingWrite = {
+    kind: 'NEW_CONTACT',
+    name: fields.name,
+    relationship: textOrNull(fields.relationship),
+    phone: textOrNull(fields.phone),
+    email: textOrNull(fields.email),
+    location: textOrNull(fields.location),
+    ...assumed([]),
+  };
+
+  return proposed(
+    write,
+    proposalNote(
+      `create the contact "${write.name}"` +
+        (write.relationship === null ? '' : `, ${write.relationship}`) +
+        (write.phone === null ? '' : `, on ${write.phone}`),
+    ),
+  );
+}
+
 // ---------------------------------------------------------------------------
 
 /**
@@ -1547,6 +1691,8 @@ export async function runTool(deps: AiDeps, name: string, input: unknown): Promi
         return await createLocation(deps, input);
       case 'create_category':
         return await createCategory(deps, input);
+      case 'create_contact':
+        return await createContact(deps, input);
       default:
         return failed(`There is no tool called "${name}".`);
     }
