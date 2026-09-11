@@ -979,6 +979,8 @@ git commit -m "Add an emergency contact by voice, and read its number back"
 
 Nothing is stored until this card is pressed, so a write it cannot render is a write nobody can make.
 
+**Partly done already.** Task 2 added the three `AssumptionReason` members, and `ConfirmCard.tsx`'s handling of them is exhaustive — so it had to render all three or fail to compile. It rendered them, with keys in all three languages. `newLocation`'s copy is real and reachable; `newCategory` and `heardDigits` were written blind against reasons nothing produced yet. Treat that wording as a first draft to check against the writes that now exist, not as finished work: re-read both sentences once the writes reach the card, and rewrite whichever describes something the user is not actually looking at. What is still missing here is rendering the three *writes* — `NEW_LOCATION`, `NEW_CATEGORY`, `NEW_CONTACT` — which is the bulk of this task.
+
 **Files:**
 - Modify: `src/features/voice/ConfirmCard.tsx`
 - Modify: `src/i18n/locales/{en,es,pt-BR}.ts`
@@ -1215,7 +1217,9 @@ Follow the wording of the four writes already there — every description opens 
 
 - [ ] **Step 4: Add the runners**
 
-Each resolves the item the way `adjust_quantity` already does and returns the matching `PendingWrite` as a proposal. Every proposal is `assumed` and carries `'assistant'` — the file explains at length why a model's choice is never `explicit`, and that rule holds for these three unchanged. `move_item` builds a `Destination`: `{ kind: 'existing', … }` when `findLocation` matches, `{ kind: 'new', name }` otherwise, with `'newLocation'` added to the assumptions.
+Each resolves the item the way `adjust_quantity` already does and returns the matching `PendingWrite` as a proposal. Every proposal is `assumed` and carries `'assistant'` — the file explains at length why a model's choice is never `explicit`, and that rule holds for these three unchanged.
+
+**`move_item` refuses an unknown place rather than proposing to make one.** This is deliberate asymmetry with the grammar path, and Task 2 already established it for `create_item` — follow that precedent exactly rather than inventing a second convention. The grammar has one shot at a sentence and cannot ask, so offering to make the place is the only way "move the rice to the cellar" gets anywhere. Claude sits in a loop, has `list_locations`, and gets `create_location` in Task 11: it can find out and then say what it means. A model that silently invented a place would be choosing twice over — the place and the phrasing — with the user shown one card for both.
 
 - [ ] **Step 5: Run the tests**
 
