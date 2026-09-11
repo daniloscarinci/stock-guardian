@@ -245,6 +245,42 @@ describe('execute: certainty', () => {
     });
   });
 
+  /**
+   * A contact is never a nudge either, and the case that matters is the one
+   * with NOTHING to assume about.
+   *
+   * `certaintyOf` derives `explicit` from an empty assumption list, and a
+   * contact spoken without a number produces exactly that - no item matched
+   * loosely, no quantity filled in, no date derived. Left to it, "novo
+   * contato, ana" would be stored without anybody being asked, and a name
+   * taken out of a transcript would land in the phone book with no step at
+   * which it was shown. Every other write the caller stores unasked is read
+   * back afterwards against something stored; a contact's name is read back
+   * against nothing.
+   *
+   * So `execute` sets it rather than deriving it. The first test below is what
+   * would break if somebody tidied that into a `certaintyOf([])` call.
+   */
+  describe('a contact', () => {
+    it('is assumed even with an empty assumption list', async () => {
+      const write = await pending(deps, { kind: 'CREATE_CONTACT', name: 'ana',
+        relationship: null, phone: null });
+
+      expect(write).toMatchObject({ certainty: 'assumed', assumptions: [] });
+    });
+
+    /**
+     * And a number that WAS spoken says so, because that is the part of the
+     * card a reader has to check character by character.
+     */
+    it('names the heard digits when a number was spoken', async () => {
+      const write = await pending(deps, { kind: 'CREATE_CONTACT', name: 'ana',
+        relationship: 'irma', phone: '5551234' });
+
+      expect(write).toMatchObject({ certainty: 'assumed', assumptions: ['heardDigits'] });
+    });
+  });
+
   describe('a threshold in a unit the row does not keep', () => {
     // A wrong adjustment shows up next time anyone looks at the quantity. A wrong
     // minimum shows up as a replenishment list that is quietly wrong about what is

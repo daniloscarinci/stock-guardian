@@ -699,6 +699,104 @@ describe('es phrases: changing', () => {
       kind: 'CREATE_CATEGORY', name: 'electrogeno',
     });
   });
+
+  /**
+   * "nuevo contacto, ana" - a person, and the first sentence in this grammar
+   * whose slots are more than a name. The comma is gone before any rule runs.
+   */
+  it('reads "nuevo contacto, ana" as a contact to create', () => {
+    expect(say('nuevo contacto, ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+  });
+
+  it('reads the other creating verbs, the connectors and the colon', () => {
+    expect(say('crea un contacto llamado ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+    expect(say('anade un contacto nuevo llamado ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+    expect(say('agrega un contacto: ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+  });
+
+  it('drops the article from "crea un contacto llamado el medico"', () => {
+    expect(say('crea un contacto llamado el medico')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'medico', relationship: null, phone: null,
+    });
+  });
+
+  /**
+   * "mi" is the handle a Spanish speaker asks for the number by afterwards,
+   * and `contacts.search` looks in every field, so "como llamo a mi hermana"
+   * finds the row by exactly that word.
+   */
+  it('keeps the relationship "mi" introduces', () => {
+    expect(say('nuevo contacto mi hermana ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: 'hermana', phone: null,
+    });
+  });
+
+  /**
+   * A number said one digit at a time comes out as those digits, not as
+   * arithmetic: "cinco cinco cinco" is 555 to anybody reading it back and 15
+   * to anything that adds.
+   */
+  it('reads a spoken number as digits, however it was given', () => {
+    expect(say('nuevo contacto ana telefono cinco cinco cinco uno dos tres cuatro')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: '5551234',
+    });
+    expect(say('agrega un contacto llamado ana numero de telefono 555 1234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: '5551234',
+    });
+  });
+
+  /**
+   * And a number that was spoken and cannot be read as digits refuses the
+   * whole sentence rather than storing the contact without it. "quinientos" is
+   * a quantity; read digit by digit it would become 5100, a number nobody said
+   * in the one field where a wrong value looks exactly like a right one.
+   */
+  it('refuses the whole sentence when a spoken number is not digits', () => {
+    expect(say('nuevo contacto ana telefono quinientos').kind).toBe('UNKNOWN');
+  });
+
+  /**
+   * LOS LENTES DE CONTACTO. A real thing to stock, and it stays one - twice
+   * over, because "lentes" and not "contacto" is the word after the verb, so
+   * the pattern never reaches its own noun.
+   */
+  it('does not read "agrega lentes de contacto" as a person', () => {
+    expect(say('agrega lentes de contacto')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'lentes contacto', direction: 'up',
+    });
+  });
+
+  /**
+   * The catalog's own "Lista de Contactos de Emergencia", the first entry in
+   * `data/catalog.generated.ts` to contain one of these rules' nouns at all.
+   */
+  it('leaves the Lista de Contactos de Emergencia a stock item', () => {
+    expect(say('agrega la lista de contactos de emergencia')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'lista contactos emergencia',
+    });
+  });
+
+  /**
+   * "nuevo contacto de emergencia" is a documented cost, not a bug this test
+   * guards against fixing - the same one "nueva zona de cultivo" and "nuevo
+   * grupo electrogeno" pay above. Everything past the noun becomes the name,
+   * because "nuevo" trusts a bare space and no pattern here can keep "nuevo
+   * contacto ana" while refusing this. Nothing is written on it: the card
+   * asks first, with the name and the number on it.
+   */
+  it('reads "nuevo contacto de emergencia" as a contact too, and pays for it on the card', () => {
+    expect(say('nuevo contacto de emergencia')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'de emergencia', relationship: null, phone: null,
+    });
+  });
 });
 
 describe('es phrases: moving and thresholds', () => {

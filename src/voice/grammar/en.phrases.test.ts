@@ -719,6 +719,134 @@ describe('en phrases: changing', () => {
   it('reads "new group buy" as a category too, and pays for it on the card', () => {
     expect(say('new group buy')).toEqual({ kind: 'CREATE_CATEGORY', name: 'buy' });
   });
+
+  /**
+   * "new contact, ana" - a person, and the first sentence in this grammar
+   * whose slots are more than a name.
+   *
+   * The comma is not a word the rule sees, exactly as it is not for the place
+   * and the category above: `parse.ts` strips a comma that is not holding a
+   * decimal together before any rule runs.
+   */
+  it('reads "new contact, ana" as a contact to create', () => {
+    expect(say('new contact, ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+  });
+
+  it('reads the other creating verbs, the connectors and the colon', () => {
+    expect(say('create a contact called ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+    expect(say('add a new contact named ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+    expect(say('save a contact: ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+  });
+
+  it('drops the article from "add a contact called the doctor"', () => {
+    expect(say('add a contact called the doctor')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'doctor', relationship: null, phone: null,
+    });
+  });
+
+  /**
+   * "my" is what an English speaker puts in front of the handle they will ask
+   * for the number by afterwards - and `contacts.search` looks in every field,
+   * so "how do i call my sister" finds the row by exactly that word.
+   */
+  it('keeps the relationship "my" introduces', () => {
+    expect(say('new contact my sister ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: 'sister', phone: null,
+    });
+  });
+
+  /**
+   * The part of this rule that is not the two above it: a number said one
+   * digit at a time comes out as those digits and not as arithmetic. "five
+   * five five" is 555 to anybody reading it back and 15 to anything that adds.
+   */
+  it('reads a spoken number as digits, however it was given', () => {
+    expect(say('new contact ana phone five five five one two three four')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: '5551234',
+    });
+    expect(say('add a contact called ana phone number 555 1234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: '5551234',
+    });
+  });
+
+  /**
+   * And a number that was spoken and cannot be read as digits refuses the
+   * whole sentence rather than storing the contact without it.
+   *
+   * "five hundred" is a quantity. Read digit by digit it would become 5100 - a
+   * number nobody said, in the one field of this application where a wrong
+   * value looks exactly like a right one. Somebody who said a number expects
+   * the number, so they get UNKNOWN and can see they were not understood.
+   */
+  it('refuses the whole sentence when a spoken number is not digits', () => {
+    expect(say('new contact ana phone five hundred').kind).toBe('UNKNOWN');
+  });
+
+  /**
+   * CONTACT LENSES. "contact" is an ordinary English noun inside an ordinary
+   * thing a household stocks, in a way "item" and "product" never are, so a
+   * loose separator after the noun would read this as a person called
+   * "lenses". It stays ADJUST_QUANTITY because "add" names nobody without
+   * "called", "named" or a colon after the noun.
+   */
+  it('does not read "add contact lenses" as a person', () => {
+    expect(say('add contact lenses')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'contact lenses', direction: 'up',
+    });
+  });
+
+  /**
+   * And the separator is a REAL one, never the empty match, so a word that
+   * merely starts with the noun is not split into a noun and a name.
+   */
+  it('leaves "contacted" whole', () => {
+    expect(say('add a contacted item')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'contacted item',
+    });
+  });
+
+  /**
+   * The catalog's own Emergency Contact List, which is the first entry in
+   * `data/catalog.generated.ts` to contain one of these rules' nouns at all.
+   * It is safe for a second reason as well as the connector: "emergency", not
+   * "contact", is the word after the article, so the pattern never reaches its
+   * own noun.
+   */
+  it('leaves the Emergency Contact List a stock item', () => {
+    expect(say('add the emergency contact list')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'emergency contact list',
+    });
+  });
+
+  /**
+   * "new contact lenses" is a documented cost, not a bug this test guards
+   * against fixing - the same one "new room spray" and "new group buy" pay
+   * above, for the same reason.
+   *
+   * "new contact ana" and "new contact lenses" are the same shape in the same
+   * order - a creating word, the noun, one more word - and no pattern here can
+   * accept the first without accepting the second, there being no lexicon in a
+   * regex to tell a person from a pair of lenses with. Narrowing "new" the way
+   * "add" was narrowed above would refuse "new contact ana" itself, and "new"
+   * is in no verb map, so unlike "add contact lenses" there is no fallback
+   * reading to land on: a narrower pattern would turn this phrase UNKNOWN, not
+   * into a quantity. The accepted fix is the confirmation card this produces
+   * instead, so a future reader who "fixes" this test to expect UNKNOWN has
+   * just reopened "new contact ana" as a sentence this grammar cannot read.
+   */
+  it('reads "new contact lenses" as a contact too, and pays for it on the card', () => {
+    expect(say('new contact lenses')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'lenses', relationship: null, phone: null,
+    });
+  });
 });
 
 describe('en phrases: moving and thresholds', () => {

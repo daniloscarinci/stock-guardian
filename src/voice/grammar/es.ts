@@ -1,7 +1,7 @@
 /**
  * Spanish.
  *
- * The same twelve rules as `pt-BR.ts`, in the same order, with the same
+ * The same rules as `pt-BR.ts`, in the same order, with the same
  * helpers. Rule order is load-bearing and the comments there say why; the
  * comments here cover only what Spanish does differently.
  *
@@ -19,7 +19,7 @@ import type { Grammar, Rule, RuleTools, SlotContext } from './types';
 import type { Intent } from '../intents';
 import { esNumbers } from './es.numbers';
 import { esDates } from './es.dates';
-import { parseNumber, type NumberWords } from '../numbers';
+import { parseNumber, spokenDigits, type NumberWords } from '../numbers';
 import { readSpokenDate, type SpokenDate } from '../dates';
 
 /**
@@ -444,6 +444,94 @@ const rules: readonly Rule[] = [
     build: (match): Intent | null => {
       const name = stripLeadingArticle((match[1] ?? match[2] ?? '').trim());
       return name === '' ? null : { kind: 'CREATE_CATEGORY', name };
+    },
+  },
+
+  {
+    /*
+     * Beside the two rules above, and before ADJUST_QUANTITY for their reason:
+     * `ADD_VERBS` claims "agrega", "agregar", "anade" and "anadir", so without
+     * this rule running first "agrega un contacto llamado ana" is one more of
+     * an item named "contacto llamado ana" - checked by running that sentence
+     * through this grammar with this rule taken back out, not assumed. "crear"
+     * and "crea" are in neither verb map, so those sentences simply reached
+     * UNKNOWN before this rule existed.
+     *
+     * Its position relative to CREATE_LOCATION, CREATE_CATEGORY, CREATE_ITEM
+     * and MOVE_ITEM is not load-bearing. The first three cannot collide at
+     * all: their nouns are lugar, sitio, ubicacion, zona and habitacion;
+     * categoria and grupo; item, articulo, producto and cosa - none of them
+     * "contacto". MOVE_ITEM genuinely can, its verb slot being a bare `[a-z]+`
+     * filtered against MOVE_VERBS only after a match; the VERB SETS settle it
+     * at build time, and MOVE_VERBS holds none of crear, crea, agregar,
+     * agrega, anadir, anade, nuevo or nueva. The sweep below was run with this
+     * rule moved under MOVE_ITEM and nothing changed.
+     *
+     * The shape is the place rule's, with the same split: "nuevo" and "nueva"
+     * may be followed by a bare space, while "crear", "agregar" and "anadir"
+     * have to carry "llamado", "llamada" or a colon before anything past the
+     * noun is read as a name. The adjective stands on either side of the noun,
+     * and allowing both loosens nothing, because the connector is required
+     * either way.
+     *
+     * That narrowing earns its place here on a collision that is not
+     * hypothetical: LOS LENTES DE CONTACTO. "agrega lentes de contacto" is a
+     * real sentence about a real thing to stock, and it stays what it was -
+     * twice over, in fact, because "lentes" and not "contacto" is the word
+     * that follows the verb, so this pattern never reaches the noun at all.
+     * The connector is what closes the case that does: "agrega un contacto
+     * bueno" names nobody without it. The separator after the noun is never
+     * the empty match, always a real space or a colon, so "contactos" and
+     * "contactar" stay whole.
+     *
+     * What the bare space after "nuevo" still costs, spelled out because it is
+     * a real cost and not an oversight: everything past the noun becomes the
+     * name, so "nuevo contacto de emergencia" makes a contact called "de
+     * emergencia". English pays the same price on "new contact lenses", and
+     * nothing is written on it - `execute` proposes a `NEW_CONTACT` and the
+     * card asks first, with the name and the number on it.
+     *
+     * One alternation and one tail, where the place and category rules write
+     * the tail out twice: those capture a name and nothing else, and this one
+     * captures a relationship, a name and a number. "mi" is the handle Spanish
+     * reaches for - "mi hermana", "mi medico" - and one word after it is as
+     * much as a regex can safely claim.
+     *
+     * A PHONE SLOT THAT CANNOT BE READ DECLINES THE WHOLE RULE. `spokenDigits`
+     * returns null for anything that is not digits - "telefono quinientos" is
+     * a quantity, and reading it as 5100 would store a number nobody said -
+     * and somebody who said a number expects the number. Refusing the sentence
+     * whole is what lets them see it was not understood.
+     *
+     * The catalog was swept in Spanish as it was for places and categories:
+     * all 194 names in `data/catalog.generated.ts` after the eight creating
+     * and adding verbs above and seven articles, 10,864 sentences, and not one
+     * parses differently with this rule present. Nor does moving this rule
+     * below MOVE_ITEM change any of them.
+     *
+     * Unlike those two sweeps, this one had something to find. "Lista de
+     * Contactos de Emergencia" is one of the 194, and it is the first catalog
+     * name on this branch to contain one of these rules' nouns at all. It
+     * comes through unchanged because the noun is not the word the pattern
+     * looks at: "agrega la lista de contactos de emergencia" has "lista"
+     * after the article, so the pattern never reaches its own noun. The
+     * contact-lens probes above are what earned their keep.
+     */
+    name: 'CREATE_CONTACT',
+    pattern:
+      /^(?:(?:nuevo|nueva)\s+(?:un\s+|una\s+)?contacto(?:\s+(?:llamado|llamada)\s+|\s*:\s*|\s+)|(?:crear|crea|agregar|agrega|anadir|anade)\s+(?:un\s+|una\s+)?(?:nuevo\s+|nueva\s+)?contacto(?:\s+(?:nuevo|nueva))?(?:\s+(?:llamado|llamada)\s+|\s*:\s*))(?:mi\s+([a-z]+)\s+)?(.+?)(?:\s+(?:numero de telefono|telefono|numero|tel)\s+(.+))?$/,
+    build: (match, tools): Intent | null => {
+      const name = stripLeadingArticle((match[2] ?? '').trim());
+      if (name === '') return null;
+
+      const relationship = match[1] ?? null;
+      const spoken = match[3];
+      if (spoken === undefined) {
+        return { kind: 'CREATE_CONTACT', name, relationship, phone: null };
+      }
+
+      const phone = spokenDigits(tools.numbers, spoken);
+      return phone === null ? null : { kind: 'CREATE_CONTACT', name, relationship, phone };
     },
   },
 

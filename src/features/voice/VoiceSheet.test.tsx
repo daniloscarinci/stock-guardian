@@ -300,6 +300,10 @@ const countOfLocations = async (name: string) =>
 const countOfCategoryNames = async (name: string) =>
   db.selectValue<number>('SELECT COUNT(*) FROM category_names WHERE name = ?', [name]);
 
+/** The phone number stored against a contact, or undefined for no such row. */
+const phoneOf = async (name: string) =>
+  db.selectValue<string>('SELECT phone FROM contacts WHERE name = ?', [name]);
+
 beforeEach(async () => {
   db = await createMemoryDriver();
   await migrate(db);
@@ -502,6 +506,76 @@ describe('VoiceSheet', () => {
     expect(await screen.findByText('Nothing is filed under Tools.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^confirm:/i })).toBeNull();
     expect(await countOfCategoryNames('tools')).toBe(0);
+  });
+
+  /**
+   * A person, a relationship and a phone number said one digit at a time -
+   * the sentence this whole task exists for, from the box to the database and
+   * back out as words.
+   *
+   * Three things are asserted here that no layer below can assert together.
+   *
+   * THE NUMBER IS DIGITS. "five five five one two three four" reaches the
+   * table as the string 5551234. Put through `parseNumber` the same words come
+   * to 5551234's arithmetic - 5 + 5 + 5 + 1 + 2 + 3 + 4 = 25 - and what would
+   * be stored is a number nobody said.
+   *
+   * THE CARD SHOWS IT. The guess says to check every digit, so the digits have
+   * to be in front of the reader - on the card, and on the button that carries
+   * the whole change for somebody who never sees the card.
+   *
+   * THE READ-BACK SAYS IT. After Confirm, the sentence is read out of the
+   * DATABASE by the same QUERY_CONTACT anybody could ask out loud, so what is
+   * heard is what was stored rather than what was understood. That is the only
+   * check there is on a number that was heard rather than typed.
+   */
+  it('makes a contact, shows the digits it heard, and reads them back', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'new contact my sister ana phone five five five one two three four');
+
+    const card = await screen.findByRole('group', { name: 'ana' });
+    expect(within(card).getByText('New contact')).toBeTruthy();
+    expect(within(card).getByText('Relationship: sister')).toBeTruthy();
+    expect(within(card).getByText('Phone: 5551234')).toBeTruthy();
+    expect(
+      within(card).getByText('I heard this number rather than being shown it. Check every digit.'),
+    ).toBeTruthy();
+
+    // Nothing is written while the card is on screen, here as everywhere else.
+    expect(await phoneOf('ana')).toBeUndefined();
+
+    const confirm = await screen.findByRole('button', { name: /^confirm:/i });
+    expect(confirm.getAttribute('aria-label')).toBe(
+      'Confirm: ana, Relationship: sister, Phone: 5551234, New contact',
+    );
+    await user.click(confirm);
+
+    expect(await screen.findByText('ana, sister: 5551234.')).toBeTruthy();
+    expect(await phoneOf('ana')).toBe('5551234');
+    // Confirmed on the card, so there is no second chance to refuse it.
+    expect(screen.queryByRole('button', { name: /^undo/i })).toBeNull();
+  });
+
+  /**
+   * A sentence that named a number the grammar could not read as digits is
+   * refused whole.
+   *
+   * "five hundred" is a quantity. Storing the contact without it would drop
+   * the half of the sentence the speaker cared about and leave them believing
+   * a number was saved, so the rule declines and the sheet says it did not
+   * understand. Nothing is written, and no card offers to write it.
+   */
+  it('refuses a contact whose spoken number was a quantity, and stores nothing', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'new contact ana phone five hundred');
+
+    expect(await screen.findByText(/did not understand|didn.t understand/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^confirm:/i })).toBeNull();
+    expect(await phoneOf('ana')).toBeUndefined();
   });
 
   it('moves focus to Confirm and names the whole change on it', async () => {

@@ -4,8 +4,8 @@
  * Nothing in the voice feature reaches a write path except the Confirm button
  * below; `services/voice/commit.ts` is the only module that writes, and this is
  * the only thing that calls it. The card therefore has to state the change
- * completely enough to be judged: which item, where it is, and the value it
- * holds now beside the value it would hold.
+ * completely enough to be judged: which row it is about, what else is known
+ * about that row, and the value it holds now beside the value it would hold.
  *
  * Focus moves here on mount, and the button carries the whole change in its
  * accessible name. This feature exists for people who are not looking at the
@@ -29,7 +29,13 @@ import type { DateFormat, Language } from '../../domain/settings';
 import type { TranslateFn } from '../../i18n/translate';
 import styles from './Voice.module.css';
 
-/** Every write, reduced to the five things the card shows. */
+/**
+ * Every write, reduced to the five things every card shows.
+ *
+ * Not everything a card shows: `details` below adds the lines a write has that
+ * a name and a value cannot carry, and they are gathered separately because
+ * only one kind of write has any.
+ */
 interface Described {
   readonly name: string;
   readonly location: string | null;
@@ -44,8 +50,9 @@ interface Described {
    */
   readonly field: string | null;
   /**
-   * null when there is no old value, which is true of the two writes that make
-   * something rather than change it: a new item, and a new place.
+   * null when there is no old value, which is true of all four writes that
+   * make something rather than change it: a new item, place, category or
+   * contact. Nothing is being replaced, so there is nothing to strike through.
    */
   readonly before: string | null;
   readonly after: string;
@@ -147,10 +154,10 @@ function describe(
       };
 
     /*
-     * The only card whose subject is not an item, so most of the shape is
-     * empty rather than filled in: there is no quantity, no unit, and no shelf
-     * to print above it, because the name IS the whole change. `before` is
-     * null for the reason a creation's is - nothing is being replaced.
+     * The first of three cards whose subject is not an item, so most of the
+     * shape is empty rather than filled in: there is no quantity, no unit, and
+     * no shelf to print above it, because the name IS the whole change.
+     * `before` is null for the reason a creation's is - nothing is replaced.
      *
      * `locations.newLocation` rather than a sentence of this card's own. Those
      * are the words the Locations screen puts over the form that does exactly
@@ -183,7 +190,61 @@ function describe(
         before: null,
         after: t('categories.newCategory'),
       };
+
+    /*
+     * The third of these, and `contacts.newContact` for the reason the two
+     * above give: it is the heading the Contacts screen puts over the form
+     * that does this by hand.
+     *
+     * `location` stays null even though this write HAS one. That slot is the
+     * shelf an item sits on, labelled "Location" in the line it renders, and a
+     * contact's location is where a PERSON is - a different fact under a
+     * different word. It goes below with the rest of them, under the label its
+     * own screen gives it.
+     */
+    case 'NEW_CONTACT':
+      return {
+        name: write.name,
+        location: null,
+        field: null,
+        before: null,
+        after: t('contacts.newContact'),
+      };
   }
+}
+
+/**
+ * The lines that go under the name, where the name is not the whole write.
+ *
+ * A second pass over the union rather than a sixth field on `Described`,
+ * exactly as `assumed` below is: both answer a question only some kinds of
+ * write have an answer to, and threading an empty array through every other
+ * case above would say nothing eight times over.
+ *
+ * It exists for the contact, and the reason is `heardDigits`. That guess tells
+ * the reader to check a number character by character, and a card that did not
+ * show the number would be telling them to check something they cannot see.
+ * The relationship is here beside it because it is stored too, and a card is
+ * worth judging only if it states the whole change.
+ *
+ * The last two lines are what the grammar cannot fill and the Claude path can.
+ * They render nothing today, because `execute` sets both to null on every
+ * NEW_CONTACT it builds; they are written now so that the day something fills
+ * them, the card shows them rather than storing a field it never mentioned.
+ */
+function details(write: PendingWrite, t: TranslateFn): readonly string[] {
+  if (write.kind !== 'NEW_CONTACT') return [];
+
+  const lines: string[] = [];
+  const add = (label: string, value: string | null) => {
+    if (value !== null && value.trim() !== '') lines.push(`${label}: ${value}`);
+  };
+
+  add(t('contacts.relationship'), write.relationship);
+  add(t('contacts.phone'), write.phone);
+  add(t('contacts.email'), write.email);
+  add(t('contacts.whereTheyAre'), write.location);
+  return lines;
 }
 
 /**
@@ -201,23 +262,19 @@ function assumed(
   language: Language,
   dateFormat: DateFormat,
 ): readonly string[] {
-  // Neither a place nor a category has an item behind it, so neither of these
-  // can come off one. Nor is either ever read for one: the only reason
-  // NEW_LOCATION produces is `newLocation`, which interpolates `place` below,
-  // and the only one NEW_CATEGORY produces is `newCategory`, which
-  // interpolates nothing. The branches exist so the switch below needs no
-  // casts, and `write.name` is at least the truthful thing to sit in a slot
-  // nothing reaches for; a unit has no such value, so it is blank.
-  const name =
-    write.kind === 'CREATE' || write.kind === 'NEW_LOCATION' || write.kind === 'NEW_CATEGORY'
-      ? write.name
-      : write.item.name;
-  const unit =
-    write.kind === 'CREATE'
-      ? write.unit
-      : write.kind === 'NEW_LOCATION' || write.kind === 'NEW_CATEGORY'
-        ? ''
-        : write.item.unit;
+  // A place, a category and a contact have no item behind them, so none of
+  // these can come off one. Nor is any of them ever read for one: the only
+  // reason NEW_LOCATION produces is `newLocation`, which interpolates `place`
+  // below; the only one NEW_CATEGORY produces is `newCategory`, which
+  // interpolates nothing; and the only one NEW_CONTACT produces is
+  // `heardDigits`, which interpolates nothing either. The branches exist so
+  // the switch below needs no casts, and `write.name` is at least the truthful
+  // thing to sit in a slot nothing reaches for; a unit has no such value, so
+  // it is blank.
+  const itemless =
+    write.kind === 'NEW_LOCATION' || write.kind === 'NEW_CATEGORY' || write.kind === 'NEW_CONTACT';
+  const name = write.kind === 'CREATE' || itemless ? write.name : write.item.name;
+  const unit = write.kind === 'CREATE' ? write.unit : itemless ? '' : write.item.unit;
   const amount =
     write.kind === 'ADJUST'
       ? Math.abs(write.delta)
@@ -284,13 +341,16 @@ function assumed(
       case 'newCategory':
         return t('voice.assumedNewCategory');
       /*
-       * Still produced by nothing - the write that stores a contact is a later
-       * change. It is answered anyway because a reason with no case here does
-       * not compile: the switch would fall out returning `undefined`, which
-       * this function has promised not to do. It interpolates nothing, so it
-       * will still be true on the day something produces it, and a write that
-       * then wants to read the digits back is a change to make with that
-       * write.
+       * NEW_CONTACT produces this, and it was written before anything did.
+       * Re-read against the card a reader now actually sees: "I heard this
+       * number rather than being shown it. Check every digit." "This number"
+       * had nothing to point at while no card carried a number, which is why
+       * `details` above puts the digits on the card under the name and into
+       * the button's accessible name. With them there the sentence is true and
+       * complete, so it stands as Task 2 wrote it in all three languages - and
+       * it interpolates nothing, which is right here for `newCategory`'s
+       * reason: the number is already in front of the reader, and repeating it
+       * inside the warning would print it twice.
        */
       case 'heardDigits':
         return t('voice.assumedHeardDigits');
@@ -322,13 +382,18 @@ export function ConfirmCard({
 
   const { name, location, field, before, after } =
     describe(write, t, settings.language, settings.dateFormat);
+  const lines = details(write, t);
   const guesses = assumed(write, t, settings.language, settings.dateFormat);
 
   // The button's name has to survive being read on its own, out of the visual
-  // context that makes "Confirm" mean anything.
+  // context that makes "Confirm" mean anything - which is why the lines above
+  // are in it and not only on the card. Focus lands here, so a number printed
+  // anywhere else is a number the reader who was told to check it never hears.
+  // Every write but the contact returns none of them, so this reads exactly as
+  // it did for the other eight.
   const change =
     before === null ? after : `${before} ${t('voice.becomes')} ${after}`;
-  const detail = field === null ? `${name}, ${change}` : `${name}, ${field}: ${change}`;
+  const detail = [name, ...lines, field === null ? change : `${field}: ${change}`].join(', ');
 
   return (
     <section className={styles.card} role="group" aria-labelledby={headingId}>
@@ -341,6 +406,14 @@ export function ConfirmCard({
           {t('common.location')}: {location}
         </p>
       )}
+
+      {/* Each line carries its own label, because the facts under a name are
+          not all the same kind of fact the way an item's shelf always is. */}
+      {lines.map((line) => (
+        <p className={styles.cardMeta} key={line}>
+          {line}
+        </p>
+      ))}
 
       {field !== null && <p className={styles.cardMeta}>{field}</p>}
 

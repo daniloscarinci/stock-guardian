@@ -187,6 +187,41 @@ export interface CreateCategory {
   readonly name: string;
 }
 
+/**
+ * "new contact my sister ana phone five five five one two three four".
+ *
+ * Three slots where the two rules above have one, because a contact is not a
+ * name the way a place or a heading is: a phone book entry with no number in
+ * it answers none of the questions anybody asks a phone book. `relationship`
+ * is the handle most people actually reach for - "o telefone do medico" finds
+ * a row by it, because `contacts.search` looks in every field - so a sentence
+ * that gives one is worth keeping it from.
+ *
+ * `CreateContactInput` also takes an email, a place, notes and a priority, and
+ * not one of the four belongs in a spoken sentence. An address heard aloud is
+ * a guess at somebody's spelling; a place is free text this grammar cannot
+ * tell apart from a name; notes are a paragraph; and a priority is a ranking
+ * of who to call first, which nobody says in the same breath as a number. The
+ * Contacts screen is where those are filled in.
+ */
+export interface CreateContact {
+  readonly kind: 'CREATE_CONTACT';
+  readonly name: string;
+  readonly relationship: string | null;
+  /**
+   * Digits as a string, never a quantity. See `spokenDigits`, which is what
+   * puts them here: "five five five" is 555 to a reader and 15 to anything
+   * that adds, and a phone number that has been through arithmetic is no
+   * longer the number that was said.
+   *
+   * Null where the sentence named no number at all. A sentence that DID name
+   * one and could not be read as digits produces no intent at all - the rule
+   * declines - because storing the contact without it would silently drop the
+   * half the speaker cared about.
+   */
+  readonly phone: string | null;
+}
+
 export interface Help {
   readonly kind: 'HELP';
 }
@@ -205,7 +240,7 @@ export type Intent =
   | QueryExpiryOf | QueryScore | QueryCategory | QueryContact
   | QueryHistory | QueryTotal | AdjustQuantity | SetQuantity
   | CreateItem | SetExpiry | MoveItem | SetMinimum | SetTarget
-  | CreateLocation | CreateCategory | Help | Unknown;
+  | CreateLocation | CreateCategory | CreateContact | Help | Unknown;
 
 export type IntentKind = Intent['kind'];
 
@@ -213,7 +248,7 @@ export type IntentKind = Intent['kind'];
 export const WRITING_INTENTS: readonly IntentKind[] = [
   'ADJUST_QUANTITY', 'SET_QUANTITY', 'CREATE_ITEM', 'SET_EXPIRY',
   'MOVE_ITEM', 'SET_MINIMUM', 'SET_TARGET', 'CREATE_LOCATION',
-  'CREATE_CATEGORY',
+  'CREATE_CATEGORY', 'CREATE_CONTACT',
 ];
 
 /**

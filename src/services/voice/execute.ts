@@ -36,11 +36,16 @@ export interface VoiceDeps {
    */
   readonly categories: CategoriesRepository;
   /**
-   * The emergency contacts, read and never written.
+   * The emergency contacts: made by a sentence, and never changed by one.
    *
    * A phone number is the one thing in this application somebody might need
-   * while holding the phone in the dark, so it is answerable by voice - but
-   * QUERY_CONTACT has no write path at all, here or in `commit.ts`.
+   * while holding the phone in the dark, so it is answerable by voice - and a
+   * person worth reaching in the dark is worth being able to write down
+   * without finding a screen. QUERY_CONTACT reads; CREATE_CONTACT proposes a
+   * `NEW_CONTACT` that `commit` inserts, and whose undo deletes the row it
+   * just made. There is no path through this feature to `update`, and none to
+   * `remove` except that undo - editing a contact that was already there, and
+   * deleting one, belong to the Contacts screen.
    */
   readonly contacts: ContactsRepository;
   readonly context: ItemContext;
@@ -144,9 +149,17 @@ export type AssumptionReason =
   /**
    * A phone number that was heard rather than typed.
    *
-   * The only slot in this application where a recognizer's mistake is
-   * invisible: a wrong item name reads as the wrong item, and a wrong digit
-   * reads as a number. So it is always shown back before it is stored.
+   * Every other misheard slot has something to check it against. A wrong item
+   * name is the name of the wrong thing, and a reader sees at once that it is
+   * not what they said; a wrong quantity is shown beside the quantity the row
+   * already holds. A phone number has neither. One wrong digit is still a
+   * perfectly ordinary number, nothing stored can contradict it, and the
+   * mistake surfaces on the day somebody needs to make the call.
+   *
+   * So a contact is never written without being shown, and the card that
+   * carries this reason prints the digits under the name - a warning to check
+   * a number, over a card that did not show the number, would be no warning at
+   * all. `CREATE_CONTACT` produces it and nothing else does.
    */
   | 'heardDigits';
 
@@ -268,6 +281,43 @@ export type PendingWrite =
   | (Certainty & {
       readonly kind: 'NEW_CATEGORY';
       readonly name: string;
+    })
+  /*
+   * A person, which is the third write here that is not about an item and the
+   * first that is more than a name.
+   *
+   * A place and a heading are a name and nothing else: everything else about
+   * them belongs on their own screen. A contact is not, and the difference is
+   * not tidiness. A phone book entry with no number in it answers none of the
+   * questions anybody asks a phone book, and `contacts.search` looks in every
+   * field, so the relationship a speaker gave is a handle they will reach for
+   * again - "o telefone do medico" finds the row by it.
+   *
+   * ALL FIVE FIELDS ARE DECLARED NOW, and the last two are always null on this
+   * path. The grammar cannot fill them and should not try: an address heard
+   * aloud is a guess at somebody's spelling, and a place is free text no
+   * pattern here can tell apart from a name. They are here so the variant is
+   * settled once - a write type that changes shape after the card, `commit`
+   * and the undo have all been written against it is a defect this plan has
+   * already had to correct - and so the Claude tool that fills them is a new
+   * caller rather than a new field.
+   *
+   * NEVER `explicit`, and for a sharper reason than NEW_LOCATION's. That one
+   * cannot be explicit because there is nothing stored to check the name
+   * against. This one would be, left to `certaintyOf`: a contact with no
+   * number spoken has nothing to assume about and would reach an empty
+   * assumption list, which that function reads as "nothing was inferred" and
+   * turns into a write stored without asking. Nothing reads a contact's name
+   * back to catch a mishearing the way an item's quantity is read back, so it
+   * is set here instead. See `CREATE_CONTACT`.
+   */
+  | (Certainty & {
+      readonly kind: 'NEW_CONTACT';
+      readonly name: string;
+      readonly relationship: string | null;
+      readonly phone: string | null;
+      readonly email: string | null;
+      readonly location: string | null;
     });
 
 export type Outcome =
@@ -929,6 +979,83 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
       return {
         kind: 'pending',
         write: { kind: 'NEW_CATEGORY', name: intent.name, ...certaintyOf(['newCategory']) },
+      };
+    }
+
+    /*
+     * The same sentence about a person, answered the same way where the name
+     * is already taken and proposed where it is not.
+     *
+     * A NAME THAT IS TAKEN IS ANSWERED, NOT MADE TWICE, as it is for a place
+     * and a heading - and it matters more here than in either. Two shelves
+     * called "porao" split a user's stock; two rows called "Ana" split the
+     * phone number of somebody they may be trying to reach in an emergency,
+     * and the one they open first is a coin toss.
+     *
+     * The lookup is `contacts.search`, the same call QUERY_CONTACT makes, so
+     * the answer is exactly the one "qual o telefone da ana" gives: the name,
+     * the relationship and the NUMBER, read aloud - or, for a row that has no
+     * number, that the person is already in the contacts without one. That is
+     * what makes it useful rather than a refusal with better manners:
+     * somebody adding a contact they already have hears the number they were
+     * about to write down.
+     *
+     * It also searches wider than `findLocation` and `findCategory` do, and
+     * that is a real cost rather than an oversight: those match on a name,
+     * while `search` asks whether ANY field contains the phrase, notes
+     * included. So "novo contato ana" against a Joao whose note mentions Ana
+     * answers with Joao instead of proposing Ana. The answer names whoever it
+     * found, so the user can see it is not who they meant and say something
+     * else; narrowing it to the name would be a second, different idea of what
+     * "this contact already exists" means from the one the ask box already
+     * answers questions with.
+     *
+     * Nothing found is a proposal, and still not a write. This module writes
+     * nothing at all; the row exists only once the card is confirmed and
+     * `commit` runs.
+     */
+    case 'CREATE_CONTACT': {
+      const existing = await deps.contacts.search(intent.name);
+      if (existing.length > 0) {
+        return {
+          kind: 'answer',
+          answer: { kind: 'CONTACT', query: intent.name, contacts: existing },
+        };
+      }
+
+      /*
+       * `certaintyOf` is deliberately not used, and this is the one write that
+       * refuses it. It derives `explicit` from an empty assumption list, and a
+       * contact spoken without a number has an empty one - so the caller that
+       * stores an explicit write without asking would store a person's name
+       * straight out of a transcript. Every other write it does that to is
+       * read back afterwards against something stored: an item's quantity, a
+       * shelf's contents. A contact's NAME is read back against nothing, so a
+       * mishearing would land in the phone book with no step at which anybody
+       * saw it. The card is that step, and it is not optional here.
+       *
+       * `heardDigits` is the only reason there can be, and only where a number
+       * was actually spoken. It is not "no contact is called this" - that is
+       * true of every one of these and is what the card's heading already
+       * says - it is the one part of the sentence a reader has to check
+       * character by character.
+       */
+      const assumptions: readonly AssumptionReason[] =
+        intent.phone === null ? [] : ['heardDigits'];
+
+      return {
+        kind: 'pending',
+        write: {
+          kind: 'NEW_CONTACT',
+          name: intent.name,
+          relationship: intent.relationship,
+          phone: intent.phone,
+          // Only the Claude path fills these; see the variant's own comment.
+          email: null,
+          location: null,
+          certainty: 'assumed',
+          assumptions,
+        },
       };
     }
 

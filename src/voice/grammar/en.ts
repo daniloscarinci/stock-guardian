@@ -1,7 +1,7 @@
 /**
  * English.
  *
- * The same twelve rules as `pt-BR.ts`, in the same order, with the same
+ * The same rules as `pt-BR.ts`, in the same order, with the same
  * helpers. Rule order is load-bearing and the comments there say why; the
  * comments here cover only what English does differently.
  *
@@ -12,7 +12,7 @@ import type { Grammar, Rule, RuleTools, SlotContext } from './types';
 import type { Intent } from '../intents';
 import { enNumbers } from './en.numbers';
 import { enDates } from './en.dates';
-import { parseNumber, type NumberWords } from '../numbers';
+import { parseNumber, spokenDigits, type NumberWords } from '../numbers';
 import { readSpokenDate, type SpokenDate } from '../dates';
 
 /**
@@ -471,6 +471,97 @@ const rules: readonly Rule[] = [
     build: (match): Intent | null => {
       const name = stripLeadingArticle((match[1] ?? match[2] ?? '').trim());
       return name === '' ? null : { kind: 'CREATE_CATEGORY', name };
+    },
+  },
+
+  {
+    /*
+     * Beside the two rules above, and before ADJUST_QUANTITY for their reason:
+     * "add" is in ADD_VERBS, so without this rule running first "add a contact
+     * called ana" is one more of an item named "contact called ana". That was
+     * checked by running the sentence through this grammar with this rule
+     * taken back out, not assumed. The other three openers - create, make,
+     * save - are in neither verb map, so those sentences simply reached
+     * UNKNOWN before this rule existed.
+     *
+     * Its position relative to CREATE_LOCATION, CREATE_CATEGORY, CREATE_ITEM
+     * and MOVE_ITEM is not load-bearing. The first three cannot collide at
+     * all: their nouns are place, location, spot, area and room; category and
+     * group; item, product, entry and thing - and none of them is "contact".
+     * MOVE_ITEM genuinely can, its verb slot being a bare `[a-z]+` filtered
+     * against MOVE_VERBS only after a match; what settles it is the VERB SETS
+     * at build time, and MOVE_VERBS holds none of create, add, make, save or
+     * new. The whole sweep below was run with this rule moved under MOVE_ITEM
+     * and nothing changed.
+     *
+     * THE NARROWING IS THE OTHER TWO RULES', and it earns its place here on a
+     * collision that is not hypothetical: CONTACT LENSES. "add contact lenses"
+     * is a real sentence about a real thing to stock, and a bare space after
+     * the noun would read it as a person called "lenses". So "called" or
+     * "named" (or a colon) is REQUIRED whenever the sentence opens with
+     * create, add, make or save, and "add contact lenses" stays the stock
+     * addition it always was. The separator is never the empty match either -
+     * always a real space, or a colon - so "contacted" and "contactless" are
+     * not split into a noun and a name.
+     *
+     * "new" keeps the bare space, and that is the decision this branch already
+     * made twice rather than an oversight to close up next. "new contact ana"
+     * and "new contact lenses" are token-for-token identical - a creating
+     * word, the noun, one more word - and a regex has no lexicon to tell a
+     * person from a pair of lenses with. What the bare space costs, spelled
+     * out because it is a real cost: "new contact lenses" makes a contact
+     * called "lenses", the same price this grammar already pays on "new room
+     * spray" and "new group buy". Nothing is written on it - `execute`
+     * proposes a `NEW_CONTACT`, the card asks first, and it asks with the
+     * name and the number on it.
+     *
+     * THE SHAPE IS ONE ALTERNATION AND ONE TAIL, where the place and category
+     * rules write the tail out twice. Those capture a name and nothing else,
+     * so duplicating `(.+)` costs a few characters; this one captures a
+     * relationship, a name and a number, and duplicating all three would mean
+     * six groups where three will do - and `build` reading whichever half of
+     * them is not undefined.
+     *
+     * A PHONE SLOT THAT CANNOT BE READ DECLINES THE WHOLE RULE. `spokenDigits`
+     * returns null for anything that is not digits - "phone five hundred" is a
+     * quantity, and reading it as 5100 would store a number nobody said - and
+     * somebody who said a number expects the number. Storing the contact
+     * without it would silently drop the half of the sentence they cared
+     * about, so the sentence is refused whole and they can see it was not
+     * understood.
+     *
+     * The catalog was swept in this language as it was for places and
+     * categories: all 194 names in `data/catalog.generated.ts` after the five
+     * creating verbs above and seven articles, 6,790 sentences, and not one
+     * parses differently with this rule present. Nor does moving this rule
+     * below MOVE_ITEM change any of them, which is the check the paragraph
+     * above rests on.
+     *
+     * Unlike those two sweeps, this one had something to find. "Emergency
+     * Contact List" is one of the 194, and it is the first catalog name on
+     * this branch to contain one of these rules' nouns at all - the place and
+     * category sweeps found none. It comes through unchanged because the noun
+     * is not the word after the verb: "add the emergency contact list" has
+     * "emergency" there, so the pattern never reaches its own noun and the
+     * sentence stays one more of that item. The contact-lens probes above are
+     * still what earned their keep, and so does "new contact list", which is
+     * the bare space's cost in a phrase somebody could really say.
+     */
+    name: 'CREATE_CONTACT',
+    pattern:
+      /^(?:new\s+(?:an?\s+)?contact(?:\s+(?:called|named)\s+|\s*:\s*|\s+)|(?:create|add|make|save)\s+(?:an?\s+)?(?:new\s+)?contact(?:\s+(?:called|named)\s+|\s*:\s*))(?:my\s+([a-z]+)\s+)?(.+?)(?:\s+(?:phone number|phone|number|tel|telephone)\s+(.+))?$/,
+    build: (match, tools): Intent | null => {
+      const name = stripLeadingArticle((match[2] ?? '').trim());
+      if (name === '') return null;
+
+      const relationship = match[1] ?? null;
+      const spoken = match[3];
+      if (spoken === undefined) {
+        return { kind: 'CREATE_CONTACT', name, relationship, phone: null };
+      }
+
+      const phone = spokenDigits(tools.numbers, spoken);
+      return phone === null ? null : { kind: 'CREATE_CONTACT', name, relationship, phone };
     },
   },
 

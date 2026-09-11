@@ -103,3 +103,74 @@ export function parseNumber(words: NumberWords, text: string): number | null {
 
   return total;
 }
+
+/**
+ * A spoken phone number as the string of digits it is.
+ *
+ * NOT `parseNumber`, and the difference is the whole reason this exists. A
+ * phone number is a string that happens to be written in digits: "five five
+ * five" is 555 to anyone reading it back and 15 to anything that adds. Put
+ * through arithmetic it stops being the number somebody said, and the sentence
+ * that stored it would be recorded as a number they never gave.
+ *
+ * So there is no arithmetic here at all. Every token is either a run of digits,
+ * kept as written, or a word this language's `units` table maps to a SINGLE
+ * digit, written out as that digit. Anything else returns null:
+ *
+ *   A group word - "hundred", "mil", "docena" - is a quantity, not a digit.
+ *   "five hundred" read as 5 then 100 would store 5100, a number nobody said.
+ *   A ten or a hundred in `units` - "twenty", "cem" - is refused for the same
+ *   reason: "five five five twenty" could be 55520 or 5552 0 and a guess
+ *   between them is a wrong phone number either way.
+ *   A literal ("half"), and the joiner ("and", "y", "e"), are not digits, so
+ *   they are refused rather than skipped.
+ *
+ * Every digit word in all three languages comes out of `units` already -
+ * zero/cero, um/uno/one, and the rest - so nothing here carries a table of its
+ * own. That table also maps English's article "a" and the Spanish and
+ * Portuguese "un"/"una"/"um"/"uma" to 1, which is an overreach this accepts:
+ * "uno" IS how a digit is read aloud in two of these languages, and no phone
+ * number anybody speaks has an English "a" inside it.
+ *
+ * What it will not read is the English "oh" for zero. It is a LETTER being
+ * used as a digit, so it has no place in a table of number words - putting it
+ * there would make "oh" a spoken zero everywhere else in the grammar - and a
+ * shared helper has no language of its own to keep an English-only alias in.
+ * A number said that way is refused whole rather than stored with a hole in
+ * it, which is what every caller of this function is expected to do with null.
+ *
+ * SEPARATORS. A recognizer, and a person typing, put spaces, hyphens and
+ * parentheses between the groups of a phone number. None of them carries a
+ * digit, so all of them are dropped: "(11) 5555-1234" and "11 5555 1234" are
+ * the same number written twice. A leading "+" is the one non-digit character
+ * that is part of the number itself - it is what tells a dialler the digits
+ * after it are a country code - so it is kept. A "+" anywhere else is in no
+ * phone number, and the whole thing is refused rather than quietly straightened
+ * out.
+ */
+export function spokenDigits(words: NumberWords, text: string): string | null {
+  const trimmed = text.trim();
+  const international = trimmed.startsWith('+');
+  const body = international ? trimmed.slice(1) : trimmed;
+  if (body.includes('+')) return null;
+
+  const tokens = body
+    .replace(/[-()]/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token !== '');
+  if (tokens.length === 0) return null;
+
+  let digits = '';
+  for (const token of tokens) {
+    if (/^\d+$/.test(token)) {
+      digits += token;
+      continue;
+    }
+
+    const unit = words.units[token];
+    if (unit === undefined || !Number.isInteger(unit) || unit < 0 || unit > 9) return null;
+    digits += String(unit);
+  }
+
+  return international ? `+${digits}` : digits;
+}

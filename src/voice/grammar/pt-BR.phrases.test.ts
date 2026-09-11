@@ -721,6 +721,107 @@ describe('pt-BR phrases: changing', () => {
   it('reads "novo grupo de risco" as a category too, and pays for it on the card', () => {
     expect(say('novo grupo de risco')).toEqual({ kind: 'CREATE_CATEGORY', name: 'de risco' });
   });
+
+  /**
+   * "novo contato, ana" - a person, and the first sentence in this grammar
+   * whose slots are more than a name. The comma is gone before any rule runs.
+   */
+  it('reads "novo contato, ana" as a contact to create', () => {
+    expect(say('novo contato, ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+  });
+
+  it('reads the other creating verbs, the connectors and the colon', () => {
+    expect(say('cria um contato chamado ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+    expect(say('adiciona um contato novo chamado ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+    expect(say('criar um contato: ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: null,
+    });
+  });
+
+  it('drops the article from "cria um contato chamado a vizinha"', () => {
+    expect(say('cria um contato chamado a vizinha')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'vizinha', relationship: null, phone: null,
+    });
+  });
+
+  /**
+   * "meu" and "minha" are the handles a Portuguese speaker asks for the number
+   * by afterwards, and `contacts.search` looks in every field, so "qual o
+   * telefone do meu medico" finds the row by exactly that word.
+   */
+  it('keeps the relationship "meu" and "minha" introduce', () => {
+    expect(say('novo contato minha irma ana')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: 'irma', phone: null,
+    });
+    expect(say('novo contato meu medico joao')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'joao', relationship: 'medico', phone: null,
+    });
+  });
+
+  /**
+   * A number said one digit at a time comes out as those digits, not as
+   * arithmetic: "cinco cinco cinco" is 555 to anybody reading it back and 15
+   * to anything that adds.
+   */
+  it('reads a spoken number as digits, however it was given', () => {
+    expect(say('novo contato ana telefone cinco cinco cinco um dois tres quatro')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: '5551234',
+    });
+    expect(say('adiciona um contato chamado ana fone 555 1234')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'ana', relationship: null, phone: '5551234',
+    });
+  });
+
+  /**
+   * And a number that was spoken and cannot be read as digits refuses the
+   * whole sentence rather than storing the contact without it. "quinhentos" is
+   * a quantity; read digit by digit it would become 5100, a number nobody said
+   * in the one field where a wrong value looks exactly like a right one.
+   */
+  it('refuses the whole sentence when a spoken number is not digits', () => {
+    expect(say('novo contato ana telefone quinhentos').kind).toBe('UNKNOWN');
+  });
+
+  /**
+   * AS LENTES DE CONTATO. A real thing to stock, and it stays one - twice
+   * over, because "lente" and not "contato" is the word after the verb, so the
+   * pattern never reaches its own noun.
+   */
+  it('does not read "adiciona lente de contato" as a person', () => {
+    expect(say('adiciona lente de contato')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'lente contato', direction: 'up',
+    });
+  });
+
+  /**
+   * The catalog's own "Lista de Contatos de Emergência", the first entry in
+   * `data/catalog.generated.ts` to contain one of these rules' nouns at all.
+   */
+  it('leaves the Lista de Contatos de Emergencia a stock item', () => {
+    expect(say('adiciona a lista de contatos de emergencia')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'lista contatos emergencia',
+    });
+  });
+
+  /**
+   * "novo contato de emergencia" is a documented cost, not a bug this test
+   * guards against fixing - the same one "nova area externa" and "novo grupo
+   * de risco" pay above. Everything past the noun becomes the name, because
+   * "novo" trusts a bare space and no pattern here can keep "novo contato ana"
+   * while refusing this. Nothing is written on it: the card asks first, with
+   * the name and the number on it.
+   */
+  it('reads "novo contato de emergencia" as a contact too, and pays for it on the card', () => {
+    expect(say('novo contato de emergencia')).toEqual({
+      kind: 'CREATE_CONTACT', name: 'de emergencia', relationship: null, phone: null,
+    });
+  });
 });
 
 describe('pt-BR phrases: moving and thresholds', () => {

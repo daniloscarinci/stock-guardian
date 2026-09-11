@@ -334,6 +334,46 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
         receipt: { undo: [{ kind: 'deleteCategory', categoryId: category.id }] },
       };
     }
+
+    /*
+     * The third row a sentence can make that is not an item, and the first
+     * that carries more than a name.
+     *
+     * All five fields are passed rather than the three the grammar can fill,
+     * which is not padding: `email` and `location` are `CreateContactInput`
+     * fields that default to null when they are left out, so writing them out
+     * says the write MEANT null - and the day the Claude tool fills them, this
+     * call is already the one that stores them. `notes` and `priority` are not
+     * passed at all, and that is the same statement the other way: the
+     * repository's own default for priority is 3, which the interface calls
+     * Normal, and a sentence has no business ranking somebody's emergency
+     * contacts above or below each other. The Contacts screen does that.
+     *
+     * No `reach` above it and no second write after it, as NEW_LOCATION
+     * explains: the row IS the write. The one error `contacts.create` raises
+     * of its own is over a blank name, which `execute` cannot produce - the
+     * rules decline an empty capture - so unlike NEW_CATEGORY there is no
+     * taken-name failure to reach: nothing about a contact is unique, not the
+     * name and not the number. The window the other two leave open is open
+     * here and is wider:
+     * `contacts` has no unique index on anything, so the Contacts screen could
+     * add the same person while the card is on screen and confirming would
+     * leave two. The cost is a duplicate row the user can see on that screen
+     * and delete.
+     */
+    case 'NEW_CONTACT': {
+      const contact = await deps.contacts.create({
+        name: write.name,
+        relationship: write.relationship,
+        phone: write.phone,
+        email: write.email,
+        location: write.location,
+      });
+      return {
+        wrote: { kind: 'contact', contact },
+        receipt: { undo: [{ kind: 'deleteContact', contactId: contact.id }] },
+      };
+    }
   }
 }
 

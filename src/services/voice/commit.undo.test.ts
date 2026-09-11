@@ -521,6 +521,49 @@ describe('undo', () => {
   });
 
   /**
+   * A sentence whose whole content was a person: "novo contato, ana".
+   *
+   * The same shape as the place and the heading above, with two things of its
+   * own. The number is stored as the STRING of digits the grammar read, never
+   * as a quantity - `spokenDigits` is what keeps "cinco cinco cinco" from
+   * becoming 15 - and the two fields no sentence can fill land as null rather
+   * than as the repository's defaults by accident.
+   *
+   * And the undo has no guard to get past. Nothing in the database points at a
+   * contact, so unlike a place that filled up or a category something was
+   * filed under, there is no in-use error for `remove` to raise: the row goes,
+   * every time.
+   */
+  it('makes a contact with the digits it was given, and takes it back', async () => {
+    const { wrote, receipt } = await commit(
+      deps,
+      await write(deps, { kind: 'CREATE_CONTACT', name: 'ana',
+        relationship: 'irma', phone: '5551234' }),
+    );
+
+    expect(wrote.kind).toBe('contact');
+    if (wrote.kind !== 'contact') return;
+
+    expect(wrote.contact.name).toBe('ana');
+    expect(wrote.contact.relationship).toBe('irma');
+    // A string, and the string that was said. Nothing added it to anything.
+    expect(wrote.contact.phone).toBe('5551234');
+    expect(wrote.contact.email).toBeNull();
+    expect(wrote.contact.location).toBeNull();
+    // Not passed at all, so the repository's own default is what landed: the
+    // middle of five, because a sentence has no business ranking anybody.
+    expect(wrote.contact.priority).toBe(3);
+
+    expect(receipt.undo).toEqual([{ kind: 'deleteContact', contactId: wrote.contact.id }]);
+    expect(await deps.contacts.getById(wrote.contact.id)).toBeDefined();
+
+    await undo(deps, receipt);
+
+    expect(await deps.contacts.getById(wrote.contact.id)).toBeUndefined();
+    expect(await deps.contacts.search('ana')).toEqual([]);
+  });
+
+  /**
    * The one guard, and nothing else.
    *
    * `LocationInUseError` is swallowed because it is not a failure. A database

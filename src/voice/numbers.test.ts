@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseNumber } from './numbers';
+import { parseNumber, spokenDigits } from './numbers';
 import { ptBRNumbers } from './grammar/pt-BR.numbers';
+import { enNumbers } from './grammar/en.numbers';
+import { esNumbers } from './grammar/es.numbers';
 
 describe('parseNumber (pt-BR)', () => {
   const cases: ReadonlyArray<readonly [string, number | null]> = [
@@ -63,4 +65,66 @@ describe('parseNumber (pt-BR)', () => {
       expect(parseNumber(ptBRNumbers, input)).toBe(expected);
     });
   }
+});
+
+/**
+ * The one reader in this file that does no arithmetic.
+ *
+ * Every case below is a number somebody could say into the ask box, and the
+ * third block is the point of the function: a phrase that is a QUANTITY comes
+ * back as null rather than as a phone number nobody gave.
+ */
+describe('spokenDigits', () => {
+  it('reads digits said one at a time as the digits they are', () => {
+    expect(spokenDigits(enNumbers, 'five five five one two three four')).toBe('5551234');
+    expect(spokenDigits(ptBRNumbers, 'cinco cinco cinco um dois tres quatro')).toBe('5551234');
+    expect(spokenDigits(esNumbers, 'cinco cinco cinco uno dos tres cuatro')).toBe('5551234');
+  });
+
+  it('keeps a run of digits as written, and joins it to the rest', () => {
+    expect(spokenDigits(enNumbers, '555 1234')).toBe('5551234');
+    expect(spokenDigits(enNumbers, '555 one two three four')).toBe('5551234');
+  });
+
+  /**
+   * The guard the whole function exists for. "five hundred" is a quantity, and
+   * reading it digit by digit would store 5100 - a number nobody said, with
+   * nothing to notice it by. Refusing is the only honest answer.
+   */
+  it('refuses a quantity, in every language', () => {
+    expect(spokenDigits(enNumbers, 'five hundred')).toBeNull();
+    expect(spokenDigits(ptBRNumbers, 'dois mil')).toBeNull();
+    expect(spokenDigits(esNumbers, 'dos docenas')).toBeNull();
+  });
+
+  /** A ten is not a digit either, for the same reason and with the same answer. */
+  it('refuses a ten, a hundred, a fraction and the joiner', () => {
+    expect(spokenDigits(enNumbers, 'five twenty')).toBeNull();
+    expect(spokenDigits(ptBRNumbers, 'cinco cem')).toBeNull();
+    expect(spokenDigits(enNumbers, 'five half')).toBeNull();
+    expect(spokenDigits(enNumbers, 'five and five')).toBeNull();
+  });
+
+  it('refuses anything that is not a number word at all', () => {
+    expect(spokenDigits(enNumbers, 'ana')).toBeNull();
+    expect(spokenDigits(enNumbers, '')).toBeNull();
+    // The English reading of zero as a letter. Refused whole rather than
+    // stored with a digit missing out of the middle of it.
+    expect(spokenDigits(enNumbers, 'five oh five')).toBeNull();
+  });
+
+  it('reads a spoken zero, because every units table already has one', () => {
+    expect(spokenDigits(enNumbers, 'zero one two')).toBe('012');
+    expect(spokenDigits(esNumbers, 'cero uno dos')).toBe('012');
+    expect(spokenDigits(ptBRNumbers, 'zero um dois')).toBe('012');
+  });
+
+  /** Grouping marks carry no digit, so they come off; the country code stays. */
+  it('drops the separators a recognizer emits and keeps a leading plus', () => {
+    expect(spokenDigits(ptBRNumbers, '(11) 5555-1234')).toBe('1155551234');
+    expect(spokenDigits(ptBRNumbers, '+55 11 5555 1234')).toBe('+551155551234');
+    // A plus that is not the country code is in no phone number at all.
+    expect(spokenDigits(enNumbers, '555+1234')).toBeNull();
+    expect(spokenDigits(enNumbers, '+')).toBeNull();
+  });
 });

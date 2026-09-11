@@ -10,7 +10,7 @@ import type { Grammar, Rule, RuleTools, SlotContext } from './types';
 import type { Intent } from '../intents';
 import { ptBRNumbers } from './pt-BR.numbers';
 import { ptBRDates } from './pt-BR.dates';
-import { parseNumber, type NumberWords } from '../numbers';
+import { parseNumber, spokenDigits, type NumberWords } from '../numbers';
 import { readSpokenDate, type SpokenDate } from '../dates';
 
 /**
@@ -438,6 +438,94 @@ const rules: readonly Rule[] = [
     build: (match): Intent | null => {
       const name = stripLeadingArticle((match[1] ?? match[2] ?? '').trim());
       return name === '' ? null : { kind: 'CREATE_CATEGORY', name };
+    },
+  },
+
+  {
+    /*
+     * Beside the two rules above, and before ADJUST_QUANTITY for their reason:
+     * `ADD_VERBS` claims "adiciona" and "adicionar", so without this rule
+     * running first "adiciona um contato chamado ana" is one more of an item
+     * named "contato chamado ana" - checked by running that sentence through
+     * this grammar with this rule taken back out, not assumed. "criar" and
+     * "cria" are in neither verb map, so those sentences simply reached
+     * UNKNOWN before this rule existed.
+     *
+     * Its position relative to CREATE_LOCATION, CREATE_CATEGORY, CREATE_ITEM
+     * and MOVE_ITEM is not load-bearing. The first three cannot collide at
+     * all: their nouns are lugar, local, area, comodo and prateleira;
+     * categoria and grupo; item, produto and coisa - none of them "contato".
+     * MOVE_ITEM genuinely can, its verb slot being a bare `[a-z]+` filtered
+     * against MOVE_VERBS only after a match; the VERB SETS settle it at build
+     * time, and MOVE_VERBS holds none of criar, cria, adicionar, adiciona,
+     * novo or nova. The sweep below was run with this rule moved under
+     * MOVE_ITEM and nothing changed.
+     *
+     * The shape is the place rule's, with the same split: "novo" and "nova"
+     * may be followed by a bare space, while "criar" and "adicionar" have to
+     * carry "chamado", "chamada" or a colon before anything past the noun is
+     * read as a name. The adjective stands on either side of the noun, and
+     * allowing both loosens nothing, because the connector is required either
+     * way.
+     *
+     * That narrowing earns its place here on a collision that is not
+     * hypothetical: AS LENTES DE CONTATO. "adiciona lente de contato" is a
+     * real sentence about a real thing to stock, and it stays what it was -
+     * twice over, in fact, because "lente" and not "contato" is the word that
+     * follows the verb, so this pattern never reaches the noun at all. The
+     * connector is what closes the case that does: "adiciona um contato bom"
+     * names nobody without it. The separator after the noun is never the empty
+     * match, always a real space or a colon, so "contatos" and "contatar" stay
+     * whole.
+     *
+     * What the bare space after "novo" still costs, spelled out because it is
+     * a real cost and not an oversight: everything past the noun becomes the
+     * name, so "novo contato de emergencia" makes a contact called "de
+     * emergencia". English pays the same price on "new contact lenses", and
+     * nothing is written on it - `execute` proposes a `NEW_CONTACT` and the
+     * card asks first, with the name and the number on it.
+     *
+     * One alternation and one tail, where the place and category rules write
+     * the tail out twice: those capture a name and nothing else, and this one
+     * captures a relationship, a name and a number. "meu" and "minha" are the
+     * handles Portuguese reaches for - "minha irma", "meu medico" - and one
+     * word after them is as much as a regex can safely claim.
+     *
+     * A PHONE SLOT THAT CANNOT BE READ DECLINES THE WHOLE RULE. `spokenDigits`
+     * returns null for anything that is not digits - "telefone quinhentos" is
+     * a quantity, and reading it as 5100 would store a number nobody said -
+     * and somebody who said a number expects the number. Refusing the sentence
+     * whole is what lets them see it was not understood.
+     *
+     * The catalog was swept in Portuguese as it was for places and categories:
+     * all 194 names in `data/catalog.generated.ts` after the six creating and
+     * adding verbs above and seven articles, 8,148 sentences, and not one
+     * parses differently with this rule present. Nor does moving this rule
+     * below MOVE_ITEM change any of them.
+     *
+     * Unlike those two sweeps, this one had something to find. "Lista de
+     * Contatos de Emergência" is one of the 194, and it is the first catalog
+     * name on this branch to contain one of these rules' nouns at all. It
+     * comes through unchanged because the noun is not the word the pattern
+     * looks at: "adiciona a lista de contatos de emergencia" has "lista"
+     * after the article, so the pattern never reaches its own noun. The
+     * contact-lens probes above are what earned their keep.
+     */
+    name: 'CREATE_CONTACT',
+    pattern:
+      /^(?:(?:novo|nova)\s+(?:um\s+|uma\s+)?contato(?:\s+chamad[oa]\s+|\s*:\s*|\s+)|(?:criar|cria|adicionar|adiciona)\s+(?:um\s+|uma\s+)?(?:novo\s+|nova\s+)?contato(?:\s+(?:novo|nova))?(?:\s+chamad[oa]\s+|\s*:\s*))(?:(?:meu|minha)\s+([a-z]+)\s+)?(.+?)(?:\s+(?:numero de telefone|telefone|numero|fone|tel)\s+(.+))?$/,
+    build: (match, tools): Intent | null => {
+      const name = stripLeadingArticle((match[2] ?? '').trim());
+      if (name === '') return null;
+
+      const relationship = match[1] ?? null;
+      const spoken = match[3];
+      if (spoken === undefined) {
+        return { kind: 'CREATE_CONTACT', name, relationship, phone: null };
+      }
+
+      const phone = spokenDigits(tools.numbers, spoken);
+      return phone === null ? null : { kind: 'CREATE_CONTACT', name, relationship, phone };
     },
   },
 

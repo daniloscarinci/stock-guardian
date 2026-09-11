@@ -76,6 +76,8 @@ describe('execute: writes stay pending', () => {
     await execute(deps, { kind: 'SET_TARGET', item: 'feijao preto', amount: 20, unit: null });
     await execute(deps, { kind: 'CREATE_LOCATION', name: 'porao' });
     await execute(deps, { kind: 'CREATE_CATEGORY', name: 'bunker' });
+    await execute(deps, { kind: 'CREATE_CONTACT', name: 'ana',
+      relationship: 'irma', phone: '5551234' });
 
     const written = exec.mock.calls.filter(([sql]) =>
       /^\s*(?:insert|update|delete)/i.test(String(sql)),
@@ -447,6 +449,76 @@ describe('execute: writes stay pending', () => {
         },
       });
       expect(await categoryCount()).toBe(before);
+    });
+  });
+
+  /**
+   * A person named on their own, which is the same shape the place and the
+   * heading above have and one slot wider.
+   *
+   * The lookup is `contacts.search` - the call QUERY_CONTACT already makes -
+   * so a name that is taken is answered with the row and its number rather
+   * than made a second time. Two rows called "Ana" split a phone number
+   * somebody may be trying to reach in an emergency.
+   */
+  describe('a contact named on its own', () => {
+    /** How many contacts exist, counted straight out of the table. */
+    const contactCount = async () =>
+      Number(await db.selectValue<number>('SELECT COUNT(*) FROM contacts'));
+
+    it('answers with the contact that already exists rather than making a second', async () => {
+      await deps.contacts.create({ name: 'Ana', relationship: 'Irmã', phone: '5551234' });
+      const before = await contactCount();
+
+      const outcome = await execute(deps, { kind: 'CREATE_CONTACT', name: 'ana',
+        relationship: null, phone: null });
+
+      expect(outcome).toMatchObject({
+        kind: 'answer',
+        answer: { kind: 'CONTACT', query: 'ana', contacts: [{ name: 'Ana', phone: '5551234' }] },
+      });
+      expect(await contactCount()).toBe(before);
+    });
+
+    /**
+     * And it answers a phrase that merely FINDS one, in any field, because
+     * `contacts.search` looks in all of them. "medico" is not this row's name,
+     * it is the handle the user will ask for the number by.
+     */
+    it('answers a phrase that matches another field, because the search reads them all', async () => {
+      await deps.contacts.create({ name: 'João', relationship: 'Médico', phone: '5559999' });
+      const before = await contactCount();
+
+      const outcome = await execute(deps, { kind: 'CREATE_CONTACT', name: 'medico',
+        relationship: null, phone: null });
+
+      expect(outcome).toMatchObject({
+        kind: 'answer',
+        answer: { kind: 'CONTACT', contacts: [{ name: 'João' }] },
+      });
+      expect(await contactCount()).toBe(before);
+    });
+
+    it('proposes a contact that does not exist yet, and writes nothing', async () => {
+      const before = await contactCount();
+
+      const outcome = await execute(deps, { kind: 'CREATE_CONTACT', name: 'ana',
+        relationship: 'irma', phone: '5551234' });
+
+      expect(outcome).toMatchObject({
+        kind: 'pending',
+        write: {
+          kind: 'NEW_CONTACT',
+          name: 'ana',
+          relationship: 'irma',
+          phone: '5551234',
+          email: null,
+          location: null,
+          certainty: 'assumed',
+          assumptions: ['heardDigits'],
+        },
+      });
+      expect(await contactCount()).toBe(before);
     });
   });
 

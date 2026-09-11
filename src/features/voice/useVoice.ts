@@ -7,7 +7,7 @@
  * part worth testing and a component that renders them is not.
  *
  * TWO ENGINES, ONE BOX. A question goes to Claude when the assistant is
- * switched on AND a key is stored; otherwise it goes to the twelve parser
+ * switched on AND a key is stored; otherwise it goes to the parser's own
  * rules, offline and free, exactly as it always has. `failed` from Claude -
  * no network, a refused key, a rate limit - falls back to the parser rather
  * than dead-ending, because an application that answers is worth more than one
@@ -89,7 +89,7 @@ interface HeardExchange {
   readonly transcribedOnline: boolean;
 }
 
-/** An exchange the twelve rules on this device answered. */
+/** An exchange the rules on this device answered. */
 export interface DeviceExchange extends HeardExchange {
   readonly engine: 'device';
   readonly outcome: Outcome;
@@ -280,6 +280,27 @@ function receiptIntent(write: PendingWrite): Intent {
      */
     case 'NEW_CATEGORY':
       return { kind: 'QUERY_CATEGORY', category: write.name };
+    /*
+     * And QUERY_CONTACT for a person - which is the best receipt in this
+     * feature rather than the thinnest.
+     *
+     * The other two read back an empty room: a place made a moment ago holds
+     * nothing, a heading has nothing filed under it, and saying so is only
+     * proof that the row is there. A contact has a NUMBER in it, and
+     * `renderAnswer`'s CONTACT branch reads that number out - with the
+     * relationship, where the row has one. So the sentence that follows a
+     * confirmed contact is the number itself, said aloud.
+     *
+     * That is the only check there is on digits that were heard rather than
+     * typed. The card shows them and asks; this says them back out of the
+     * DATABASE afterwards, which is a different fact - what was stored, not
+     * what was understood.
+     *
+     * `write.name` is what the row was created with, so the search that finds
+     * it is looking for a string that is certainly in it.
+     */
+    case 'NEW_CONTACT':
+      return { kind: 'QUERY_CONTACT', query: write.name };
     case 'CREATE':
       return { kind: 'QUERY_QUANTITY', item: write.name };
     /*
@@ -288,8 +309,9 @@ function receiptIntent(write: PendingWrite): Intent {
      *
      * A `default` rather than three cases, and it stays safe as the union
      * grows: it reads `write.item`, which every member that belongs here has
-     * and no member that does not. A write about a category or a contact would
-     * fail to compile here rather than quietly ask the wrong question.
+     * and no member that does not. That is what caught NEW_CONTACT - a write
+     * with no item on it is a compile error here until somebody decides what
+     * question to ask after it, rather than a wrong question asked quietly.
      */
     default:
       return { kind: 'QUERY_QUANTITY', item: write.item.name };
@@ -328,9 +350,10 @@ export function useVoice(speak: Speak): Voice {
     () => ({
       items: repositories.items,
       locations: repositories.locations,
-      // Both read-only here. The categories turn a spoken "alimentos" into the
-      // id the item query filters on, and the contacts answer a question with
-      // no write path anywhere in this feature.
+      // The categories turn a spoken "alimentos" into the id the item query
+      // filters on, and both of these are now written as well as read: a
+      // sentence can make a category and a sentence can make a contact, each
+      // through the confirmation card and `commit` like every other write.
       categories: repositories.categories,
       contacts: repositories.contacts,
       context: itemContext,
@@ -576,8 +599,8 @@ export function useVoice(speak: Speak): Voice {
         const result = await converse(aiDeps, aiOptions, question);
 
         // The whole point of keeping the parser: no key, no network, a refused
-        // key or too many questions all still get an answer from the twelve
-        // rules, which need none of those things.
+        // key or too many questions all still get an answer from the rules on
+        // this device, which need none of those things.
         if (result.kind === 'failed') {
           await askParser(question, result.reason, transcribedOnline);
           return;
