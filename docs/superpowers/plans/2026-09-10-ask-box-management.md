@@ -690,6 +690,18 @@ git commit -m "Make a place the ask box was told to make"
 
 ---
 
+### A decision that binds every remaining grammar rule
+
+`new place cellar` and `new room spray` are token-for-token identical — the creating word, a noun from the closed list, one more word. Only a lexicon separates "spray" from "cellar", and a pattern has not got one. It can accept both or reject both.
+
+**The user chose to accept.** Nothing is written: every one of these intents is in `WRITING_INTENTS`, `execute` never writes, and the confirmation card reads "New place: spray" over a Cancel button. That card is the check, and this is what it is for. Rejecting both would have cost the plainest way anyone names a thing, which is the phrasing the examples teach.
+
+So for `CREATE_CATEGORY` and `CREATE_CONTACT` below: a bare space after the creating word is allowed, an explicit connector is required after every other verb, and the residual cost is **documented and pinned with a test asserting what actually ships** — never quietly narrowed into a regression against the plain phrasing. The honest wording already exists in `src/voice/grammar/es.ts` and `pt-BR.ts`; match it rather than inventing a fourth version of the same fact.
+
+Run the catalog sweep for each new rule, in each language, the way Task 4 did. Note what Task 4 learned: the 194-item catalog found nothing in any language, because no catalog name contains any of the noun words. The sweep is still worth running — it is the only check against a real corpus — but the damage it cannot see is a *mangled name* on an ordinary sentence (`"de cultivo"`, `"de aço"`), so hand-built probes are what actually earn their keep.
+
+---
+
 ## Task 6: `CREATE_CATEGORY`, end to end
 
 Same shape as Tasks 3–5, with one difference worth knowing: a category's names live in a per-language record, so a spoken name is stored under the interface language only.
