@@ -607,6 +607,98 @@ describe('es phrases: changing', () => {
   it('does not read "crear una zona de cultivo" as a place, and stays UNKNOWN', () => {
     expect(say('crear una zona de cultivo').kind).toBe('UNKNOWN');
   });
+
+  /**
+   * "nueva categoria, herramientas" - a heading with no item and nowhere else
+   * in the sentence for one to be.
+   *
+   * The comma and the accent both go before any rule runs, exactly as they do
+   * for the place above, so this reaches CREATE_CATEGORY as "nueva categoria
+   * herramientas".
+   */
+  it('reads "nueva categoria, herramientas" as a category to create', () => {
+    expect(say('nueva categoría, herramientas')).toEqual({
+      kind: 'CREATE_CATEGORY', name: 'herramientas',
+    });
+  });
+
+  /**
+   * The connector form, on the verb that proves this rule has to sit above
+   * ADJUST_QUANTITY: "agrega" is in `ADD_VERBS`, so with the rules the other
+   * way round the sentence is one more of a product called "categoria llamada
+   * bunker".
+   */
+  it('drops the article from "agrega una categoria llamada las herramientas"', () => {
+    expect(say('agrega una categoría llamada las herramientas')).toEqual({
+      kind: 'CREATE_CATEGORY', name: 'herramientas',
+    });
+  });
+
+  /** The colon is the written form of the same connector, on the other noun. */
+  it('reads "crear grupo: agua" as a category to create', () => {
+    expect(say('crear grupo: agua')).toEqual({ kind: 'CREATE_CATEGORY', name: 'agua' });
+  });
+
+  /** The adjective stands on either side of the noun, and means the same thing. */
+  const categoryBothSides = [
+    'crea una nueva categoria llamada herramientas',
+    'crea una categoria nueva llamada herramientas',
+  ];
+  for (const phrase of categoryBothSides) {
+    it(`"${phrase}" creates a category called herramientas`, () => {
+      expect(say(phrase)).toEqual({ kind: 'CREATE_CATEGORY', name: 'herramientas' });
+    });
+  }
+
+  /**
+   * "grupo" is an ordinary Spanish noun inside things a household actually
+   * owns: un grupo electrógeno is a generator set. With a loose separator
+   * after the noun this became a place-shaped theft - a category called
+   * "electrogeno" - instead of one more generator. It stays an addition here,
+   * because "agrega" names no category without "llamado", "llamada" or a
+   * colon after the noun.
+   */
+  it('does not read "agrega un grupo electrogeno" as a category worth making', () => {
+    expect(say('agrega un grupo electrógeno')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'grupo electrogeno', direction: 'up',
+    });
+  });
+
+  /**
+   * The same on a verb with no fallback reading: "crear" is in nobody's verb
+   * map, so this fell all the way to UNKNOWN before, and requiring the
+   * connector leaves it exactly where it was.
+   */
+  it('does not read "crear un grupo de riesgo" as a category, and stays UNKNOWN', () => {
+    expect(say('crear un grupo de riesgo').kind).toBe('UNKNOWN');
+  });
+
+  /** The separator is a real space or a colon, never the empty match. */
+  it('leaves "agrupacion" whole', () => {
+    expect(say('agrega una agrupación')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'agrupacion',
+    });
+  });
+
+  /**
+   * What the bare space after "nuevo" costs, pinned rather than left to be
+   * discovered - and this is the shipped behaviour, not a bug to quietly
+   * narrow away.
+   *
+   * "nuevo grupo electrogeno" and "nueva categoria despensa" are the same
+   * shape in the same order, and no pattern here can accept the second without
+   * accepting the first. Requiring the connector after "nuevo" too would
+   * refuse the plainest way anyone names a category, and "nuevo" is in no verb
+   * map, so there is no fallback reading to land on - the phrase would go
+   * UNKNOWN rather than become an addition. What catches it instead is the
+   * confirmation card, which is headed with the name below and asks before
+   * anything is written.
+   */
+  it('reads "nuevo grupo electrogeno" as a category too, and pays for it on the card', () => {
+    expect(say('nuevo grupo electrógeno')).toEqual({
+      kind: 'CREATE_CATEGORY', name: 'electrogeno',
+    });
+  });
 });
 
 describe('es phrases: moving and thresholds', () => {

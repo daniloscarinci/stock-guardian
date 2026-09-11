@@ -167,6 +167,22 @@ function describe(
         before: null,
         after: t('locations.newLocation'),
       };
+
+    /*
+     * The same shape again, and the same argument for the words in it.
+     * `categories.newCategory` is the heading the Categories screen puts over
+     * the form that does this by hand, exactly as `locations.newLocation` is
+     * on the Locations screen, so a reader who has made a category there
+     * recognises what they are agreeing to. No new key, and nothing invented.
+     */
+    case 'NEW_CATEGORY':
+      return {
+        name: write.name,
+        location: null,
+        field: null,
+        before: null,
+        after: t('categories.newCategory'),
+      };
   }
 }
 
@@ -185,18 +201,21 @@ function assumed(
   language: Language,
   dateFormat: DateFormat,
 ): readonly string[] {
-  // A place has no item behind it, so neither of these can come off one. Nor
-  // is either ever read for a place: the only reason NEW_LOCATION produces is
-  // `newLocation`, which interpolates `place` below. The branches exist so the
-  // switch below needs no casts, and `write.name` is at least the truthful
-  // thing to sit in a slot nothing reaches for; a unit has no such value, so
-  // it is blank.
+  // Neither a place nor a category has an item behind it, so neither of these
+  // can come off one. Nor is either ever read for one: the only reason
+  // NEW_LOCATION produces is `newLocation`, which interpolates `place` below,
+  // and the only one NEW_CATEGORY produces is `newCategory`, which
+  // interpolates nothing. The branches exist so the switch below needs no
+  // casts, and `write.name` is at least the truthful thing to sit in a slot
+  // nothing reaches for; a unit has no such value, so it is blank.
   const name =
-    write.kind === 'CREATE' || write.kind === 'NEW_LOCATION' ? write.name : write.item.name;
+    write.kind === 'CREATE' || write.kind === 'NEW_LOCATION' || write.kind === 'NEW_CATEGORY'
+      ? write.name
+      : write.item.name;
   const unit =
     write.kind === 'CREATE'
       ? write.unit
-      : write.kind === 'NEW_LOCATION'
+      : write.kind === 'NEW_LOCATION' || write.kind === 'NEW_CATEGORY'
         ? ''
         : write.item.unit;
   const amount =
@@ -250,22 +269,29 @@ function assumed(
       case 'newLocation':
         return t('voice.assumedNewLocation', { location: place });
       /*
-       * Neither of these two is produced by anything yet - the writes that
-       * will make a category and store a contact are later changes. They are
-       * answered anyway because a reason with no case here does not compile:
-       * the switch would fall out returning `undefined`, which this function
-       * has promised not to do. That is the point of the union being total,
-       * and paying it back with a blank line in the list of guesses would
-       * defeat it.
+       * NEW_CATEGORY produces this and nothing else does, which is what makes
+       * the sentence's "this" point at something: the card's heading IS the
+       * name about to become a row, because `describe` above puts it there.
+       * So the line was left as it was written rather than grown a `{category}`
+       * of its own - it would repeat the heading a reader has just been given,
+       * and the three translations already say the true thing.
        *
-       * Neither sentence interpolates anything, because no `PendingWrite`
-       * carries a category or a number to interpolate. They say what the
-       * reason means and nothing more, so they will still be true on the day
-       * something produces them - and a write that then wants to name the
-       * category or read the digits back is a change to make with that write.
+       * `newLocation` above does interpolate, and that is not an
+       * inconsistency: MOVE and CREATE produce it under a card headed with the
+       * ITEM, so the place has to be named in the sentence or it is named
+       * nowhere at all.
        */
       case 'newCategory':
         return t('voice.assumedNewCategory');
+      /*
+       * Still produced by nothing - the write that stores a contact is a later
+       * change. It is answered anyway because a reason with no case here does
+       * not compile: the switch would fall out returning `undefined`, which
+       * this function has promised not to do. It interpolates nothing, so it
+       * will still be true on the day something produces it, and a write that
+       * then wants to read the digits back is a change to make with that
+       * write.
+       */
       case 'heardDigits':
         return t('voice.assumedHeardDigits');
     }

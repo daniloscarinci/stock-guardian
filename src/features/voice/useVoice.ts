@@ -265,6 +265,21 @@ function receiptIntent(write: PendingWrite): Intent {
      */
     case 'NEW_LOCATION':
       return { kind: 'QUERY_WHERE', item: null, location: write.name };
+    /*
+     * The same again for a heading, and QUERY_CATEGORY rather than
+     * QUERY_WHERE: the second of those tries the PLACE first and answers with
+     * the category only when no place fits, so a household with a shelf whose
+     * name shares a word would hear about the shelf. "What is in tools" is
+     * also the question somebody could have asked out loud.
+     *
+     * "Nothing is filed under tools" is thin and true - the heading was made a
+     * moment ago and nothing carries it yet. Saying it at all is the receipt:
+     * `execute` answers a category it cannot find with notFound, which
+     * `sentence` renders as nothing, so hearing this sentence is itself the
+     * proof that the row is there.
+     */
+    case 'NEW_CATEGORY':
+      return { kind: 'QUERY_CATEGORY', category: write.name };
     case 'CREATE':
       return { kind: 'QUERY_QUANTITY', item: write.name };
     /*

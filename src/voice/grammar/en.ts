@@ -404,6 +404,77 @@ const rules: readonly Rule[] = [
   },
 
   {
+    /*
+     * Beside CREATE_LOCATION, and before ADJUST_QUANTITY for the reason that
+     * rule gives: "add" is in ADD_VERBS. Moving this one below ADJUST_QUANTITY
+     * was run rather than argued about, over the whole sweep corpus below, and
+     * exactly the sentences that open with "add" change - "add a category
+     * called tools" becomes one more of an item named "category called tools".
+     *
+     * Its position relative to CREATE_LOCATION, CREATE_ITEM and MOVE_ITEM is
+     * not load-bearing, and those are two different claims rather than one.
+     *
+     * Against the first two there is nothing to collide with. This pattern's
+     * nouns are category and group; theirs are place, location, spot, area and
+     * room, and item, product, entry and thing. 11,880 generated sentences -
+     * every opener crossed with every article, every one of all three rules'
+     * nouns, every connector and a spread of tails - produced not one that
+     * this pattern and either of theirs both accept.
+     *
+     * Against MOVE_ITEM there genuinely is something to collide with, which is
+     * why the claim is checked rather than assumed. MOVE_ITEM's verb slot is a
+     * bare `[a-z]+`, filtered against MOVE_VERBS only once it has matched, so
+     * 96 of those same sentences satisfy both patterns - "create a group
+     * called storage in the pantry" among them, which was run through both
+     * patterns rather than eyeballed. What settles those is the VERB SETS at
+     * build time: MOVE_VERBS holds none of create, add, new or make, so
+     * MOVE_ITEM declines the moment it inspects the verb it captured. Moving
+     * this rule to sit below MOVE_ITEM changes none of the 11,880.
+     *
+     * The narrowing is CREATE_LOCATION's, here for its reason and a sharper
+     * one. "group" is an ordinary English noun inside ordinary things a
+     * household buys and does - a group buy, group therapy, a group photo - so
+     * "called" or "named" (or the colon) is REQUIRED whenever the sentence
+     * opens with create, add or make. "add a group buy" has a noun and a name
+     * back to back with nothing marking the second as a name, and stays the
+     * stock addition it always was. The separator after the noun is a REAL one
+     * - `\s+`, or a colon with optional space - never the empty match, so
+     * "grouper" and "categorised" are not split into a noun and a name.
+     *
+     * "new" keeps the bare space, and that is the decision the place rule
+     * made, not an oversight to close up next. "new category tools" and "new
+     * group photo" are token-for-token identical - a creating word, a noun
+     * this rule watches for, one more word - and a regex has no lexicon to
+     * tell a heading from a photograph with. Requiring the connector after
+     * "new" too would refuse "new category tools" itself, the plainest way
+     * anyone names a category. What the bare space costs, spelled out because
+     * it is a real cost and not an oversight: "new group buy" makes a category
+     * called "buy" - the same price this file already pays on "new room
+     * spray", Spanish on "nueva zona de cultivo" and Portuguese on "nova area
+     * externa".
+     *
+     * Nothing is written on that guess. `CREATE_CATEGORY` is one of the
+     * `WRITING_INTENTS`, `execute` proposes a `NEW_CATEGORY` rather than
+     * writing one, and "new group buy" reaches the user as a card headed "buy"
+     * reading "No category is called this. Confirming makes it." - with a
+     * Cancel button beside the one that would make it.
+     *
+     * The catalog was swept in this language as it was for places: all 194
+     * names in `data/catalog.generated.ts` after ten creating and adding verbs
+     * and seven articles, 13,580 sentences, and not one parses differently
+     * with this rule present - no catalog name contains "category" or "group"
+     * at all. The hand-built probes above are what actually earned their keep.
+     */
+    name: 'CREATE_CATEGORY',
+    pattern:
+      /^(?:new\s+(?:an?\s+)?(?:category|group)(?:\s+(?:called|named)\s+|\s*:\s*|\s+)(.+)|(?:create|add|make)\s+(?:an?\s+)?(?:new\s+)?(?:category|group)(?:\s+(?:called|named)\s+|\s*:\s*)(.+))$/,
+    build: (match): Intent | null => {
+      const name = stripLeadingArticle((match[1] ?? match[2] ?? '').trim());
+      return name === '' ? null : { kind: 'CREATE_CATEGORY', name };
+    },
+  },
+
+  {
     // Before ADJUST, because "add a new item" also matches an add verb.
     name: 'CREATE_ITEM',
     pattern:

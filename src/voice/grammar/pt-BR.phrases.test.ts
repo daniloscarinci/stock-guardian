@@ -632,6 +632,95 @@ describe('pt-BR phrases: changing', () => {
   it('does not read "criar uma area de servico" as a place, and stays UNKNOWN', () => {
     expect(say('criar uma area de servico').kind).toBe('UNKNOWN');
   });
+
+  /**
+   * "nova categoria, ferramentas" - a heading with no item and nowhere else in
+   * the sentence for one to be.
+   *
+   * The comma and the accents both go before any rule runs, exactly as they do
+   * for the place above, so this reaches CREATE_CATEGORY as "nova categoria
+   * ferramentas".
+   */
+  it('reads "nova categoria, ferramentas" as a category to create', () => {
+    expect(say('nova categoria, ferramentas')).toEqual({
+      kind: 'CREATE_CATEGORY', name: 'ferramentas',
+    });
+  });
+
+  /**
+   * The connector form, on the verb that proves this rule has to sit above
+   * ADJUST_QUANTITY: "adiciona" is in `ADD_VERBS`, so with the rules the other
+   * way round the sentence is one more of a product called "categoria chamada
+   * bunker".
+   */
+  it('drops the article from "adiciona uma categoria chamada as ferramentas"', () => {
+    expect(say('adiciona uma categoria chamada as ferramentas')).toEqual({
+      kind: 'CREATE_CATEGORY', name: 'ferramentas',
+    });
+  });
+
+  /** The colon is the written form of the same connector, on the other noun. */
+  it('reads "criar grupo: agua" as a category to create', () => {
+    expect(say('criar grupo: água')).toEqual({ kind: 'CREATE_CATEGORY', name: 'agua' });
+  });
+
+  /** The adjective stands on either side of the noun, and means the same thing. */
+  const categoryBothSides = [
+    'cria uma nova categoria chamada ferramentas',
+    'cria uma categoria nova chamada ferramentas',
+  ];
+  for (const phrase of categoryBothSides) {
+    it(`"${phrase}" creates a category called ferramentas`, () => {
+      expect(say(phrase)).toEqual({ kind: 'CREATE_CATEGORY', name: 'ferramentas' });
+    });
+  }
+
+  /**
+   * "grupo" is an ordinary Portuguese noun inside things people own and say:
+   * um grupo gerador is a generator set. With a loose separator after the noun
+   * this became a category called "gerador" instead of one more generator on
+   * the stock. It stays an addition here, because "adiciona" names no category
+   * without "chamado", "chamada" or a colon after the noun.
+   */
+  it('does not read "adiciona um grupo gerador" as a category worth making', () => {
+    expect(say('adiciona um grupo gerador')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'grupo gerador', direction: 'up',
+    });
+  });
+
+  /**
+   * The same on a verb with no fallback reading: "criar" is in nobody's verb
+   * map, so this fell all the way to UNKNOWN before, and requiring the
+   * connector leaves it exactly where it was.
+   */
+  it('does not read "criar um grupo de risco" as a category, and stays UNKNOWN', () => {
+    expect(say('criar um grupo de risco').kind).toBe('UNKNOWN');
+  });
+
+  /** The separator is a real space or a colon, never the empty match. */
+  it('leaves "agrupamento" whole', () => {
+    expect(say('adiciona um agrupamento')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'agrupamento',
+    });
+  });
+
+  /**
+   * What the bare space after "novo" costs, pinned rather than left to be
+   * discovered - and this is the shipped behaviour, not a bug to quietly
+   * narrow away.
+   *
+   * "novo grupo de risco" and "nova categoria despensa" are the same shape in
+   * the same order, and no pattern here can accept the second without
+   * accepting the first. Requiring the connector after "novo" too would refuse
+   * the plainest way anyone names a category, and "novo" is in no verb map, so
+   * there is no fallback reading to land on - the phrase would go UNKNOWN
+   * rather than become an addition. What catches it instead is the
+   * confirmation card, which is headed with the name below and asks before
+   * anything is written.
+   */
+  it('reads "novo grupo de risco" as a category too, and pays for it on the card', () => {
+    expect(say('novo grupo de risco')).toEqual({ kind: 'CREATE_CATEGORY', name: 'de risco' });
+  });
 });
 
 describe('pt-BR phrases: moving and thresholds', () => {

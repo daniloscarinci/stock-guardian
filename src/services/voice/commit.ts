@@ -272,6 +272,68 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
         receipt: { undo: [{ kind: 'deleteLocation', locationId: location.id }] },
       };
     }
+
+    /*
+     * ONE LANGUAGE - the one the interface is in - and that is the whole
+     * argument for the shape of this call.
+     *
+     * `CreateCategoryInput.names` is a record per language because the twenty
+     * built-in categories are shipped named in all three, and an inventory
+     * that survives a language change is the bug this application was rebuilt
+     * around. A name said out loud is not that. It is a fact about ONE of
+     * those rows, in the language it was said in, and copying it into all
+     * three would be worse: it would write English into the Portuguese column
+     * and present it as a translation.
+     *
+     * Leaving the other two empty has its own price, and it is not nothing.
+     * Every screen that shows a category name reads `names[language] ??
+     * names.en ?? id`, and so does `execute`'s `findCategory`. So one made in
+     * English is at least readable in all three; one made in Portuguese or
+     * Spanish falls through to the ID in the other two, and the ID is a slug
+     * of the name - "Kit de fuga" reads as "kit-de-fuga" on an English phone
+     * until somebody gives it a name there on the Categories screen. That is a
+     * thing the user can see and fix, which is more than the alternative
+     * offers.
+     *
+     * `categories.create` was read rather than assumed about: it accepts a
+     * single-entry record (it filters out blank names and needs one to
+     * survive), takes the row id from a slug of that name, leaves `icon` and
+     * `color` null when they are absent, and gives `sortOrder` MAX + 1, so a
+     * category made here lands at the end of the Categories screen with no
+     * colour - both of which that screen can set.
+     *
+     * It THROWS where the slug is already taken, and that is reachable from
+     * here even though `execute` looked first: it looks by NAME in the user's
+     * own language, and "nova categoria, tools" on a Portuguese phone matches
+     * nothing called Ferramentas while still slugging to the built-in `tools`.
+     * Nothing is written when it throws, `useVoice` shows the message, and
+     * that is the truthful outcome - the heading does exist, under another
+     * name.
+     *
+     * THE PREPAREDNESS SCORE DOES NOT MOVE. That was read in
+     * `domain/preparedness.ts` rather than reasoned about: the buckets it
+     * averages come from `trackedCategoryIds` and from the categories the
+     * ITEMS carry, and nothing else. A category made by this sentence is in
+     * neither - it is empty, and `preparednessCategoryIds` is only ever set on
+     * the Settings screen - so the mean is over the same categories it was
+     * over a moment ago. It joins that mean, with the default empty tracked
+     * set, on the day something is first filed under it: an empty category
+     * that IS tracked scores zero, which is why `execute`'s `newCategory`
+     * reason is worth showing before this runs.
+     *
+     * No `reach` above it and no second write after it, as NEW_LOCATION
+     * explains: the row IS the write. The window NEW_LOCATION leaves open is
+     * open here too - the Categories screen could make the same heading while
+     * the card is on screen - and narrower, because a repeated slug throws
+     * rather than duplicating.
+     */
+    case 'NEW_CATEGORY': {
+      const category = await deps.categories.create({ names: { [deps.language]: write.name } });
+      return {
+        wrote: { kind: 'category', category },
+        receipt: { undo: [{ kind: 'deleteCategory', categoryId: category.id }] },
+      };
+    }
   }
 }
 

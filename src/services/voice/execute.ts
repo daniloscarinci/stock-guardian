@@ -249,6 +249,25 @@ export type PendingWrite =
   | (Certainty & {
       readonly kind: 'NEW_LOCATION';
       readonly name: string;
+    })
+  /*
+   * A heading, and nothing else - the second write here that is not about an
+   * item, and the same shape as the one above it for the same reasons: a bare
+   * name rather than a `Destination`, because nothing is going anywhere, and
+   * never `explicit`, because the only thing the sentence supplies is a name
+   * out of a transcript with nothing stored to check it against. The card
+   * always gets it, always with `newCategory` as the reason.
+   *
+   * It is a separate variant from NEW_LOCATION rather than one carrying a flag
+   * for the reason MINIMUM and TARGET are separate: they make different rows
+   * with different consequences - a place holds things, a category is a
+   * heading the preparedness score can be averaged over - and a single variant
+   * would make every reader of `commit` and of the card check a discriminator
+   * to find out which. Separate variants let the compiler do it.
+   */
+  | (Certainty & {
+      readonly kind: 'NEW_CATEGORY';
+      readonly name: string;
     });
 
 export type Outcome =
@@ -857,6 +876,59 @@ export async function execute(deps: VoiceDeps, intent: Intent): Promise<Outcome>
       return {
         kind: 'pending',
         write: { kind: 'NEW_LOCATION', name: intent.name, ...certaintyOf(['newLocation']) },
+      };
+    }
+
+    /*
+     * The same sentence about a heading instead of a shelf, answered the same
+     * way and for the same reason.
+     *
+     * A NAME THAT IS TAKEN IS ANSWERED, NOT MADE TWICE. `findCategory` tries
+     * the whole folded name, then a prefix, then contains - so "ferrament"
+     * finds Ferramentas and "gua" finds Água - and two headings a user cannot
+     * tell apart is worse than being shown the one they have: items would
+     * start being filed under both, and neither would then answer "what is in
+     * tools" truthfully. Somebody who says "new category, tools" over a
+     * category called Tools has almost certainly forgotten it rather than
+     * decided to keep a second one.
+     *
+     * The answer is the one "what is in tools" gives, built from the same
+     * `itemsInCategory` helper QUERY_CATEGORY uses, so it lists what the
+     * category holds rather than merely refusing politely. That is what makes
+     * it useful: the user hears the contents and can tell at once whether this
+     * is the heading they meant.
+     *
+     * `findCategory` reads each category's name in the USER'S language, with
+     * `names.en` as the fallback `items.list` uses for display. So an English
+     * name said on a Portuguese phone - "nova categoria, food" against
+     * Alimentos - finds nothing and proposes a new heading. That is the same
+     * behaviour every other category question here has, and it is the right
+     * one: the phrase is not the name of anything this user can see on their
+     * own Categories screen.
+     *
+     * Nothing found is a proposal, and still not a write. This module writes
+     * nothing at all; the row exists only once the card is confirmed and
+     * `commit` runs.
+     */
+    case 'CREATE_CATEGORY': {
+      const existing = await findCategory(deps, intent.name);
+      if (existing !== undefined) {
+        const held = await itemsInCategory(deps, existing.id);
+        return {
+          kind: 'answer',
+          answer: { kind: 'CATEGORY', categoryName: existing.name, ...held },
+        };
+      }
+
+      /*
+       * `newCategory`, and it is the only reason there could be, for the
+       * reason NEW_LOCATION gives above: nothing was matched loosely because
+       * nothing was matched at all, and there is no number, unit or date in
+       * the sentence to have filled in.
+       */
+      return {
+        kind: 'pending',
+        write: { kind: 'NEW_CATEGORY', name: intent.name, ...certaintyOf(['newCategory']) },
       };
     }
 

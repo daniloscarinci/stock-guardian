@@ -293,6 +293,13 @@ const quantityOf = async (name: string) =>
 const countOfLocations = async (name: string) =>
   db.selectValue<number>('SELECT COUNT(*) FROM locations WHERE name = ?', [name]);
 
+/**
+ * The same question about a category, asked of the side table the names live
+ * in - `categories` itself holds no name at all.
+ */
+const countOfCategoryNames = async (name: string) =>
+  db.selectValue<number>('SELECT COUNT(*) FROM category_names WHERE name = ?', [name]);
+
 beforeEach(async () => {
   db = await createMemoryDriver();
   await migrate(db);
@@ -436,6 +443,65 @@ describe('VoiceSheet', () => {
     expect(await countOfLocations('cellar')).toBe(1);
     // Confirmed on the card, so there is no second chance to refuse it.
     expect(screen.queryByRole('button', { name: /^undo/i })).toBeNull();
+  });
+
+  /**
+   * The same sentence about a heading rather than a shelf, end to end.
+   *
+   * The card has no quantity, no unit and no place on it, because there is no
+   * item to have any; the heading is the name that was said and the line under
+   * it is the kind of row being made. The read-back is asked of the CATEGORY,
+   * and "Nothing is filed under bunker" is thin, true, and read out of the
+   * database after the write - a name that had not been stored would have come
+   * back as nothing found and said nothing at all.
+   */
+  it('makes a category that was asked for on its own, and reads back what is in it', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'new category, bunker');
+
+    const card = await screen.findByRole('group', { name: 'bunker' });
+    expect(within(card).getByText('New category')).toBeTruthy();
+    expect(
+      within(card).getByText('No category is called this. Confirming makes it.'),
+    ).toBeTruthy();
+
+    // Nothing is written while the card is on screen, here as everywhere else.
+    expect(await countOfCategoryNames('bunker')).toBe(0);
+
+    const confirm = await screen.findByRole('button', { name: /^confirm:/i });
+    expect(confirm.getAttribute('aria-label')).toBe('Confirm: bunker, New category');
+    await user.click(confirm);
+
+    expect(await screen.findByText('Nothing is filed under bunker.')).toBeTruthy();
+    expect(await countOfCategoryNames('bunker')).toBe(1);
+    // Named in the one language the interface is in, and not in the other two.
+    expect(
+      await db.selectValue<number>(
+        "SELECT COUNT(*) FROM category_names WHERE name = 'bunker' AND lang = 'en'",
+      ),
+    ).toBe(1);
+    expect(screen.queryByRole('button', { name: /^undo/i })).toBeNull();
+  });
+
+  /**
+   * A heading the household already has is described, not made a second time.
+   *
+   * The seeded categories include Tools, so this sentence never reaches a card
+   * at all: `execute` answers it with what is filed under the one that exists,
+   * which is what lets the user hear that they already have it. Two headings
+   * whose names they cannot tell apart would be the worse outcome.
+   */
+  it('answers a category that already exists instead of making a second', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'new category, tools');
+
+    expect(await screen.findByText('Nothing is filed under Tools.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^confirm:/i })).toBeNull();
+    expect(await countOfCategoryNames('tools')).toBe(0);
   });
 
   it('moves focus to Confirm and names the whole change on it', async () => {

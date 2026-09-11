@@ -649,6 +649,76 @@ describe('en phrases: changing', () => {
   it('does not read "make room in the pantry" as a place, and stays UNKNOWN', () => {
     expect(say('make room in the pantry').kind).toBe('UNKNOWN');
   });
+
+  /**
+   * "new category, tools" - a heading with no item and nowhere else in the
+   * sentence for one to be.
+   *
+   * The comma is not a word the rule sees, exactly as it is not for the place
+   * above: `parse.ts` strips a comma that is not holding a decimal together
+   * before any rule runs, so this reaches CREATE_CATEGORY as "new category
+   * tools", noun and name separated by the single space the comma left.
+   */
+  it('reads "new category, tools" as a category to create', () => {
+    expect(say('new category, tools')).toEqual({ kind: 'CREATE_CATEGORY', name: 'tools' });
+  });
+
+  it('reads the other creating verbs, the other noun and the colon', () => {
+    expect(say('create a group named friends')).toEqual({
+      kind: 'CREATE_CATEGORY', name: 'friends',
+    });
+    expect(say('make a category: water')).toEqual({ kind: 'CREATE_CATEGORY', name: 'water' });
+  });
+
+  it('drops the article from "add a category called the tools"', () => {
+    expect(say('add a category called the tools')).toEqual({
+      kind: 'CREATE_CATEGORY', name: 'tools',
+    });
+  });
+
+  /**
+   * "group" is an ordinary English noun inside ordinary things a household
+   * buys - a group buy, group therapy - in a way "item" and "product" are not.
+   * A loose separator after the noun would read the first of these as the noun
+   * CREATE_CATEGORY looks for and everything after it as the name of a new
+   * heading, so "add a group buy" would make a category called "buy" instead
+   * of putting one more of the thing on the stock. It stays ADJUST_QUANTITY
+   * because "add" names no category at all without "called", "named" or a
+   * colon after the noun.
+   */
+  it('does not read "add a group buy" as a category worth making', () => {
+    expect(say('add a group buy')).toMatchObject({
+      kind: 'ADJUST_QUANTITY', item: 'group buy', direction: 'up',
+    });
+  });
+
+  /**
+   * And the separator is a REAL one, never the empty match, so a word that
+   * merely starts with one of the nouns is not split into a noun and a name.
+   */
+  it('leaves "grouper" whole', () => {
+    expect(say('add a grouper')).toMatchObject({ kind: 'ADJUST_QUANTITY', item: 'grouper' });
+  });
+
+  /**
+   * "new group buy" is a documented cost, not a bug this test guards against
+   * fixing - the same one "new room spray" pays above, for the same reason.
+   *
+   * "new category tools" and "new group buy" are the same shape in the same
+   * order - a creating word, a noun this rule watches for, one more word - and
+   * no pattern here can accept the first without accepting the second, there
+   * being no lexicon in a regex to tell a heading from a bulk purchase with.
+   * Narrowing "new" the way "add" was narrowed above would refuse "new
+   * category tools" itself, and "new" is in no verb map, so unlike "add a
+   * group buy" there is no fallback reading to land on: a narrower pattern
+   * would turn this phrase UNKNOWN, not into a quantity. The accepted fix is
+   * the confirmation card this produces instead, so a future reader who
+   * "fixes" this test to expect UNKNOWN has just reopened "new category tools"
+   * as a sentence this grammar cannot read.
+   */
+  it('reads "new group buy" as a category too, and pays for it on the card', () => {
+    expect(say('new group buy')).toEqual({ kind: 'CREATE_CATEGORY', name: 'buy' });
+  });
 });
 
 describe('en phrases: moving and thresholds', () => {

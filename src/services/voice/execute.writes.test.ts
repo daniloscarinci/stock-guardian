@@ -75,6 +75,7 @@ describe('execute: writes stay pending', () => {
     await execute(deps, { kind: 'SET_MINIMUM', item: 'feijao preto', amount: 12, unit: null });
     await execute(deps, { kind: 'SET_TARGET', item: 'feijao preto', amount: 20, unit: null });
     await execute(deps, { kind: 'CREATE_LOCATION', name: 'porao' });
+    await execute(deps, { kind: 'CREATE_CATEGORY', name: 'bunker' });
 
     const written = exec.mock.calls.filter(([sql]) =>
       /^\s*(?:insert|update|delete)/i.test(String(sql)),
@@ -366,6 +367,86 @@ describe('execute: writes stay pending', () => {
         },
       });
       expect(await deps.locations.findByName('porao')).toBeUndefined();
+    });
+  });
+
+  /*
+   * The same sentence about a heading: "nova categoria, ferramentas".
+   *
+   * It raises the same single question as the place above - does the household
+   * already have one of these - and it is asked of a different finder.
+   * `findCategory` reads the name in the user's own language out of the side
+   * table, tries the whole name, then a prefix, then contains, and these tests
+   * are run in Portuguese because `deps.language` here is 'pt-BR' and the
+   * twenty seeded categories are named in it.
+   */
+  describe('a category named on its own', () => {
+    /** How many categories exist, counted straight out of the table. */
+    const categoryCount = async () =>
+      Number(await db.selectValue<number>('SELECT COUNT(*) FROM categories'));
+
+    it('answers with the category that already exists rather than making a second', async () => {
+      const before = await categoryCount();
+
+      const outcome = await execute(deps, { kind: 'CREATE_CATEGORY', name: 'ferramentas' });
+
+      expect(outcome).toMatchObject({
+        kind: 'answer',
+        answer: { kind: 'CATEGORY', categoryName: 'Ferramentas' },
+      });
+      expect(await categoryCount()).toBe(before);
+    });
+
+    /**
+     * And it answers a name that merely FINDS one, not only a name that is
+     * one. `findCategory` tries a prefix before it tries contains, so
+     * "ferrament" is the heading the user already has - and two headings whose
+     * names a user cannot tell apart would leave neither able to answer "o que
+     * tem em ferramentas" truthfully.
+     */
+    it('answers a partial name too, because that is what the finder matches on', async () => {
+      const before = await categoryCount();
+
+      const outcome = await execute(deps, { kind: 'CREATE_CATEGORY', name: 'ferrament' });
+
+      expect(outcome).toMatchObject({
+        kind: 'answer',
+        answer: { kind: 'CATEGORY', categoryName: 'Ferramentas' },
+      });
+      expect(await categoryCount()).toBe(before);
+    });
+
+    /**
+     * And the answer is the one "o que tem em alimentos" gives, listing what
+     * is filed under it - the same `itemsInCategory` QUERY_CATEGORY uses. That
+     * is what makes it useful rather than a refusal with better manners.
+     */
+    it('lists what the category already holds, as the question about it would', async () => {
+      await deps.items.update(feijaoId, { categoryId: 'food' });
+
+      const outcome = await execute(deps, { kind: 'CREATE_CATEGORY', name: 'alimentos' });
+
+      expect(outcome).toMatchObject({
+        kind: 'answer',
+        answer: { kind: 'CATEGORY', categoryName: 'Alimentos', items: [{ id: feijaoId }], total: 1 },
+      });
+    });
+
+    it('proposes a category that does not exist yet, and writes nothing', async () => {
+      const before = await categoryCount();
+
+      const outcome = await execute(deps, { kind: 'CREATE_CATEGORY', name: 'bunker' });
+
+      expect(outcome).toMatchObject({
+        kind: 'pending',
+        write: {
+          kind: 'NEW_CATEGORY',
+          name: 'bunker',
+          certainty: 'assumed',
+          assumptions: ['newCategory'],
+        },
+      });
+      expect(await categoryCount()).toBe(before);
     });
   });
 

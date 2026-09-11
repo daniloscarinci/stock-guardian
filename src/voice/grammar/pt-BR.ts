@@ -374,6 +374,74 @@ const rules: readonly Rule[] = [
   },
 
   {
+    /*
+     * Beside CREATE_LOCATION, and before ADJUST_QUANTITY for that rule's
+     * reason: `ADD_VERBS` claims "adiciona" and "adicionar". Moving this one
+     * below ADJUST_QUANTITY was run rather than argued about, over the sweep
+     * corpus below, and "adiciona uma categoria chamada bunker" is what
+     * changes - into one more of an item named "categoria chamada bunker".
+     * The other openers - criar, cria, novo, nova - are in neither verb map,
+     * so "cria uma categoria chamada ferramentas" simply reached UNKNOWN
+     * before this rule existed.
+     *
+     * Its position relative to CREATE_LOCATION, CREATE_ITEM and MOVE_ITEM is
+     * not load-bearing, and those are two different claims.
+     *
+     * Against the first two there is nothing to collide with: this pattern's
+     * nouns are categoria and grupo, theirs are lugar, local, area, comodo and
+     * prateleira, and item, produto and coisa. 27,720 generated sentences -
+     * every opener crossed with every article, all three rules' nouns, every
+     * connector and a spread of tails - produced not one that this pattern and
+     * either of theirs both accept.
+     *
+     * Against MOVE_ITEM there genuinely is, which is why it was checked and
+     * not assumed. Its verb slot is a bare `[a-z]+`, filtered against
+     * MOVE_VERBS only once it has matched, so 88 of those sentences satisfy
+     * both patterns - "cria uma categoria chamada deposito na garagem" among
+     * them, run through both patterns rather than eyeballed. The VERB SETS
+     * settle those at build time: MOVE_VERBS holds none of criar, cria,
+     * adicionar, adiciona, novo or nova. Moving this rule below MOVE_ITEM
+     * changes none of the 27,720.
+     *
+     * The shape is the place rule's, with the same split: "novo" and "nova"
+     * may be followed by a bare space, while "criar" and "adicionar" have to
+     * carry "chamado", "chamada" or a colon before anything past the noun is
+     * read as a name. The adjective stands on either side of the noun, and
+     * allowing both loosens nothing, because the connector is required either
+     * way.
+     *
+     * That narrowing earns its place here more plainly than it did for places.
+     * "grupo" is an ordinary Portuguese noun inside ordinary things people say
+     * and own: um grupo gerador is a generator set, um grupo sanguineo is a
+     * blood type, um grupo de risco is a phrase anybody has heard. All of them
+     * stay what they were - "adiciona um grupo gerador" is still one more
+     * generator - because "adiciona" cannot name a category without the
+     * connector. The separator after the noun is never the empty match, always
+     * a real space or a colon, so "agrupamento" stays whole.
+     *
+     * What the bare space after "novo" still costs, spelled out because it is
+     * a real cost and not an oversight: everything past the noun becomes the
+     * name, so "novo grupo de risco" makes a category called "de risco" and
+     * "nova categoria de ferramentas" one called "de ferramentas". English
+     * pays the same price on "new group buy", and nothing is written on it -
+     * `execute` proposes a `NEW_CATEGORY` and the card asks first.
+     *
+     * The catalog was swept in Portuguese as it was for places: all 194 names
+     * in `data/catalog.generated.ts` after eleven creating and adding verbs
+     * and seven articles, 14,938 sentences, and not one parses differently
+     * with this rule present - no catalog name contains "categoria" or "grupo"
+     * at all. The hand-built probes above are what actually earned their keep.
+     */
+    name: 'CREATE_CATEGORY',
+    pattern:
+      /^(?:(?:novo|nova)\s+(?:um\s+|uma\s+)?(?:categoria|grupo)(?:\s+chamad[oa]\s+|\s*:\s*|\s+)(.+)|(?:criar|cria|adicionar|adiciona)\s+(?:um\s+|uma\s+)?(?:novo\s+|nova\s+)?(?:categoria|grupo)(?:\s+(?:novo|nova))?(?:\s+chamad[oa]\s+|\s*:\s*)(.+))$/,
+    build: (match): Intent | null => {
+      const name = stripLeadingArticle((match[1] ?? match[2] ?? '').trim());
+      return name === '' ? null : { kind: 'CREATE_CATEGORY', name };
+    },
+  },
+
+  {
     // Before ADJUST, because "adiciona um item novo" also matches an add verb.
     name: 'CREATE_ITEM',
     pattern:

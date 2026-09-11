@@ -169,6 +169,24 @@ export interface CreateLocation {
   readonly name: string;
 }
 
+/**
+ * "new category, tools".
+ *
+ * A name and nothing else, for the reason `CreateLocation` gives about its own
+ * slots. `CreateCategoryInput` also takes an icon, a colour and a sort order,
+ * and none of the three is a thing anybody says out loud; the Categories
+ * screen is where a heading is given a colour and put in an order.
+ *
+ * The name is the phrase AS SPOKEN, in one language. Category names are kept
+ * in a side table with a row per language - which is what the built-in twenty
+ * have, being shipped named in all three - and a sentence supplies exactly one
+ * of those rows. `commit` says what that costs.
+ */
+export interface CreateCategory {
+  readonly kind: 'CREATE_CATEGORY';
+  readonly name: string;
+}
+
 export interface Help {
   readonly kind: 'HELP';
 }
@@ -187,7 +205,7 @@ export type Intent =
   | QueryExpiryOf | QueryScore | QueryCategory | QueryContact
   | QueryHistory | QueryTotal | AdjustQuantity | SetQuantity
   | CreateItem | SetExpiry | MoveItem | SetMinimum | SetTarget
-  | CreateLocation | Help | Unknown;
+  | CreateLocation | CreateCategory | Help | Unknown;
 
 export type IntentKind = Intent['kind'];
 
@@ -195,6 +213,7 @@ export type IntentKind = Intent['kind'];
 export const WRITING_INTENTS: readonly IntentKind[] = [
   'ADJUST_QUANTITY', 'SET_QUANTITY', 'CREATE_ITEM', 'SET_EXPIRY',
   'MOVE_ITEM', 'SET_MINIMUM', 'SET_TARGET', 'CREATE_LOCATION',
+  'CREATE_CATEGORY',
 ];
 
 /**

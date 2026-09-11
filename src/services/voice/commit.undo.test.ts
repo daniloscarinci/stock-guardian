@@ -19,6 +19,7 @@ import { createContactsRepository } from '../../repositories/contacts.repository
 import type { InventoryItem } from '../../types/domain';
 import { execute, type PendingWrite, type VoiceDeps } from './execute';
 import { commit, undo, type Committed } from './commit';
+import { evaluatePreparedness } from '../../domain/preparedness';
 
 const CONTEXT: ItemContext = {
   today: '2026-09-07', defaultThreshold: 5, expiryWindows: [7, 30, 90],
@@ -432,6 +433,91 @@ describe('undo', () => {
 
     expect(await deps.locations.getById(cellar.id)).toBeDefined();
     expect((await deps.items.getById(feijaoId))?.locationId).toBe(cellar.id);
+  });
+
+  /**
+   * A sentence whose whole content was a heading: "nova categoria, bunker".
+   *
+   * The same shape as the place above, and one thing of its own worth pinning:
+   * the name is stored in ONE language, the one the interface is in. The
+   * built-in categories are named in all three because they ship that way; a
+   * name said out loud is a fact about one of those rows, and writing it into
+   * the other two would claim a translation nobody made.
+   */
+  it('makes a category named in the language the sentence was said in, and takes it back', async () => {
+    const { wrote, receipt } = await commit(
+      deps,
+      await write(deps, { kind: 'CREATE_CATEGORY', name: 'bunker' }),
+    );
+
+    expect(wrote.kind).toBe('category');
+    if (wrote.kind !== 'category') return;
+
+    expect(wrote.category.names).toEqual({ 'pt-BR': 'bunker' });
+    // Not passed in, so the repository's own defaults are what landed.
+    expect(wrote.category.icon).toBeNull();
+    expect(wrote.category.color).toBeNull();
+    expect(wrote.category.isSystem).toBe(false);
+
+    expect(receipt.undo).toEqual([{ kind: 'deleteCategory', categoryId: wrote.category.id }]);
+    expect(await deps.categories.getById(wrote.category.id)).toBeDefined();
+
+    await undo(deps, receipt);
+
+    expect(await deps.categories.getById(wrote.category.id)).toBeUndefined();
+    // The side table goes with it, so the name cannot outlive the row.
+    expect(
+      Number(
+        await db.selectValue<number>(
+          'SELECT COUNT(*) FROM category_names WHERE category_id = :id',
+          { id: wrote.category.id },
+        ),
+      ),
+    ).toBe(0);
+  });
+
+  /**
+   * Making an empty category moves no number the user is shown.
+   *
+   * `evaluatePreparedness` averages over the categories its ITEMS carry, plus
+   * any the user has explicitly tracked on the Settings screen, and a category
+   * made by a sentence is in neither - `trackedCategoryIds` is empty here, as
+   * it is by default. It joins that mean the day something is filed under it,
+   * which is a different sentence on a different screen.
+   */
+  it('leaves the preparedness score where it was', async () => {
+    const score = async () =>
+      evaluatePreparedness({
+        items: await deps.items.listForAnalysis(),
+        today: CONTEXT.today,
+        defaultThreshold: CONTEXT.defaultThreshold,
+        trackedCategoryIds: deps.trackedCategoryIds,
+        expiryWindows: CONTEXT.expiryWindows,
+      }).score;
+
+    const before = await score();
+    await commit(deps, await write(deps, { kind: 'CREATE_CATEGORY', name: 'bunker' }));
+
+    expect(await score()).toBe(before);
+  });
+
+  /**
+   * A category something was filed under in the ten seconds Undo was on
+   * screen, which is `CategoryInUseError` and the same judgement the place
+   * above gets: the user has started using it, so it is theirs now.
+   */
+  it('leaves a category that was used, and still reports the undo as done', async () => {
+    const { wrote, receipt } = await commit(
+      deps,
+      await write(deps, { kind: 'CREATE_CATEGORY', name: 'bunker' }),
+    );
+    if (wrote.kind !== 'category') throw new Error('expected a category');
+    await deps.items.update(feijaoId, { categoryId: wrote.category.id });
+
+    await expect(undo(deps, receipt)).resolves.toBeUndefined();
+
+    expect(await deps.categories.getById(wrote.category.id)).toBeDefined();
+    expect((await deps.items.getById(feijaoId))?.categoryId).toBe(wrote.category.id);
   });
 
   /**
