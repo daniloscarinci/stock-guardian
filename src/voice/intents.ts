@@ -193,14 +193,21 @@ export const WRITING_INTENTS: readonly IntentKind[] = [
  * an empty pantry is the first bag of rice, and creating it is the obvious next
  * step. The three below are not:
  *
- *   MOVE_ITEM can fail on the DESTINATION as easily as on the item, and the
- *   phrase that reaches the interface names whichever failed. A Create button
- *   under "I did not find o porao" would offer to invent an item called the
- *   cellar.
+ *   MOVE_ITEM would be left half done. It can only fail on its ITEM now - an
+ *   unknown destination is proposed rather than refused - and creating that
+ *   item finishes none of the sentence: "leve o arroz para o porao" with no
+ *   rice, answered by making rice, puts a row in the inventory on no shelf and
+ *   moves nothing. The user said one thing and got a smaller, different one.
+ *   An adjustment has no such second half; "comprei arroz" IS the creation.
  *   SET_MINIMUM and SET_TARGET set a level on stock that is supposed to exist.
  *   Creating a row to hold a threshold would put an item nobody mentioned into
  *   the inventory, with a quantity nobody said.
+ *
+ * CREATE_ITEM was listed here and is gone. It can no longer fail to find
+ * anything: the item is new by definition, and an unknown shelf is now
+ * proposed rather than refused, so the intent never reaches a notFound at all.
+ * The entry was an offer that nothing could ever make.
  */
 export const CREATABLE_INTENTS: readonly IntentKind[] = [
-  'ADJUST_QUANTITY', 'SET_QUANTITY', 'CREATE_ITEM', 'SET_EXPIRY',
+  'ADJUST_QUANTITY', 'SET_QUANTITY', 'SET_EXPIRY',
 ];

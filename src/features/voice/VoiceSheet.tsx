@@ -360,8 +360,9 @@ function VoiceExchange({
           {/*
             Offered only for a write whose missing item is worth creating.
             "Where is the rice?" finding no rice is an answer, not an invitation
-            to invent one - and neither is a move whose CELLAR was not found, or
-            a minimum set on stock that does not exist. `CREATABLE_INTENTS` says
+            to invent one - and neither is a move, where making the item would
+            leave it sitting on no shelf with the move still not made, or a
+            minimum set on stock that does not exist. `CREATABLE_INTENTS` says
             which writes qualify and why.
           */}
           {CREATABLE_INTENTS.includes(outcome.intent.kind) && (
