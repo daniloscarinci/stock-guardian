@@ -123,7 +123,12 @@ describe('ai tools: reading', () => {
       expect(tool?.description).toMatch(/RECOMMENDATIONS, NOT WHAT THE USER OWNS/);
     });
 
-    it('says in every writing description that it only proposes', () => {
+    // The four writing tools that came first. The six added later are asserted
+    // the same way in `tools.writes.test.ts`, beside the tools themselves -
+    // this list is not the whole set and has not been since. Add a new writer
+    // there rather than here, and keep both titles honest about which half
+    // they cover.
+    it('says in each of the four original writing descriptions that it only proposes', () => {
       const writers = ['adjust_quantity', 'set_quantity', 'create_item', 'set_expiry'];
       for (const name of writers) {
         const tool = TOOLS.find((candidate) => candidate.name === name);

@@ -3,7 +3,7 @@
  *
  * A hand-written tool-use loop rather than the SDK's runner, and that is not
  * taste. The runner executes the tools it is given, which is exactly right for
- * tools that may run - and exactly wrong for nine of these, which must be
+ * tools that may run - and exactly wrong for ten of these, which must be
  * intercepted, turned into proposals, and answered with "the user has not
  * agreed to this yet". Owning the loop is what keeps `tools.ts` free to lie to
  * Claude about having done something, honestly.
@@ -244,10 +244,19 @@ export async function converse(
    *   Sonnet 5, Opus 4.8  1024
    *   Haiku 4.5           4096
    *
-   * Our prefix is the eleven tool schemas (~1,630 tokens) plus this system
-   * prompt - call it ~1,830. That caches on Opus 5 and DOES NOT on Haiku 4.5,
+   * Our prefix is the twenty-one tool schemas (~3,030 tokens) plus this system
+   * prompt - call it ~3,230. That caches on Opus 5 and DOES NOT on Haiku 4.5,
    * which is the default. The marker stays anyway: it is free, it is correct,
    * and it starts working the moment someone switches the model in Settings.
+   *
+   * Those figures were eleven schemas and ~1,830 tokens when this was written.
+   * Ten writing tools have been added since, and the prefix has roughly
+   * doubled without changing either verdict - but it now sits under Haiku's
+   * 4,096 rather than nowhere near it. The next few tools are the ones that
+   * decide whether the default model starts caching, so re-measure before
+   * concluding anything from this paragraph rather than trusting the numbers
+   * in it. They are an estimate of serialised schema text, not a token count
+   * from the API.
    *
    * Padding the prefix to clear 4,096 would be writing two thousand tokens of
    * tool description to satisfy a cache rather than to instruct a model, and
