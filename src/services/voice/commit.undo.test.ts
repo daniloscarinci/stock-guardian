@@ -520,6 +520,72 @@ describe('undo', () => {
     expect((await deps.items.getById(feijaoId))?.categoryId).toBe(wrote.category.id);
   });
 
+  /*
+   * The one failure this sentence can reach, in both of its shapes.
+   *
+   * `execute` looks for the heading by NAME, in the user's own language, among
+   * the ACTIVE categories - that is `categories.list()`. `categories.create`
+   * refuses by ID, which is a slug of the name, against every row in the table
+   * whether it is active or not. The two do not ask the same question, so a
+   * name can pass the first and fail the second, and the commit throws.
+   *
+   * Both tests count the rows in both tables rather than trusting the throw,
+   * because the claim being pinned is not "it throws" - it is that a sentence
+   * that fails leaves the database exactly as it found it.
+   */
+  describe('a category whose name is already spoken for', () => {
+    const categoryRows = async () => ({
+      categories: Number(await db.selectValue<number>('SELECT COUNT(*) FROM categories')),
+      names: Number(await db.selectValue<number>('SELECT COUNT(*) FROM category_names')),
+    });
+
+    /**
+     * The heading that exists under another name.
+     *
+     * "nova categoria, tools" on a Portuguese phone finds nothing called
+     * Ferramentas - which is what the built-in `tools` is named here - so
+     * `execute` proposes it, and then the slug lands on that very row.
+     */
+    it('writes nothing when the name slugs onto a category named something else', async () => {
+      const pending = await write(deps, { kind: 'CREATE_CATEGORY', name: 'tools' });
+      const before = await categoryRows();
+
+      await expect(commit(deps, pending)).rejects.toThrow(/already exists/);
+
+      expect(await categoryRows()).toEqual(before);
+    });
+
+    /**
+     * The worse one, because the name in the message is the name that was
+     * said and nothing the user can see is called it.
+     *
+     * A hidden category is still a row. `categories.list()` filters on
+     * `active = 1`, so `findCategory` cannot see it and `execute` proposes the
+     * heading as new; the collision check reads the table with no such filter
+     * and refuses. Nothing is written, and what the user is told is that a
+     * category called "Bunker" already exists.
+     */
+    it('collides with a hidden category too, under the very name that was said', async () => {
+      const hidden = await deps.categories.create({ names: { 'pt-BR': 'Bunker' } });
+      await deps.categories.update(hidden.id, { active: false });
+
+      // Invisible to the finder, which is why a card was offered at all.
+      expect(
+        (await deps.categories.list()).some((category) => category.id === hidden.id),
+      ).toBe(false);
+      const pending = await write(deps, { kind: 'CREATE_CATEGORY', name: 'bunker' });
+      const before = await categoryRows();
+
+      await expect(commit(deps, pending)).rejects.toThrow(/already exists/);
+
+      expect(await categoryRows()).toEqual(before);
+      // And the hidden row is untouched - not revived, not renamed.
+      const still = await deps.categories.getById(hidden.id);
+      expect(still?.active).toBe(false);
+      expect(still?.names).toEqual({ 'pt-BR': 'Bunker' });
+    });
+  });
+
   /**
    * A sentence whose whole content was a person: "novo contato, ana".
    *

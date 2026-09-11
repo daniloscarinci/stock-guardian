@@ -303,12 +303,30 @@ export async function commit(deps: VoiceDeps, write: PendingWrite): Promise<Comm
      * colour - both of which that screen can set.
      *
      * It THROWS where the slug is already taken, and that is reachable from
-     * here even though `execute` looked first: it looks by NAME in the user's
-     * own language, and "nova categoria, tools" on a Portuguese phone matches
-     * nothing called Ferramentas while still slugging to the built-in `tools`.
-     * Nothing is written when it throws, `useVoice` shows the message, and
-     * that is the truthful outcome - the heading does exist, under another
-     * name.
+     * here even though `execute` looked first, because the two do not ask the
+     * same question. `execute`'s `findCategory` looks by NAME, in the user's
+     * own language, among the ACTIVE rows - it reads `categories.list()`,
+     * which filters on `active = 1`. This refuses by ID, a slug of that name,
+     * against every row in the table whether it is active or not. So a name
+     * can pass the first check and fail the second, in two shapes:
+     *
+     *   A heading that exists under another name. "nova categoria, tools" on
+     *   a Portuguese phone matches nothing called Ferramentas, and slugs onto
+     *   the built-in `tools` all the same. The message is confusing only until
+     *   the user looks: the heading really is there.
+     *
+     *   A heading the user has HIDDEN, under the very name they just said.
+     *   Hiding sets `active = 0` and deletes nothing, so `findCategory` cannot
+     *   see the row and this check can. Somebody who hid a category called
+     *   Bunker and then says "nova categoria, bunker" is told that one already
+     *   exists while nothing they can see is called that. It is the worse of
+     *   the two, and the way out is the Categories screen, which lists hidden
+     *   rows and can bring that one back.
+     *
+     * Nothing is written in either case - the check runs before the batch -
+     * and `useVoice` shows the message. Both are pinned in
+     * `commit.undo.test.ts`, counting the rows in both tables rather than
+     * trusting the throw.
      *
      * THE PREPAREDNESS SCORE DOES NOT MOVE. That was read in
      * `domain/preparedness.ts` rather than reasoned about: the buckets it
