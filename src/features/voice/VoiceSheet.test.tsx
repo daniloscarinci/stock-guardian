@@ -1232,12 +1232,12 @@ describe('the assistant, and which engine answered', () => {
 
   /*
    * The fallback is the reason the parser was kept. A phone with no signal, or
-   * a key typed with one character wrong, still answers what the twelve rules
+   * a key typed with one character wrong, still answers what the twenty-two rules
    * can answer - and says why the other engine did not, because a silent
    * fallback would make a wrong key look exactly like an assistant nobody had
    * switched on.
    */
-  it('falls back to the twelve rules when Claude cannot be reached, and says why', async () => {
+  it('falls back to the twenty-two rules when Claude cannot be reached, and says why', async () => {
     anthropic.create.mockRejectedValue(new Anthropic.APIConnectionError({ message: 'no route' }));
     const { user, view } = await setup(WITH_CLAUDE);
     view(<VoiceSheet open onClose={vi.fn()} />);

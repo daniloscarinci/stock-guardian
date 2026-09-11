@@ -320,7 +320,7 @@ import shows you what the file contains and asks before writing anything.
 | `npm run dev` | Development server with hot reload |
 | `npm run build` | Production build, then the offline audit |
 | `npm run preview` | Serve the production build locally |
-| `npm test` | The 2263-test unit suite |
+| `npm test` | The 2278-test unit suite |
 | `npm run smoke` | Drive the production build in a real browser (needs Edge or Chrome) |
 | `npm run typecheck` | TypeScript, strict |
 | `npm run lint` | ESLint |

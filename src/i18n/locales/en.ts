@@ -701,7 +701,7 @@ export const en = {
 
     settingEnabled: 'Ask Claude',
     settingEnabledHelp:
-      'A second way of being understood, for the questions the twelve typed commands cannot hold. It needs your own API key, it costs money per question, and it is the only part of this application that uses the internet. Off, nothing here changes.',
+      'A second way of being understood, for the questions the twenty-two typed commands cannot hold. It needs your own API key, it costs money per question, and it is the only part of this application that uses the internet. Off, nothing here changes.',
     apiKey: 'Anthropic API key',
     apiKeyHelp:
       "Yours, pasted here, kept in this database in plain text. An unlocked phone can read it, and a debug build can be read over a cable. Nothing is built into the app, so the copy you hand to someone else carries nobody's key.",

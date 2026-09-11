@@ -391,7 +391,7 @@ function VoiceExchange({
       <Transcription online={entry.transcribedOnline} />
 
       {/*
-        Claude was asked and could not answer, so the twelve rules did. Said
+        Claude was asked and could not answer, so the twenty-two rules did. Said
         rather than swallowed: a key with one character wrong would otherwise
         look exactly like an assistant nobody had switched on.
       */}

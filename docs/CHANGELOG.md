@@ -150,7 +150,7 @@ exists.
 installer, and the Tauri SQLite driver has still never executed. `docs/BUILD.md`
 keeps its list of what to check the first time it does.
 
-2117 tests to 2263.
+2117 tests to 2278.
 
 ## 2.5.0
 

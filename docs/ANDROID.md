@@ -497,7 +497,7 @@ tells you something different:
    as you move between screens. **Settings → Ask → Falar comigo ao abrir o
    aplicativo** switches it off.
 10. **The assistant is off, and stays off.** With no key pasted, ask something the
-   twelve rules do not know and confirm the answer is "I did not understand
+   twenty-two rules do not know and confirm the answer is "I did not understand
    that" with examples - not a network error, and not a pause while something
    times out. Nothing should leave the phone until a key is stored and
    **Settings → Ask Claude** is switched on.

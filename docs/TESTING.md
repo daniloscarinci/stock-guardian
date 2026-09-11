@@ -1,7 +1,7 @@
 # Testing
 
 ```bash
-npm test              # 956 unit tests, 36 files
+npm test              # 2278 unit tests, 47 files
 npm run smoke         # 18 browser checks against the production build
 npm run typecheck     # TypeScript, strict
 ```
@@ -75,7 +75,7 @@ not in it is a phrase `docs/VOICE.md` does not claim.
 **A phrase that fails in real use becomes a row before it becomes a fix.** Every
 file says so in its header. The order matters because the alternative is a
 grammar patched to satisfy one remembered sentence, with nothing to say whether
-the patch broke the twelve rules it sits among — rule order is first-match-wins,
+the patch broke the twenty-two rules it sits among — rule order is first-match-wins,
 so a new pattern placed a line too early silently steals from the one below it.
 Writing the row first turns "it did not understand me" into a failing test, and
 turns the fix into something that either passes the other 221 or does not.

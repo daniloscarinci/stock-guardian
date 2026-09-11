@@ -670,7 +670,7 @@ export const ptBR: LocaleTree = {
 
     settingEnabled: 'Perguntar ao Claude',
     settingEnabledHelp:
-      'Um segundo jeito de ser entendido, para as perguntas que os doze comandos digitados não alcançam. Exige a sua própria chave de API, custa dinheiro por pergunta e é a única parte deste aplicativo que usa a internet. Desligado, nada aqui muda.',
+      'Um segundo jeito de ser entendido, para as perguntas que os vinte e dois comandos digitados não alcançam. Exige a sua própria chave de API, custa dinheiro por pergunta e é a única parte deste aplicativo que usa a internet. Desligado, nada aqui muda.',
     apiKey: 'Chave de API da Anthropic',
     apiKeyHelp:
       'Sua, colada aqui, guardada neste banco de dados em texto puro. Um celular desbloqueado consegue lê-la, e uma versão de depuração pode ser lida por cabo. Nada vem embutido no aplicativo, então a cópia que você entregar a alguém não leva chave nenhuma.',

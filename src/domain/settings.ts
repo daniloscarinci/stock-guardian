@@ -183,7 +183,7 @@ export const settingsSchema = z.object({
    * Whether Claude may be asked anything at all.
    *
    * Off, and off is the whole application as it was: the typed box still runs
-   * the twelve parser rules, offline and free, and no request is made. Turning
+   * the twenty-two parser rules, offline and free, and no request is made. Turning
    * it on is not enough on its own - there also has to be a key - so the two
    * together are the only way anything is sent.
    */
