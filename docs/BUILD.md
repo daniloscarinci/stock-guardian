@@ -146,8 +146,12 @@ reminders. The workflow allows exactly those three names and fails the build on
 any other, so the check that used to prove "no permissions" now proves "these
 three and no more". See `docs/ANDROID.md`.
 
-**No APK has been produced yet.** `docs/ANDROID.md` covers the signing key, the
-tag that triggers a build, and what to check on the first install.
+**The APK exists and nobody has run it.** Every version tag since v2.2.0 has
+produced a signed one on the releases page; this line claimed otherwise for four
+of them, which is the kind of error the "not built" lists exist to avoid. What
+is still true is the part that matters: no phone has been seen running one.
+`docs/ANDROID.md` covers the signing key, the tag that triggers a build, and
+what to check on the first install.
 
 ---
 
