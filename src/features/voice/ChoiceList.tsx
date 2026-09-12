@@ -9,6 +9,12 @@
  *   When more matched than are listed, the list says so. `resolveItem` caps the
  *   offer at five; presenting five of forty as though it were the shortlist is
  *   a lie, and the honest response to forty is to ask for a clearer phrase.
+ *
+ * There is no `busy` prop and no `disabled` on the buttons. This list renders
+ * inside the log, and the log is `inert` for as long as something is being
+ * worked out, which takes these buttons out of the tab order and out of the
+ * accessibility tree without each of them having to remember to. See the last
+ * block of Voice.module.css, which is where that arrangement is argued.
  */
 import { useId } from 'react';
 import { useApp } from '../../app/AppContext';
@@ -20,13 +26,11 @@ import styles from './Voice.module.css';
 export function ChoiceList({
   items,
   total,
-  busy,
   onChoose,
 }: {
   readonly items: readonly InventoryItemView[];
   /** How many actually tied, before the cap. Never less than `items.length`. */
   readonly total: number;
-  readonly busy: boolean;
   readonly onChoose: (item: InventoryItemView) => void;
 }) {
   const { t, settings } = useApp();
@@ -50,7 +54,6 @@ export function ChoiceList({
           <li key={item.id}>
             <Button
               fullWidth
-              disabled={busy}
               onClick={() => {
                 onChoose(item);
               }}

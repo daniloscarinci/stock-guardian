@@ -485,7 +485,6 @@ function VoiceExchange({
             <ConfirmCard
               key={position}
               write={proposal.write}
-              busy={voice.busy}
               onConfirm={() => {
                 void voice.confirmProposal(index, position);
               }}
@@ -565,7 +564,6 @@ function VoiceExchange({
       {outcome.kind === 'pending' && (
         <ConfirmCard
           write={outcome.write}
-          busy={voice.busy}
           onConfirm={() => {
             void voice.confirm(index);
           }}
@@ -579,7 +577,6 @@ function VoiceExchange({
         <ChoiceList
           items={outcome.items}
           total={outcome.total}
-          busy={voice.busy}
           onChoose={(item) => {
             void voice.choose(index, item);
           }}

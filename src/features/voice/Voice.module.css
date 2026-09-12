@@ -142,14 +142,96 @@
 
 /* ---- The confirmation card ------------------------------------------------ */
 
+/*
+ * A SPINE RATHER THAN A RING, AND THE SPINE IS WHERE THE ACCENT WENT.
+ *
+ * This card was ringed in the accent colour at 1px on all four sides, and the
+ * objection is not that the ring was ugly. It is that a ring marks the
+ * PERIMETER of a box, and a box this tall - see the measurements on `.band`
+ * below - has most of its perimeter away from wherever the reader is looking.
+ * It is also the last thing in a scrolling log, so which of the top and bottom
+ * edges are even on screen is a question about the scroll position. The eye is
+ * at the buttons, because the buttons are the reason the card is there. So the
+ * one mark saying "this one is asking you something" was spread thin around
+ * four edges, at the thinnest weight the interface owns.
+ *
+ * The left edge is the one part of a box that is beside every line of it,
+ * whichever lines are in view. That is where the accent goes, at
+ * `--rule-emphasis` - see the note on that token for why a second border weight
+ * is named in tokens.css rather than written here. The other three edges are
+ * `--border-subtle` at the same 1px the dialog and the fields use, because
+ * their only job now is to say where the box ends.
+ *
+ * COLOUR IS NOT THE SIGNAL AND WAS NOT BEFORE. What says this card wants a
+ * decision is the heading, the arrow between two values, "What I filled in" and
+ * two buttons whose labels are Confirm and Cancel. The spine is where to look,
+ * not what to know, and nothing here is carried by the accent being blue.
+ *
+ * `--radius-lg` stays on all four corners, which every other box in this
+ * application has and this one should not be the exception to. The cost is that
+ * the corner curve has to get from the 3px left border to the 1px top and
+ * bottom ones, so the twelve pixels at each end of the spine taper instead of
+ * ending square. That is one corner at each end of a rule that runs the whole
+ * height of the card.
+ */
 .card {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--border-subtle);
+  border-left: var(--rule-emphasis) solid var(--accent);
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
+}
+
+/*
+ * THREE BANDS, RATHER THAN FIVE CHILDREN ALL THE SAME DISTANCE APART.
+ *
+ * `.card` is a column with `--space-3` between its children, and its children
+ * were every line it has: the name, the shelf, a contact's phone number, the
+ * field label, the change, the guesses and the buttons. Five of those on an
+ * ordinary card, each as far from its neighbour as any other pair. So "Rice"
+ * stood exactly as far from "Location: Pantry" - the same subject, continued -
+ * as "12 kg becomes 17 kg" stood from Confirm, which is the distance between
+ * being told something and being asked something. Spacing was the only grouping
+ * the card had, and even spacing groups nothing.
+ *
+ * Three bands now, `--space-1` inside one and the card's own `--space-3`
+ * between them:
+ *
+ *   identity - the name, the shelf it is on, and the lines a contact carries
+ *              under it. Several facts about one row; they read as a block.
+ *   decision - which field is changing, and the value before beside the value
+ *              after. The question, on its own, with air around it.
+ *   reasons and actions - what the card filled in, and then Confirm and Cancel.
+ *              The guesses are the argument and the buttons are the verdict, and
+ *              somebody checking a guess is about to press one of them.
+ *
+ * WHAT IT IS WORTH IN HEIGHT, MEASURED RATHER THAN REASONED. Edge, headless,
+ * dark, at a 390px viewport, where the dialog is a full-bleed bottom sheet and
+ * the card is 350px wide:
+ *
+ *   ADJUST, with a location line and two guesses   283px -> 267px
+ *   NEW_CONTACT, with a relationship and a phone   291px -> 267px
+ *
+ * And at 360px, where more of the guesses wrap: 303px -> 287px and 291px ->
+ * 267px. The arithmetic behind those four numbers is worth knowing before
+ * anybody quotes a fifth: every gap that moved from `--space-3` to `--space-1`
+ * is worth 8px, and nothing else on either card changed height - the guesses
+ * kept their line counts, which is its own note on `.guessList` below. So a
+ * card saves 8px for each gap that ended up inside a band, two of them on the
+ * quantity card and three on the contact. A figure bigger than that did not
+ * come from this change.
+ *
+ * Every band always has at least one child: identity has the heading, decision
+ * has the change line, and the buttons always render. Nothing here can collapse
+ * to an empty box that the card's gap would go on reserving room around.
+ */
+.band {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .cardTitle {
@@ -195,12 +277,46 @@
   gap: var(--space-1);
 }
 
+/*
+ * FLAT, WITH THE MARKER IN THE MARKUP RATHER THAN IN AN INDENT.
+ *
+ * This list was indented by `--space-5` - 20px at a 16px root - inside a card
+ * already padded by `--space-4`, so the guesses were the only text on the card
+ * that did not get the card's own width. Flat, with 2px of the 20px handed
+ * straight back to the thicker left border, the line box grows by 18px:
+ * measured in Edge at a 390px viewport it went from 296px to 314px.
+ *
+ * AND THAT UNWRAPS NOTHING TODAY, WHICH IS WORTH WRITING DOWN, because the
+ * reason for doing it was that it would. All ten English guesses and seven of
+ * their Portuguese counterparts were measured at 360, 390 and 412px, before and
+ * after: not one of them changes its line count. The em dash and the space
+ * after it are worth about as much width as the indent that went, so the first
+ * line of an item gets back roughly nothing and the lines after it get 18px
+ * they were not short of. Take the dash away and the room shows up - two
+ * sentences drop from two lines to one at 390px, both Portuguese, and one
+ * English sentence does at 360px - so it is the marker, not the padding, that
+ * is now costing the line. The width is real and it is banked against longer
+ * names and longer translations. The saved line is not there yet, and nothing
+ * here should claim it is.
+ *
+ * `list-style: none` is what the indent was quietly paying for, and it took a
+ * browser to establish that: an `<li>` inside a flex container keeps its
+ * marker, so these guesses were bulleted, with the bullets sitting in that
+ * 20px. A marker is drawn outside the item's own box, so with no padding left
+ * for it to sit in it would be drawn into the card's padding instead, out of
+ * line with every other line on the card. The em dash that replaces it is an
+ * `aria-hidden` span in ConfirmCard.tsx rather than a `::before` here, because
+ * generated content is announced by some screen readers and this dash has
+ * nothing to say - the `<ul>` and the `<li>`s are still real and still carry
+ * the list to anyone reading with their ears.
+ */
 .guessList {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   margin: 0;
-  padding-left: var(--space-5);
+  padding: 0;
+  list-style: none;
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }
@@ -389,25 +505,35 @@
 /* ---- Going quiet while something is being worked out ---------------------- */
 
 /*
- * ONE BUSY TREATMENT, IN TWO REGIONS, COVERING MOST OF WHAT NINE DID.
+ * ONE BUSY TREATMENT, IN TWO REGIONS, COVERING ALL OF WHAT NINE DID.
  *
  * Nine controls used to carry their own `disabled={busy}`, each dimming itself
  * through a `:disabled` rule of its own: `.button:disabled` in
- * primitives.module.css for the buttons, `.chip:disabled` in this file for a
- * chip, and `.control:disabled` in Field.module.css for the box - which is an
- * `input` and never went through the button rule at all. Nine places to
+ * primitives.module.css for the buttons, a `.chip:disabled` that this file has
+ * since stopped needing, for a chip, and `.control:disabled` in
+ * Field.module.css for the box - which is an `input` and never went through the
+ * button rule at all. Nine places to
  * remember meant nine places to forget one, and a reader who cannot see dimming
  * was told nothing at all.
  *
- * THREE OF THE NINE ARE STILL THERE, and they are not oversights. Confirm,
- * Cancel and the choice buttons keep their own `disabled={busy}` inside
- * ConfirmCard and ChoiceList, and both of those render inside the inert region
- * anyway, so nothing is reachable that should not be. Taking the props out
- * means editing those two files, which was deliberately outside this change.
- * So this is two regions doing most of the job, not one treatment doing all of
- * it, and rounding that up would be exactly the sort of comment this file is
- * not for. `inert` on the region does the whole job once: the subtree leaves the
- * tab order, leaves the accessibility tree, and stops answering a pointer.
+ * ALL NINE ARE GONE NOW, AND THE LAST THREE WERE NOT MERELY REDUNDANT. Six went
+ * when these two regions were introduced. Confirm, Cancel and the choice
+ * buttons kept theirs for one commit longer, because taking them out meant
+ * editing ConfirmCard and ChoiceList and that was outside the change. They went
+ * with the card's own rework, and the reason is worth keeping: `.button:disabled`
+ * in primitives.module.css sets `opacity: 0.5`, and opacity composes rather
+ * than overriding. Inside a region already at 0.55 those three rendered at half
+ * the opacity of everything else in the same card - the two controls the card
+ * exists for, faded further than the sentences explaining them. One treatment
+ * meant to replace nine was being doubled on the three that matter most.
+ *
+ * `inert` on the region does the whole job once: the subtree leaves the tab
+ * order, leaves the accessibility tree, and stops answering a pointer. It is
+ * also what stops a second press of Confirm from committing the same write
+ * twice: `useVoice.confirm` guards on the exchange still being pending in the
+ * `history` it closed over, which is a guard that only holds once React has
+ * re-rendered with the write recorded, and the inert attribute goes on in the
+ * same render as the flag that sets it.
  *
  * It is safe on the platforms this application actually runs on. `inert` shipped
  * in Chrome 102; docs/ANDROID.md puts the floor at Android System WebView 108,

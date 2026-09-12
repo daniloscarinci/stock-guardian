@@ -360,12 +360,10 @@ function assumed(
 
 export function ConfirmCard({
   write,
-  busy,
   onConfirm,
   onCancel,
 }: {
   readonly write: PendingWrite;
-  readonly busy: boolean;
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
 }) {
@@ -395,71 +393,128 @@ export function ConfirmCard({
     before === null ? after : `${before} ${t('voice.becomes')} ${after}`;
   const detail = [name, ...lines, field === null ? change : `${field}: ${change}`].join(', ');
 
+  /*
+   * THREE BANDS, AND THE GROUPING IS THE POINT RATHER THAN THE MARKUP.
+   *
+   * The card used to be one column of five or more lines with the same gap
+   * between every pair of them, so the name and the shelf it sits on - one
+   * subject, stated twice - were as far apart as the change was from the button
+   * that performs it. Grouping them says which lines are one thought. See
+   * `.card` and `.band` in Voice.module.css for the spacing either side of that
+   * decision; the bands are `<div>`s with no role, so nothing below changes what
+   * a screen reader walks through.
+   *
+   * THE GROUP IS STILL LABELLED BY THE NAME ALONE, and that was looked at again
+   * rather than left alone. The case for labelling it by both - so that the
+   * group announces as "Confirm this change, Rice" instead of "Rice" - is that
+   * the name on its own says nothing about what kind of thing this is. The case
+   * against it is what the label is actually heard next to.
+   *
+   * A group's name is announced when focus enters the group, and focus enters
+   * this one the instant the card mounts, onto the Confirm button. That button's
+   * accessible name is already the whole change, a sentence built from `detail`
+   * below: the name, every line under it, the field, and both values. So what
+   * somebody not looking at the screen hears is the group's label and then, in
+   * the same breath, "Confirm: ana, Relationship: sister, Phone: 5551234, New
+   * contact". Prefixing the group puts the word "confirm" immediately in front
+   * of a sentence that starts with it, to say a thing that sentence then says in
+   * full. The one job left for the group's own label is telling this card apart
+   * from the others in the log - Claude can propose several at once - and the
+   * item's name is exactly what does that.
+   */
   return (
     <section className={styles.card} role="group" aria-labelledby={headingId}>
-      <h3 className={styles.cardTitle} id={headingId}>
-        {name}
-      </h3>
+      <div className={styles.band}>
+        <h3 className={styles.cardTitle} id={headingId}>
+          {name}
+        </h3>
 
-      {location !== null && (
-        <p className={styles.cardMeta}>
-          {t('common.location')}: {location}
-        </p>
-      )}
-
-      {/* Each line carries its own label, because the facts under a name are
-          not all the same kind of fact the way an item's shelf always is. */}
-      {lines.map((line) => (
-        <p className={styles.cardMeta} key={line}>
-          {line}
-        </p>
-      ))}
-
-      {field !== null && <p className={styles.cardMeta}>{field}</p>}
-
-      <p className={styles.change}>
-        {before !== null && (
-          <>
-            <span className={styles.before}>{before}</span>
-            <span className={styles.arrow} aria-hidden="true">
-              →
-            </span>
-            <span className="sr-only">{t('voice.becomes')}</span>
-          </>
+        {location !== null && (
+          <p className={styles.cardMeta}>
+            {t('common.location')}: {location}
+          </p>
         )}
-        <span className={styles.after}>{after}</span>
-      </p>
 
-      {/*
-        Named on the button as well as shown, through `aria-describedby`. Focus
-        lands on Confirm, so a description attached anywhere else is a
-        description nobody reading with their ears would ever reach.
-      */}
-      {guesses.length > 0 && (
-        <div className={styles.guesses} id={guessesId}>
-          <p className={styles.cardMeta}>{t('voice.assumedTitle')}</p>
-          <ul className={styles.guessList} role="list">
-            {guesses.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
+        {/* Each line carries its own label, because the facts under a name are
+            not all the same kind of fact the way an item's shelf always is. */}
+        {lines.map((line) => (
+          <p className={styles.cardMeta} key={line}>
+            {line}
+          </p>
+        ))}
+      </div>
+
+      <div className={styles.band}>
+        {field !== null && <p className={styles.cardMeta}>{field}</p>}
+
+        <p className={styles.change}>
+          {before !== null && (
+            <>
+              <span className={styles.before}>{before}</span>
+              <span className={styles.arrow} aria-hidden="true">
+                →
+              </span>
+              <span className="sr-only">{t('voice.becomes')}</span>
+            </>
+          )}
+          <span className={styles.after}>{after}</span>
+        </p>
+      </div>
+
+      <div className={styles.band}>
+        {/*
+          Named on the button as well as shown, through `aria-describedby`. Focus
+          lands on Confirm, so a description attached anywhere else is a
+          description nobody reading with their ears would ever reach.
+        */}
+        {guesses.length > 0 && (
+          <div className={styles.guesses} id={guessesId}>
+            <p className={styles.cardMeta}>{t('voice.assumedTitle')}</p>
+            <ul className={styles.guessList} role="list">
+              {guesses.map((line) => (
+                <li key={line}>
+                  {/*
+                    The dash is the bullet, and it is hidden. `.guessList` is no
+                    longer indented - it had a marker's worth of padding, 20px
+                    at a 16px root, inside a card that was already padded, which
+                    made these the only sentences on the card that did not get
+                    the card's width. A marker is still worth having to look at,
+                    so it is written here as a character and taken out of the
+                    accessibility tree: the `<ul>` and its `<li>`s already tell a
+                    screen reader that this is a list and how many things are in
+                    it, and "em dash" read before each one would be that same
+                    fact again as noise. What the dash costs in width is measured
+                    in the note on `.guessList`, and it is most of what dropping
+                    the indent recovered.
+                  */}
+                  <span aria-hidden="true">—</span> {line}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/*
+          The buttons, in the same band as the guesses they are a verdict on.
+          Nothing here carries `disabled={busy}` any more: the whole log is
+          `inert` while a write is being made, which takes this subtree out of
+          the tab order and out of the accessibility tree, and a `:disabled`
+          button inside it composed its own half-opacity with the region's and
+          faded further than the card around it. The paragraph at the bottom of
+          Voice.module.css is where that is set out.
+        */}
+        <div className={styles.actions}>
+          <Button
+            ref={confirmRef}
+            variant="primary"
+            aria-label={t('voice.confirmAction', { detail })}
+            aria-describedby={guesses.length === 0 ? undefined : guessesId}
+            onClick={onConfirm}
+          >
+            {t('voice.confirm')}
+          </Button>
+          <Button onClick={onCancel}>{t('voice.cancel')}</Button>
         </div>
-      )}
-
-      <div className={styles.actions}>
-        <Button
-          ref={confirmRef}
-          variant="primary"
-          disabled={busy}
-          aria-label={t('voice.confirmAction', { detail })}
-          aria-describedby={guesses.length === 0 ? undefined : guessesId}
-          onClick={onConfirm}
-        >
-          {t('voice.confirm')}
-        </Button>
-        <Button disabled={busy} onClick={onCancel}>
-          {t('voice.cancel')}
-        </Button>
       </div>
     </section>
   );

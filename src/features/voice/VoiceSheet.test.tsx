@@ -529,10 +529,12 @@ describe('VoiceSheet', () => {
   /**
    * One busy treatment, over the two regions that hold controls.
    *
-   * Six controls in this sheet used to carry a `disabled={busy}` of their own,
-   * and `:disabled` dimmed each one separately. `inert` on the region does the
-   * whole job twice instead of six times: the subtree leaves the tab order,
-   * leaves the accessibility tree, and stops answering a pointer.
+   * Nine controls in this sheet used to carry a `disabled={busy}` of their own,
+   * and `:disabled` dimmed each one separately. Six went when these two regions
+   * were introduced, and the last three went with the confirmation card's own
+   * rework - there is a test for those among the proposal cards below. `inert`
+   * on a region does the whole job once per region: the subtree leaves the tab
+   * order, leaves the accessibility tree, and stops answering a pointer.
    *
    * THE CATCH IS THE LAST THREE ASSERTIONS. The status line saying why the sheet
    * has gone quiet has to stand outside both regions. Inside one, it would be
@@ -630,6 +632,100 @@ describe('VoiceSheet', () => {
     // The promise the whole feature rests on, asserted against the database
     // rather than against the screen.
     expect(await quantityOf('Beans')).toBe(12);
+  });
+
+  /**
+   * THE CARD IS THREE BANDS, AND THE STRUCTURE IS ALL THIS FILE CAN CHECK.
+   *
+   * happy-dom computes no layout, so the height this grouping bought cannot be
+   * asserted here; it was measured in Edge instead, and the figures live in the
+   * note on `.band` in Voice.module.css. What IS assertable is the arrangement
+   * those figures come out of: three children, and which lines are in which of
+   * them. The card used to be five or six children with the same gap between
+   * every pair, so the name and the two facts stored under it stood as far
+   * apart as the change stood from the button that performs it.
+   *
+   * The contact is the card with the most to group - its identity band is the
+   * name and two facts stored under it - which is why this asserts on that one
+   * rather than on the quantity card above.
+   *
+   * The bands are `<div>`s with no role. Nothing a screen reader walks changes,
+   * and the two assertions on the buttons are here to say so: they are still
+   * found by their own names, from inside the band that now holds them.
+   */
+  it('groups the card into identity, the decision, and the reasons with the buttons', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'new contact my sister ana phone five five five one two three four');
+
+    const card = await screen.findByRole('group', { name: 'ana' });
+    const band = (position: number): HTMLElement => {
+      const node = card.children[position];
+      if (!(node instanceof HTMLElement)) throw new Error('the card lost a band');
+      return node;
+    };
+    expect(card.children).toHaveLength(3);
+
+    // Identity: who this is, and everything stored under the name.
+    expect(within(band(0)).getByRole('heading', { name: 'ana' })).toBeTruthy();
+    expect(within(band(0)).getByText('Relationship: sister')).toBeTruthy();
+    expect(within(band(0)).getByText('Phone: 5551234')).toBeTruthy();
+    expect(within(band(0)).queryByText('New contact')).toBeNull();
+
+    // The decision, on its own. No heading, because the heading is a fact
+    // about the row rather than part of what is being asked.
+    expect(within(band(1)).getByText('New contact')).toBeTruthy();
+    expect(within(band(1)).queryByRole('heading')).toBeNull();
+
+    // The reasons and the verdict, together: somebody reading a guess is about
+    // to press one of these two.
+    expect(within(band(2)).getByText('What I filled in')).toBeTruthy();
+    expect(
+      within(band(2)).getByText(
+        'I heard this number rather than being shown it. Check every digit.',
+      ),
+    ).toBeTruthy();
+    expect(within(band(2)).getByRole('button', { name: /^confirm:/i })).toBeTruthy();
+    expect(within(band(2)).getByRole('button', { name: /^cancel$/i })).toBeTruthy();
+  });
+
+  /**
+   * THE GUESSES ARE STILL A LIST, AND THE DASH IN FRONT OF EACH IS NOT IN IT.
+   *
+   * The indent went so that these sentences get the card's own width - see
+   * `.guessList` in Voice.module.css, which also measures what that was worth -
+   * and an em dash took the bullet's place. Both halves are asserted, because
+   * both can regress on their own: the `<ul>` and its `<li>`s are what tell a
+   * screen reader how many separate things were filled in, which is work no run
+   * of paragraphs would do, while the dash is decoration and is hidden.
+   *
+   * The last assertion is the load-bearing one and is easy to misread.
+   * `getByText` matches an element against ITS OWN text nodes, so the sentence
+   * being found ON THE `<li>` is what proves the dash sits in a child element of
+   * its own rather than inside the sentence a screen reader reads out.
+   */
+  it('keeps the guesses a real list, with the dash out of what is read', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'create item 2 kg of quinoa in the cellar');
+
+    const card = await screen.findByRole('group', { name: 'quinoa' });
+    const list = within(card).getByRole('list');
+    expect(list.tagName).toBe('UL');
+
+    const guesses = within(list).getAllByRole('listitem');
+    expect(guesses.length).toBeGreaterThan(0);
+    for (const guess of guesses) {
+      // There to look at...
+      expect(guess.textContent?.trimStart().startsWith('—')).toBe(true);
+      // ...and not there to hear.
+      expect(within(guess).getByText('—').getAttribute('aria-hidden')).toBe('true');
+    }
+
+    const line = within(card).getByText('No place is called cellar. Confirming makes it.');
+    expect(line.tagName).toBe('LI');
   });
 
   /**
@@ -1614,6 +1710,69 @@ describe('the proposals Claude makes', () => {
     ).toBeTruthy();
 
     // The promise the whole feature rests on, asserted against the database.
+    expect(await quantityOf('Beans')).toBe(12);
+  });
+
+  /**
+   * THE CARD'S BUTTONS CARRY NO `disabled` OF THEIR OWN, AND DO NOT NEED ONE.
+   *
+   * Confirm and Cancel were two of the last three `disabled={busy}` props in
+   * this sheet, out of nine. What replaced the other six is the region: the log
+   * is `inert` for as long as something is being worked out, so everything in it
+   * leaves the tab order and the accessibility tree at once. These two were kept
+   * one commit longer only because the file they live in was out of scope then,
+   * and they were not free - `.button:disabled` sets its own `opacity: 0.5`,
+   * which composes with the region's 0.55 rather than replacing it, so the two
+   * controls the card exists for faded to half of what the sentences explaining
+   * them faded to.
+   *
+   * The state this asserts in is the one those props existed for and the one no
+   * other test in this file reaches: a card still on screen, unanswered, while
+   * a LATER question is being waited on. Claude is left hanging to hold it
+   * there. What is checked is that the card goes out of reach without either
+   * button being disabled, and that it comes back.
+   */
+  it('puts the card out of reach through the region, not through its buttons', async () => {
+    proposesFiveMoreBeans();
+    const { user, view } = await setup(WITH_CLAUDE);
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'i came back from the shop with five cans of beans');
+
+    const card = await screen.findByRole('group', { name: 'Beans' });
+    const confirm = within(card).getByRole('button', { name: /^confirm:/i });
+    const cancel = within(card).getByRole('button', { name: /^cancel$/i });
+    expect(card.closest('[inert]')).toBeNull();
+    expect(confirm.hasAttribute('disabled')).toBe(false);
+    expect(cancel.hasAttribute('disabled')).toBe(false);
+
+    let answer: (value: unknown) => void = () => undefined;
+    anthropic.create.mockImplementation(
+      () =>
+        new Promise<unknown>((resolve) => {
+          answer = resolve;
+        }),
+    );
+
+    await say(user, 'what should i eat before it goes off');
+    expect(await screen.findByRole('status')).toBeTruthy();
+
+    // Out of reach, and still not disabled. happy-dom honours `inert` in the
+    // one way a test can observe it: nothing inside can take focus.
+    expect(card.closest('[inert]')).not.toBeNull();
+    expect(confirm.hasAttribute('disabled')).toBe(false);
+    expect(cancel.hasAttribute('disabled')).toBe(false);
+    confirm.focus();
+    expect(document.activeElement).not.toBe(confirm);
+
+    await act(async () => {
+      answer(reply({ content: [spoke('Eat the milk first.')] }));
+    });
+
+    expect(await screen.findByText(/Eat the milk first/)).toBeTruthy();
+    expect(card.closest('[inert]')).toBeNull();
+    // The offer survived the question, which is why it had to be protected.
+    expect(within(card).getByRole('button', { name: /^confirm:/i })).toBeTruthy();
     expect(await quantityOf('Beans')).toBe(12);
   });
 

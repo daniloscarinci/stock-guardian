@@ -126,6 +126,33 @@
   --space-16: 4rem;
 
   /* ---- Shape ------------------------------------------------------------- */
+  /*
+   * The one border weight named in this file, and it is the rare one.
+   *
+   * 1px is written out literally at every border in the application - the
+   * dialog, the fields, the cards, the chips, the badges, every divider - and it
+   * is left that way on purpose. A width used everywhere and argued about
+   * nowhere needs no name; the only border in the codebase that is not 1px is
+   * the spinner's ring in primitives.module.css, and that is a shape drawn with
+   * a border rather than an edge of anything.
+   *
+   * A HEAVIER rule is the opposite case. It is used rarely, it is a judgement
+   * rather than a default, and the second person to want one has nothing to
+   * match unless the first left a name behind - which is how a system acquires
+   * a 2px rule on one screen and a 4px rule on the next. So the second weight
+   * is named once, here, and anything that wants to be emphasised by its edge
+   * should be this thick rather than thicker.
+   *
+   * Its first use is the left edge of the voice sheet's confirmation card,
+   * where a 1px ring in the accent colour was the thinnest mark the interface
+   * has, spent on the one block in that sheet that asks for a decision. See
+   * `.card` in Voice.module.css for the argument about why the LEFT edge.
+   *
+   * A width, not a colour, so this is its only definition. The dark theme below
+   * overrides colours and shadows; a border weight is the same in every theme.
+   */
+  --rule-emphasis: 3px;
+
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
