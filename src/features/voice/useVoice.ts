@@ -409,7 +409,18 @@ export function useVoice(speak: Speak): Voice {
     [settings.language, settings.dateFormat],
   );
 
-  /** `execute` returns HELP and UNKNOWN empty-handed; the grammar lives here. */
+  /**
+   * `execute` returns HELP and UNKNOWN empty-handed; the grammar lives here.
+   *
+   * ONLY THE HELP HALF IS STILL READ. `answer.ts` turns a HELP answer into a
+   * sentence carrying the whole list, so that one matters. Nothing renders the
+   * examples attached to an UNKNOWN any more - the sheet shows its own chips for
+   * that, off `voice.examples`, because they are buttons rather than a sentence
+   * and have to sit outside the live region. The field stays on the outcome
+   * because `Outcome` requires it, and taking it off means changing a type in
+   * `execute.ts` for a payload that costs one array reference. Left here and
+   * named, rather than removed in a change about layout.
+   */
   const withExamples = useCallback(
     (outcome: Outcome): Outcome => {
       if (outcome.kind === 'unknown') return { ...outcome, examples: grammar.examples };

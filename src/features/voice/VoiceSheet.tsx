@@ -7,6 +7,12 @@
  * the bottom-sheet behaviour on a phone come from; none of it is reimplemented
  * here.
  *
+ * EVERY PIXEL FIGURE BELOW IS MEASURED, NOT DERIVED. They come from a survey of
+ * the rendered sheet at a 16px root - the chip wrapping especially, which no
+ * reading of this file can give you, because it depends on string length against
+ * available width in three languages. Re-measure rather than trust them if the
+ * type scale, the chip padding or the examples change.
+ *
  * THE COMPOSER IS THE DIALOG'S FOOTER, AND THAT IS WHAT THIS FILE IS ARRANGED
  * AROUND. It used to be the last block of the scrolling body, under a list of
  * example sentences whose height nothing bounded: six whole sentences wrap to

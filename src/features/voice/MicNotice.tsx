@@ -13,7 +13,9 @@
  * out loud here. Only `cancelled` stays silent, because a banner after "never
  * mind" teaches people to ignore banners.
  *
- * IT RENDERS AT THE TOP OF THE SCROLL BOX, NOT UNDER THE BUTTON IT IS ABOUT.
+ * IT RENDERS NEAR THE TOP OF THE SCROLL BOX, NOT UNDER THE BUTTON IT IS ABOUT.
+ * Only a thrown error's alert comes above it, which is the right order: that one
+ * is about the sentence and this one is about the microphone.
  * `MicButton` used to render this above itself and the two moved as one unit;
  * they are split now because the button belongs in the composer row Dialog pins
  * to the bottom edge and this does not. The panel below runs to a paragraph, two

@@ -243,7 +243,7 @@
  * VoiceSheet.tsx.
  *
  * NOT UPPERCASE AND NOT LETTERSPACED, WHICH IS WHAT THIS WAS. Twelve-pixel
- * letterspaced small caps is the hardest text in the sheet to read, in the one
+ * letterspaced full caps is the hardest text in the sheet to read, in the one
  * part of the application whose stated purpose is bad conditions and a person
  * who may not be looking. Sentence case at the size the other quiet lines use.
  * What keeps it from being confused with `.said` above it is position: it is
@@ -389,14 +389,24 @@
 /* ---- Going quiet while something is being worked out ---------------------- */
 
 /*
- * ONE BUSY TREATMENT, IN TWO REGIONS, REPLACING SIX.
+ * ONE BUSY TREATMENT, IN TWO REGIONS, COVERING MOST OF WHAT NINE DID.
  *
- * The chips, the box, Send, Undo, Create and the microphone each used to carry
- * their own `disabled={busy}`, and each dimmed itself through a `:disabled` rule
- * of its own - `.button:disabled` in primitives.module.css for five of them and
- * a `.chip:disabled` in this file for the sixth. Six places to remember meant
- * six places to forget one, and a reader who cannot see dimming was told nothing
- * at all. `inert` on the region does the whole job once: the subtree leaves the
+ * Nine controls used to carry their own `disabled={busy}`, each dimming itself
+ * through a `:disabled` rule of its own: `.button:disabled` in
+ * primitives.module.css for the buttons, `.chip:disabled` in this file for a
+ * chip, and `.control:disabled` in Field.module.css for the box - which is an
+ * `input` and never went through the button rule at all. Nine places to
+ * remember meant nine places to forget one, and a reader who cannot see dimming
+ * was told nothing at all.
+ *
+ * THREE OF THE NINE ARE STILL THERE, and they are not oversights. Confirm,
+ * Cancel and the choice buttons keep their own `disabled={busy}` inside
+ * ConfirmCard and ChoiceList, and both of those render inside the inert region
+ * anyway, so nothing is reachable that should not be. Taking the props out
+ * means editing those two files, which was deliberately outside this change.
+ * So this is two regions doing most of the job, not one treatment doing all of
+ * it, and rounding that up would be exactly the sort of comment this file is
+ * not for. `inert` on the region does the whole job once: the subtree leaves the
  * tab order, leaves the accessibility tree, and stops answering a pointer.
  *
  * It is safe on the platforms this application actually runs on. `inert` shipped

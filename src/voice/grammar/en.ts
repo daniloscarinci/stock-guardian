@@ -1104,9 +1104,10 @@ export const enGrammar: Grammar = {
    *
    * They are read in two places, and the difference between them is why the
    * ORDER below is load-bearing rather than decorative. `VoiceSheet` puts the
-   * first few on screen as tappable chips the moment the sheet opens, before
-   * anything has been asked; HELP and a sentence that was not understood read
-   * out the whole list. So the opening run is chosen to teach as many
+   * first few on screen as tappable chips at the two moments somebody does not
+   * know what to say - before anything has been asked, and straight after a
+   * sentence it could not read - with the rest a press away. Only HELP still
+   * reads the whole list out. So the opening run is chosen to teach as many
    * different SHAPES as it can in as few lines - one item's quantity, what is
    * going off, what to buy, stock arriving, stock going, and a place being
    * made - and the tail carries the rarer forms and the longest sentence here.

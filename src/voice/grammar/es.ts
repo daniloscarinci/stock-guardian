@@ -1024,8 +1024,9 @@ export const esGrammar: Grammar = {
    *
    * `en.ts` carries the full note. The order here is the same one and is
    * load-bearing for the same reason: `VoiceSheet` shows the opening run as
-   * tappable chips the moment the sheet opens, while HELP and an unrecognised
-   * sentence read out the whole list.
+   * tappable chips at the two moments somebody does not know what to say -
+   * before anything has been asked, and straight after a sentence it could not
+   * read - while only HELP reads the whole list out.
    *
    * THIS IS THE ONE PLACE IN THIS FILE THAT KEEPS ITS ACCENTS, and the rule at
    * the top of the file is not being broken by it. That rule is about

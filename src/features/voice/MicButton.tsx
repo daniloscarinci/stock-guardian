@@ -87,9 +87,12 @@ export function MicButton({
   /**
    * Why a press produced nothing, or null to say there is nothing to explain.
    *
-   * Called with null at the start of every listen as well as by the panel's own
-   * way out, because a panel about the last press standing over the next one is
-   * an explanation of the wrong thing.
+   * Called with null at the start of every listen, because a panel about the
+   * last press standing over the next one is an explanation of the wrong thing.
+   *
+   * The panel's own way out does not come through here. The sheet holds the
+   * failure and clears it directly, because the panel no longer renders
+   * anywhere near this button - see the note at the top of VoiceSheet.tsx.
    */
   readonly onFailure: (failure: SpeechFailure | null) => void;
 }) {

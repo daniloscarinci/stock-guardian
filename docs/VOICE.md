@@ -115,13 +115,15 @@ beans to somebody's inventory, it should show the shape of a sentence this
 application understands so that the next one can be their own.
 
 There are twelve examples per language and six are offered at rest, with **More
-examples** next to them for the other six. The six are ordered to carry six
+examples** under them for the other six. The six are ordered to carry six
 different shapes - one item's quantity, what is going off, what to buy, stock
 arriving, stock going, and a place being made. All twelve are still read out by
 `ajuda` / `help` / `ayuda`.
 
-They are the empty state of the log rather than a block above the controls, and
-that is a change. They used to sit at the top of the sheet, above the microphone
+They sit where the log will be rather than in a block above the controls, and
+that is a change. At rest they are its empty state; after a sentence it could
+not read they come back under the answer, which is the other moment somebody
+does not know what to say. They used to sit at the top of the sheet, above the microphone
 and the box: whole sentences wrap to three rows at 390px of screen and to six at
 360px, so on an ordinary Android the box they were teaching about was pushed off
 the bottom of the sheet before anybody had typed a word. The box is the dialog's
