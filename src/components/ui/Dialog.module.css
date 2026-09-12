@@ -113,10 +113,15 @@
 
   /*
    * A dialog with no footer ends at the body, and then it is the body that has
-   * to clear the gesture bar. The voice sheet is the one that does this, and it
-   * is the one people touch most: its send button is the last thing in the
-   * scroll box. The padding is inside the scroller, so the room appears at the
-   * end of the content rather than shortening the sheet.
+   * to clear the gesture bar. The padding is inside the scroller, so the room
+   * appears at the end of the content rather than shortening the sheet.
+   *
+   * NOTHING IN THE APPLICATION IS IN THIS STATE TODAY. The voice sheet was, and
+   * was the reason this rule was written - its send button was the last thing in
+   * its scroll box - until the sheet's composer became a real footer. Every
+   * dialog now passes one. The rule stays because `footer` is optional and the
+   * next dialog written without one would otherwise put its last control under
+   * the home indicator, which is a failure nobody would think to look for.
    */
   .body:last-child {
     padding-bottom: calc(var(--space-5) + var(--inset-bottom));

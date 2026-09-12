@@ -1,8 +1,8 @@
 /**
- * The microphone, and everything that can go wrong with one.
+ * The microphone: the button, the listen it opens, and the way back out of one.
  *
- * IT IS IN THE SHEET RATHER THAN IN THE HEADER, AND THAT IS THE CHANGE. The
- * header button used to be the microphone: pressing it opened the sheet and
+ * IT IS IN THE SHEET RATHER THAN IN THE HEADER, AND THAT WAS THE FIRST CHANGE.
+ * The header button used to be the microphone: pressing it opened the sheet and
  * started a listen in the same gesture. On the phone this feature was built for
  * - no offline Portuguese pack, and the recognizer refusing every offline
  * request - that meant a warning panel on top of the box every single time
@@ -13,6 +13,18 @@
  * So the header opens the sheet, and this asks to listen. Nothing explains
  * itself until somebody has actually asked to speak, and then it explains
  * itself completely.
+ *
+ * IT IS IN THE COMPOSER ROW NOW, AND THE PANEL IS NOT, WHICH IS THE SECOND
+ * CHANGE. This component used to render `MicNotice` above itself, so the button
+ * and its bad news were one unit. They cannot be: the button belongs beside the
+ * box, in the footer Dialog pins to the bottom edge, because both are ways into
+ * the same feature and neither is a fallback for the other - that is the
+ * argument this comment has always made, and the composer row is where it lands.
+ * The `no-offline-model` panel is a paragraph, two buttons, a collapsible
+ * explanation, a settings switch and a conditional hint: up to two hundred
+ * pixels of furniture, and a message rather than a control. Messages belong in
+ * the scroll box. So the failure leaves here as a code, `VoiceSheet` holds it,
+ * and `MicNotice` renders it at the top of the body.
  *
  * `selectRecognizer` is called once per language and per refusal setting rather
  * than once per press, because both change the honest answer to "can this
@@ -50,6 +62,7 @@ import { useApp } from '../../app/AppContext';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { Button } from '../../components/ui/primitives';
 import { MicIcon } from '../../components/ui/icons';
+import { cx } from '../../components/ui/cx';
 import {
   selectRecognizer,
   speechFailureReason,
@@ -57,13 +70,11 @@ import {
   type SpeechRecognizer,
 } from '../../services/speech/recognizer';
 import { LOCALE_TAGS } from '../../i18n/translate';
-import { MicNotice } from './MicNotice';
 import styles from './Voice.module.css';
 
 export function MicButton({
   onHeard,
-  onTypeInstead,
-  busy,
+  onFailure,
 }: {
   /**
    * One utterance, handed over exactly once, with where it was transcribed.
@@ -73,15 +84,18 @@ export function MicButton({
    * the exchange.
    */
   readonly onHeard: (transcript: string, online: boolean) => void;
-  /** The panel's way out: clear it, and put the cursor where typing works. */
-  readonly onTypeInstead: () => void;
-  /** Something else in the sheet is already working. */
-  readonly busy: boolean;
+  /**
+   * Why a press produced nothing, or null to say there is nothing to explain.
+   *
+   * Called with null at the start of every listen as well as by the panel's own
+   * way out, because a panel about the last press standing over the next one is
+   * an explanation of the wrong thing.
+   */
+  readonly onFailure: (failure: SpeechFailure | null) => void;
 }) {
   const { t, settings } = useApp();
   const tag = LOCALE_TAGS[settings.language];
 
-  const [failure, setFailure] = useState<SpeechFailure | null>(null);
   const [listening, setListening] = useState(false);
 
   /*
@@ -129,11 +143,11 @@ export function MicButton({
      * so, which is a better answer than refusing to try.
      */
     if (state === undefined || state.availability === 'unavailable') {
-      setFailure('no-recognizer');
+      onFailure('no-recognizer');
       return;
     }
 
-    setFailure(null);
+    onFailure(null);
     setListening(true);
     active.current = state.recognizer;
     try {
@@ -142,7 +156,7 @@ export function MicButton({
     } catch (cause) {
       // Every reason, named. The bug this replaces read anything it did not
       // recognise as a cancellation, and answered a cancellation with silence.
-      setFailure(speechFailureReason(cause));
+      onFailure(speechFailureReason(cause));
     } finally {
       active.current = null;
       setListening(false);
@@ -161,38 +175,45 @@ export function MicButton({
 
   const stoppable = listening && speech.data?.recognizer.cancel !== undefined;
 
+  /*
+   * One slot in the composer row, which claims the whole row while a listen is
+   * open. "Listening…" and "Stop listening" stay beside the button that opened
+   * the microphone, because on Android it is this process holding the recorder
+   * and stopping is the one urgent thing there is to do about that. They cannot
+   * share the row with the box - at 350px of inner width there is no room - and
+   * they must not replace it either, since somebody may have typed half a
+   * sentence before reaching for the microphone. So the footer grows by a row
+   * for as long as the listen lasts and the scroll box above shortens to match.
+   *
+   * Nothing here carries the sheet's busy state any more. The whole row is
+   * `inert` while something is being worked out - see `VoiceSheet` - which is
+   * one treatment in one place instead of a `disabled` on each control. The
+   * `disabled` that is left is this component's own: a second press during a
+   * listen would be a second listen, and where the platform implements `cancel`
+   * the way out of the first one is the button next to it.
+   */
   return (
-    <>
-      <MicNotice
-        failure={failure}
-        onTypeInstead={() => {
-          setFailure(null);
-          onTypeInstead();
+    <div className={cx(styles.micSlot, listening && styles.micSlotListening)}>
+      <Button
+        iconOnly
+        aria-label={t('voice.micButton')}
+        disabled={listening}
+        onClick={() => {
+          void press();
         }}
-      />
-
-      <div className={styles.micRow}>
+      >
+        <MicIcon />
+      </Button>
+      {listening && <p role="status">{t('voice.listening')}</p>}
+      {stoppable && (
         <Button
-          iconOnly
-          aria-label={t('voice.micButton')}
-          disabled={listening || busy}
           onClick={() => {
-            void press();
+            void stop();
           }}
         >
-          <MicIcon />
+          {t('voice.stopListening')}
         </Button>
-        {listening && <p role="status">{t('voice.listening')}</p>}
-        {stoppable && (
-          <Button
-            onClick={() => {
-              void stop();
-            }}
-          >
-            {t('voice.stopListening')}
-          </Button>
-        )}
-      </div>
-    </>
+      )}
+    </div>
   );
 }

@@ -1,11 +1,27 @@
 /**
- * The ask sheet: what was asked, what came of it, a microphone and a box to
- * type in - and, on an empty sheet, a few sentences to start from.
+ * The ask sheet: a box to type or speak into, pinned at the bottom, with what
+ * was asked and what came of it above it.
  *
  * Built on `components/ui/Dialog`, which is the native `<dialog>` element. That
  * is where focus trapping, Escape-to-close, inertness of the page behind and
  * the bottom-sheet behaviour on a phone come from; none of it is reimplemented
  * here.
+ *
+ * THE COMPOSER IS THE DIALOG'S FOOTER, AND THAT IS WHAT THIS FILE IS ARRANGED
+ * AROUND. It used to be the last block of the scrolling body, under a list of
+ * example sentences whose height nothing bounded: six whole sentences wrap to
+ * three rows at 390px of inner width and to six at 360px, so at 360x640 an empty
+ * sheet computed taller than its own cap and Send sat a hundred pixels below the
+ * fold before anybody had typed a word. Several things were competing to be
+ * looked at first, the layout settled it by document order, and document order
+ * had been chosen for reading rather than for acting. The box is the reason anyone opens this, so the box is the
+ * thing that cannot move: `Dialog`'s `footer` renders outside the body's scroll
+ * box and already carries the gesture-bar inset, and this sheet was the only
+ * dialog in the application not using it.
+ *
+ * The examples became the empty state of the log instead of a block above the
+ * control they teach, which is why their height stopped mattering and why there
+ * is no clamp on them anywhere.
  *
  * TWO WAYS IN, AND NEITHER IS A FALLBACK. The box is on every platform and
  * always worked; the microphone is on the platforms that have a recognizer, and
@@ -17,6 +33,14 @@
  * and a typed one take exactly the same path from here on. What travels with it
  * is one flag: whether the words were captured on the phone or over the
  * network. The exchange is marked with it below.
+ *
+ * THE MICROPHONE'S BUTTON AND THE MICROPHONE'S BAD NEWS ARE SPLIT, and this file
+ * holds the seam. A button is a way in and belongs beside the other way in; the
+ * `no-offline-model` panel is a paragraph, two buttons, a collapsible
+ * explanation, a settings switch and a conditional hint, which is up to two
+ * hundred pixels of furniture that has no business in a pinned footer. So the
+ * failure code lives here, `MicButton` reports it, and `MicNotice` renders it at
+ * the top of the scroll box where messages go.
  *
  * THE ANSWER IS READ BACK. `createSpeaker` for the setting, `androidIsSilent`
  * for the switch on the side of the phone. Speaking is not listening and asks
@@ -30,14 +54,17 @@ import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Button } from '../../components/ui/primitives';
-import { TextField } from '../../components/ui/Field';
+import { fieldStyles } from '../../components/ui/Field';
+import { cx } from '../../components/ui/cx';
 import { createSpeaker } from '../../services/speech/speak';
 import { androidIsSilent } from '../../services/speech/ringer';
 import { CREATABLE_INTENTS } from '../../voice/intents';
 import { useVoice, type Exchange, type Voice } from './useVoice';
 import { MicButton } from './MicButton';
+import { MicNotice } from './MicNotice';
 import { ConfirmCard } from './ConfirmCard';
 import { ChoiceList } from './ChoiceList';
+import type { SpeechFailure } from '../../services/speech/recognizer';
 import type { AiFailureReason } from '../../services/ai/converse';
 import type { TranslationKey } from '../../i18n/types';
 import styles from './Voice.module.css';
@@ -64,35 +91,45 @@ const AI_FAILURES: Readonly<Record<AiFailureReason, TranslationKey>> = {
 };
 
 /**
- * How many of the grammar's examples are offered as chips on an empty sheet.
+ * How many of the grammar's examples are offered at rest.
  *
- * There are twelve per language, and twelve is a lot of sheet. These are whole
+ * There are twelve per language, and twelve is a lot to read. These are whole
  * sentences rather than words, so at phone width most of them take a row to
- * themselves and the list is as tall as it is long - and every row of it stands
- * above the microphone and the box, which are the two things anybody actually
- * came here for. A hint that buries the controls it is hinting about has cost
- * more than it gave.
+ * themselves and the list is as tall as it is long.
  *
- * So the sheet shows an opening run and the grammar chooses what that run is:
- * `examples` is ordered with this slice in mind and its own comment says so.
- * Six is small enough to leave the controls in reach and still wide enough to
- * carry six different SHAPES of sentence - one item's quantity, what is going
- * off, what to buy, stock arriving, stock going, and a place being made.
+ * What that no longer costs is a control. The list is the last thing in the
+ * scroll box and the microphone and the box are pinned in the footer below it,
+ * so a twelfth example pushes nothing off the screen - it pushes the log's own
+ * older lines up, which is what a scroll box is for. Six is the resting count
+ * because six is as much as is worth reading before trying one, and because the
+ * grammar orders `examples` with this slice in mind and its own comment says so:
+ * six carries six different SHAPES of sentence - one item's quantity, what is
+ * going off, what to buy, stock arriving, stock going, and a place being made.
  *
- * Nothing is hidden by this. The full twelve are still read out by HELP, which
- * is a question anybody can ask here, and by any sentence that was not
- * understood.
+ * The other six are one press away, and all twelve are still read out by HELP,
+ * which is a question anybody can ask here.
  */
 const EXAMPLE_CHIPS = 6;
 
 export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
   const { t, settings } = useApp();
   const [typed, setTyped] = useState('');
-  const formRef = useRef<HTMLFormElement>(null);
+  const [allExamples, setAllExamples] = useState(false);
+  /*
+   * The microphone's last failure, held here rather than in `MicButton`, because
+   * the button and the panel explaining it no longer render in the same place:
+   * the button is in the pinned footer and the panel is at the top of the scroll
+   * box. See the note at the top of this file about why they were split.
+   */
+  const [micFailure, setMicFailure] = useState<SpeechFailure | null>(null);
+  const boxRef = useRef<HTMLInputElement>(null);
+  const boxId = useId();
   // Names the chip list after the line above it, so a screen reader reaching
-  // the list says what the six buttons in it are for rather than just counting
+  // the list says what the buttons in it are for rather than just counting
   // them.
   const hintsId = useId();
+  // And names the list to the disclosure that lengthens it.
+  const chipsId = useId();
 
   const speaker = useMemo(
     () =>
@@ -142,7 +179,7 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
    * next thing anybody does with a filled box is change a word in it.
    */
   const focusBox = useCallback(() => {
-    formRef.current?.querySelector('input')?.focus();
+    boxRef.current?.focus();
   }, []);
 
   /**
@@ -172,12 +209,106 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
     void run(value);
   };
 
+  /*
+   * When the examples are worth showing, which is the two moments somebody does
+   * not know what to say: before anything has been asked, and straight after a
+   * sentence that was not understood.
+   *
+   * Keyed off the LAST exchange rather than off any of them. An earlier failure
+   * that has since been followed by something the grammar understood needs no
+   * help offered about it; the answer above is the better teacher by then.
+   */
+  const last = voice.history.at(-1);
+  const notUnderstood =
+    last !== undefined && last.engine === 'device' && last.outcome.kind === 'unknown';
+  const showExamples = voice.history.length === 0 || notUnderstood;
+  const examples = allExamples ? voice.examples : voice.examples.slice(0, EXAMPLE_CHIPS);
+
   return (
     <Dialog
       open={open}
       onClose={close}
       title={t('voice.title')}
+      /*
+       * The box's instruction, moved up here, AND THIS IS A TRADE RATHER THAN A
+       * FREE WIN.
+       *
+       * What it buys: `Dialog` wires `description` to `aria-describedby` on the
+       * dialog element, so "Ask a question, or type a command" is read out as the
+       * sheet opens. A `<label>` is only read when focus reaches the thing it
+       * labels, and the box is at the far end of the sheet, so somebody who opens
+       * this and is not looking at it used to be told the title and nothing else.
+       *
+       * What it costs, and it is a real cost: the sentence no longer stands
+       * visibly beside the box, and the placeholder that took its place is not a
+       * label - it disappears on the first keystroke, so from then on nothing on
+       * screen names the box. The box keeps a real `<label>` for its accessible
+       * name. It is hidden, not removed.
+       */
+      description={t('voice.typeInstead')}
       closeLabel={t('common.close')}
+      footer={
+        <div className={styles.composer}>
+          {/*
+            Said only while Claude is being waited on. The parser answers between
+            two frames and a status line for it would be a flicker, not a
+            message.
+
+            OUTSIDE the inert row below, deliberately, and this is the one thing
+            about that arrangement that is easy to get wrong: this line is the
+            only thing that explains why the sheet has gone quiet, and anything
+            inside an inert region is taken out of the accessibility tree along
+            with the controls.
+          */}
+          {voice.busy && voice.engine === 'claude' && (
+            <p className={styles.working} role="status">
+              {t('ai.thinking')}
+            </p>
+          )}
+
+          <form
+            className={styles.composerRow}
+            inert={voice.busy}
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
+            }}
+          >
+            <MicButton
+              onHeard={(transcript, online) => {
+                void run(transcript, online);
+              }}
+              onFailure={setMicFailure}
+            />
+
+            {/*
+              A real `<label>`, visually hidden - the same `sr-only` utility and
+              the same shape as the search boxes on the inventory, catalog and
+              contacts screens. The sentence it holds is also the dialog's
+              description above, which is what makes hiding it affordable.
+            */}
+            <label className="sr-only" htmlFor={boxId}>
+              {t('voice.typeInstead')}
+            </label>
+            <input
+              ref={boxRef}
+              id={boxId}
+              type="text"
+              className={cx(fieldStyles.control, styles.box)}
+              value={typed}
+              autoComplete="off"
+              placeholder={t('voice.typePlaceholder')}
+              onChange={(event) => {
+                setTyped(event.target.value);
+              }}
+            />
+
+            <Button type="submit" variant="primary">
+              {t('voice.send')}
+            </Button>
+          </form>
+        </div>
+      }
     >
       {voice.error !== null && (
         <Alert tone="critical" role="alert">
@@ -186,134 +317,136 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
       )}
 
       {/*
-        Something to say, for somebody who has not said anything yet.
-
-        The hard part of a box you can say anything into is knowing what to
-        say, and these sentences already existed - nine per language, now
-        twelve, translated, and every one of them a phrase the grammar really
-        accepts. Until now they were reachable only by asking for help outright
-        or by failing to be understood, which is to say: the answer was only
-        offered to people who had already hit the wall.
-
-        They go once there is a history. By then the log itself is the better
-        teacher - it says what this application understood and what it did
-        about it - and the chips would be six buttons standing between the
-        reader and their own conversation.
-
-        OUTSIDE the log below, deliberately. That `<ol>` is an `aria-live`
-        region, and anything placed inside it is read out when it changes; six
-        example sentences appearing and then disappearing is not news.
+        Why the microphone produced nothing, at the top of the scroll box. It is
+        a message, and messages go where the reading happens; the button it is
+        about is in the footer, where the other way in is. See `MicButton`.
       */}
-      {voice.history.length === 0 && (
-        <div className={styles.hints}>
-          <p className={styles.hintsTitle} id={hintsId}>
-            {t('voice.examplesTitle')}
-          </p>
-          <ul className={styles.chips} role="list" aria-labelledby={hintsId}>
-            {voice.examples.slice(0, EXAMPLE_CHIPS).map((example) => (
-              <li key={example}>
-                <button
-                  type="button"
-                  className={styles.chip}
-                  disabled={voice.busy}
-                  onClick={() => {
-                    fillBox(example);
-                  }}
-                >
-                  {example}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/*
-        A log, announced as it grows. Someone using this feature may well not be
-        watching the screen for a new paragraph to appear.
-      */}
-      <ol className={styles.history} role="list" aria-live="polite">
-        {voice.history.map((entry, index) => (
-          <li key={index} className={styles.exchange}>
-            <VoiceExchange entry={entry} index={index} voice={voice} />
-          </li>
-        ))}
-      </ol>
-
-      {/*
-        Said only while Claude is being waited on. The parser answers between
-        two frames and a status line for it would be a flicker, not a message.
-      */}
-      {voice.busy && voice.engine === 'claude' && <p role="status">{t('ai.thinking')}</p>}
-
-      {/*
-        The microphone is here rather than in the header, so that nothing
-        explains a speech failure to somebody who only came to type. See
-        `MicButton`.
-      */}
-      <MicButton
-        onHeard={(transcript, online) => {
-          void run(transcript, online);
+      <MicNotice
+        failure={micFailure}
+        onTypeInstead={() => {
+          setMicFailure(null);
+          focusBox();
         }}
-        onTypeInstead={focusBox}
-        busy={voice.busy}
       />
 
-      <form
-        ref={formRef}
-        className={styles.form}
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit();
-        }}
-      >
-        <div className={styles.formField}>
-          <TextField
-            label={t('voice.typeInstead')}
-            value={typed}
-            autoComplete="off"
-            disabled={voice.busy}
-            onChange={(event) => {
-              setTyped(event.target.value);
-            }}
-          />
-        </div>
-        <Button type="submit" variant="primary" disabled={voice.busy}>
-          {t('voice.send')}
-        </Button>
-      </form>
+      <div className={styles.conversation} inert={voice.busy}>
+        {/*
+          A log, announced as it grows. Someone using this feature may well not
+          be watching the screen for a new paragraph to appear.
+        */}
+        <ol className={styles.history} role="list" aria-live="polite">
+          {voice.history.map((entry, index) => (
+            <li key={index} className={styles.exchange}>
+              <VoiceExchange entry={entry} index={index} voice={voice} />
+            </li>
+          ))}
+        </ol>
+
+        {/*
+          Something to say, for somebody who has not said anything yet - and for
+          somebody whose sentence was not understood, which used to be a separate
+          bulleted list of all twelve inside the exchange itself.
+
+          A SIBLING OF THE LOG, NEVER A CHILD OF IT, AND NOW FOR TWO REASONS.
+          That `<ol>` is an `aria-live` region and everything inside it is read
+          out when it changes. Six example sentences appearing and then vanishing
+          as a conversation starts is not news - that was the first reason, and it
+          still holds. The second is the one that made this worth rebuilding: the
+          twelve examples under "I did not understand that" WERE inside the live
+          region, so a person not looking at the screen heard the failure and then
+          twelve full sentences read aloud at them. Out here, behind a disclosure,
+          they hear the failure and can go and ask - which is a question HELP
+          already answers.
+        */}
+        {showExamples && (
+          <div className={styles.hints}>
+            <p className={styles.hintsTitle} id={hintsId}>
+              {t('voice.examplesTitle')}
+            </p>
+            <ul className={styles.chips} id={chipsId} role="list" aria-labelledby={hintsId}>
+              {examples.map((example) => (
+                <li key={example}>
+                  <button
+                    type="button"
+                    className={styles.chip}
+                    onClick={() => {
+                      fillBox(example);
+                    }}
+                  >
+                    {example}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {/*
+              The other six, one press away. After the list rather than before
+              it, because what it reveals is appended to the end of that same
+              list - so the chip immediately before this button is always the
+              newest one - and because a button sitting above the row it
+              lengthens reads as a heading for it.
+            */}
+            <Button
+              aria-expanded={allExamples}
+              aria-controls={chipsId}
+              onClick={() => {
+                setAllExamples((on) => !on);
+              }}
+            >
+              {t('voice.moreExamples')}
+            </Button>
+          </div>
+        )}
+      </div>
     </Dialog>
   );
 }
 
 /**
- * Which engine answered, said quietly on every exchange.
+ * Where the words came from and what answered them, on one line.
  *
- * A marker rather than a banner. The difference is worth knowing - one is
- * exact, offline and free, the other is capable and costs money per question -
- * and it is not worth a paragraph on every line.
+ * Two markers, not two banners, and now one row rather than two paragraphs that
+ * could stack identically styled above the same answer. Both facts are worth
+ * knowing and neither is worth a line of its own: one engine is exact, offline
+ * and free and the other is capable and costs money per question; and the phone
+ * transcribes on its own every single time, so the rare press whose audio left
+ * the device is the one worth being able to see in the log. Marking it is what
+ * makes the network fallback something offered rather than something done
+ * quietly.
+ *
+ * `engine` is null on an exchange that was taken back, which is the one case
+ * that says what was transcribed and not what answered, exactly as it did
+ * before this was merged.
+ *
+ * THE MIDDOT IS NOT READ OUT AND THE COMMA IS NOT SEEN. A separator character
+ * announced as "middle dot" between two short phrases is noise, and two phrases
+ * run together with no punctuation at all are one confusing phrase. So the
+ * middot is `aria-hidden` and a comma sits beside it in the `sr-only` utility,
+ * which is out of flow and so costs the row nothing.
  */
-function Answered({ engine }: { readonly engine: 'claude' | 'device' }) {
+function Provenance({
+  engine,
+  online,
+}: {
+  readonly engine: 'claude' | 'device' | null;
+  readonly online: boolean;
+}) {
   const { t } = useApp();
-  return (
-    <p className={styles.engine}>{t(engine === 'claude' ? 'ai.fromClaude' : 'ai.fromParser')}</p>
-  );
-}
+  if (!online && engine === null) return null;
 
-/**
- * That the words came over the network, said in the same quiet place.
- *
- * Rendered only on the exchanges it is true of, which are the ones where the
- * phone could not transcribe on its own. The microphone tries the device first
- * every single time, so most exchanges never show this - and that is the point
- * of showing it at all. A person can look at the log and tell which presses
- * left the phone. Marking it is what makes the fallback something offered
- * rather than something done quietly.
- */
-function Transcription({ online }: { readonly online: boolean }) {
-  const { t } = useApp();
-  if (!online) return null;
-  return <p className={styles.engine}>{t('voice.transcribedOnline')}</p>;
+  return (
+    <p className={styles.engine}>
+      {online && <span>{t('voice.transcribedOnline')}</span>}
+      {online && engine !== null && (
+        <>
+          <span className="sr-only">{', '}</span>
+          <span aria-hidden="true">·</span>
+        </>
+      )}
+      {engine !== null && (
+        <span>{t(engine === 'claude' ? 'ai.fromClaude' : 'ai.fromParser')}</span>
+      )}
+    </p>
+  );
 }
 
 /** One exchange, rendered according to what came of it. */
@@ -332,8 +465,7 @@ function VoiceExchange({
     return (
       <>
         <p className={styles.said}>{t('voice.heard', { transcript: entry.said })}</p>
-        <Transcription online={entry.transcribedOnline} />
-        <Answered engine="claude" />
+        <Provenance engine="claude" online={entry.transcribedOnline} />
         <p className={styles.answer}>{entry.text}</p>
 
         {entry.proposals.length > 0 && (
@@ -379,7 +511,7 @@ function VoiceExchange({
     return (
       <>
         <p className={styles.said}>{t('voice.heard', { transcript: entry.said })}</p>
-        <Transcription online={entry.transcribedOnline} />
+        <Provenance engine={null} online={entry.transcribedOnline} />
         <p className={styles.answer}>{entry.text}</p>
       </>
     );
@@ -388,20 +520,20 @@ function VoiceExchange({
   return (
     <>
       <p className={styles.said}>{t('voice.heard', { transcript: entry.said })}</p>
-      <Transcription online={entry.transcribedOnline} />
+      <Provenance engine="device" online={entry.transcribedOnline} />
 
       {/*
         Claude was asked and could not answer, so the twenty-two rules did. Said
         rather than swallowed: a key with one character wrong would otherwise
-        look exactly like an assistant nobody had switched on.
+        look exactly like an assistant nobody had switched on. Under the line
+        that names the engine rather than above it, because it is the reason that
+        line says "on this device".
       */}
       {entry.aiFailure !== null && (
         <p className={styles.hint}>
           {t(AI_FAILURES[entry.aiFailure])} {t('ai.thenOffline')}
         </p>
       )}
-
-      <Answered engine="device" />
 
       {outcome.kind === 'answer' && <p className={styles.answer}>{entry.text}</p>}
 
@@ -414,7 +546,6 @@ function VoiceExchange({
       {entry.receipt !== null && (
         <div className={styles.actions}>
           <Button
-            disabled={voice.busy}
             aria-label={t('voice.undoAction', { detail: entry.text ?? entry.said })}
             onClick={() => {
               void voice.takeBack(index);
@@ -464,7 +595,6 @@ function VoiceExchange({
             <div className={styles.actions}>
               <Button
                 variant="primary"
-                disabled={voice.busy}
                 onClick={() => {
                   void voice.create(index);
                 }}
@@ -476,17 +606,13 @@ function VoiceExchange({
         </>
       )}
 
-      {outcome.kind === 'unknown' && (
-        <>
-          <p className={styles.answer}>{t('voice.notUnderstood')}</p>
-          <p className={styles.said}>{t('voice.examplesTitle')}</p>
-          <ul className={styles.examples} role="list">
-            {outcome.examples.map((example) => (
-              <li key={example}>{example}</li>
-            ))}
-          </ul>
-        </>
-      )}
+      {/*
+        The failure itself, and nothing else. The examples to try are chips
+        below the log rather than a bulleted list in here: this is an `aria-live`
+        region, and twelve sentences read out after "I did not understand that"
+        is the announcement burying the message.
+      */}
+      {outcome.kind === 'unknown' && <p className={styles.answer}>{t('voice.notUnderstood')}</p>}
     </>
   );
 }

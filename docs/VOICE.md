@@ -107,25 +107,44 @@ set to, drawn from the grammar itself so they cannot drift out of date.
 
 ### Six of them are offered before anything fails
 
-Open the sheet with nothing in the log and six of those same examples sit under
-it as chips, headed **Try one of these**. Pressing one puts the sentence in the
-box and the cursor in it. It does not send it, and that is the whole reason they
-are worth having: a first press should not add five cans of beans to somebody's
-inventory, it should show the shape of a sentence this application understands
-so that the next one can be their own.
+Open the sheet with nothing in the log and six of those same examples sit where
+the log would be, as chips headed **Try one of these**. Pressing one puts the
+sentence in the box and the cursor in it. It does not send it, and that is the
+whole reason they are worth having: a first press should not add five cans of
+beans to somebody's inventory, it should show the shape of a sentence this
+application understands so that the next one can be their own.
 
-There are twelve examples per language and the sheet shows the first six. These
-are whole sentences, so at phone width most of them take a row to themselves,
-and every row stands above the microphone and the box. The six are ordered to
-carry six different shapes - one item's quantity, what is going off, what to
-buy, stock arriving, stock going, and a place being made. All twelve are still
-read out by `ajuda` / `help` / `ayuda`, and by any sentence that was not
-understood.
+There are twelve examples per language and six are offered at rest, with **More
+examples** next to them for the other six. The six are ordered to carry six
+different shapes - one item's quantity, what is going off, what to buy, stock
+arriving, stock going, and a place being made. All twelve are still read out by
+`ajuda` / `help` / `ayuda`.
+
+They are the empty state of the log rather than a block above the controls, and
+that is a change. They used to sit at the top of the sheet, above the microphone
+and the box: whole sentences wrap to three rows at 390px of screen and to six at
+360px, so on an ordinary Android the box they were teaching about was pushed off
+the bottom of the sheet before anybody had typed a word. The box is the dialog's
+footer now - pinned, below the scroll box, out of reach of anything the
+conversation does - so the examples have no height to stay inside, which is why
+there is no limit on them beyond the resting count.
 
 They go once there is a history. By then the log is the better teacher, and six
-buttons would be standing between the reader and their own conversation. They
-sit outside that log rather than at the top of it, because the log is an
-`aria-live` region and six examples appearing and then disappearing is not news.
+buttons would be standing between the reader and their own conversation.
+
+### A sentence that was not understood gets the same six
+
+This used to be a different thing: all twelve, as a plain bulleted list, inside
+the failure. Two treatments for the same strings, and the twelve were rendered
+*inside* the log - which is an `aria-live` region, so somebody not watching the
+screen heard **I did not understand that** and then twelve whole sentences read
+at them. They are the chips now, outside that region and behind the same
+disclosure, so the failure is announced and the examples are there to be asked
+for.
+
+The chips sit outside the log rather than in it for the same reason in both
+cases: six examples appearing and then disappearing as a conversation starts is
+not news.
 
 ### Three sentences that make something
 

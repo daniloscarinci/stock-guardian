@@ -3,12 +3,20 @@
  * becomes a bottom sheet below 40rem - belongs to Dialog.module.css and is not
  * repeated here.
  *
- * That includes the safe-area insets, and it is worth saying so because this is
- * the sheet whose bottom edge matters most: `.form` below is the last thing in
- * it, and on a phone it sits exactly where the gesture bar is. This sheet
- * passes no footer to Dialog, so the clearance comes from the `.body:last-child`
- * rule there rather than from anything in this file. Grep for `--inset-` in
- * src/components/ui/Dialog.module.css.
+ * That includes the safe-area insets. This sheet passes a footer to Dialog now,
+ * so the bottom edge is cleared by the `padding-bottom` on `.footer` over
+ * there; it used to rely on the `.body:last-child` rule beside it instead,
+ * because the send button was the last thing in the scroll box. Grep for
+ * `--inset-` in src/components/ui/Dialog.module.css.
+ *
+ * THE COMPOSER IS THE FOOTER, AND THAT IS THE CHANGE THIS FILE IS ABOUT. The
+ * microphone, the box and Send used to be the last two blocks of the scrolling
+ * body, under an example list whose height nothing bounded: six whole sentences
+ * wrap to three rows at 390px and to six rows at 360px, which is a step
+ * function, not a cost, and at 360x640 it put Send a hundred pixels below the
+ * fold of an empty sheet. Pinned in the footer the box cannot be pushed
+ * anywhere by anything the conversation does, and the examples below stop
+ * having a height budget at all - which is why there is no row clamp on them.
  */
 
 .history {
@@ -18,6 +26,16 @@
   margin: 0 0 var(--space-4);
   padding: 0;
   list-style: none;
+}
+
+/*
+ * An empty log takes up nothing. The element itself still renders - it is the
+ * live region, and a live region has to exist before it changes for the change
+ * to be announced - so with nothing in it the margin below would be the only
+ * thing left, holding the examples down by a row of space about nothing.
+ */
+.history:empty {
+  margin-bottom: 0;
 }
 
 .exchange {
@@ -39,29 +57,20 @@
   overflow-wrap: anywhere;
 }
 
+/* ---- Something to say, when the log has nothing to read ------------------- */
+
 /*
- * The examples as a bulleted list, under a sentence that was not understood.
- * The same strings appear as chips at the top of an empty sheet, and the two
- * are styled apart on purpose: this one is part of a paragraph explaining a
- * failure and is read, the other is a row of things to press. See `.chips`.
+ * The examples, in one treatment, reached two ways: an empty sheet, and a
+ * sentence that was not understood. There used to be two - six of them as chips
+ * at the top of an empty sheet, and all twelve as a bulleted list inside the
+ * failure - which meant the same strings taught the same lesson twice in two
+ * different shapes, and the twelve were inside the live region. See `.chips`.
  */
-.examples {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: var(--space-2) 0 0;
-  padding-left: var(--space-5);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-/* ---- Something to say, on a sheet nobody has said anything into yet ------ */
-
 .hints {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: var(--space-2);
-  margin-bottom: var(--space-4);
 }
 
 /* The line the chip list is named after - see `hintsId` in VoiceSheet.tsx. */
@@ -78,8 +87,13 @@
  * horizontal scroller would fit it on one line at the price of hiding half the
  * examples behind a gesture nothing on screen advertises - and the whole point
  * of this list is that somebody who does not know what to say can SEE what to
- * say. What keeps it from swallowing the sheet is the count, not the layout:
- * `EXAMPLE_CHIPS` in VoiceSheet.tsx holds it to six of the twelve.
+ * say.
+ *
+ * Nothing here bounds the height, and nothing needs to. The list is the last
+ * thing in the scroll box and the controls it teaches about are pinned below it
+ * in the footer, so a list that runs past the fold costs a scroll and not a
+ * control. `EXAMPLE_CHIPS` in VoiceSheet.tsx still holds the resting count to
+ * six of the twelve, for reading rather than for room.
  */
 .chips {
   display: flex;
@@ -92,7 +106,7 @@
 
 /*
  * A chip fills the box rather than sending it, so it is deliberately quieter
- * than the Send button further down: sunken rather than raised, secondary
+ * than the Send button in the footer: sunken rather than raised, secondary
  * text, and no accent anywhere. Pressing one is not an action, it is a
  * starting point.
  *
@@ -121,15 +135,9 @@
     color var(--transition-fast);
 }
 
-.chip:hover:not(:disabled) {
+.chip:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
-}
-
-/* Matches the buttons: everything in this sheet goes quiet while it is busy. */
-.chip:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }
 
 /* ---- The confirmation card ------------------------------------------------ */
@@ -224,18 +232,30 @@
   color: var(--text-secondary);
 }
 
-/* ---- Which engine answered, and why one stood in for the other ----------- */
+/* ---- Where the words came from, and what answered them -------------------- */
 
 /*
- * A marker, not a banner. The difference between the two engines is worth
- * knowing on every line - one is exact, offline and free, the other is capable
- * and billed per question - and is not worth shouting about on any of them.
+ * One row with two slots, not two lines with one each. "Transcribed online" and
+ * "Answered on this device" are both true of the same exchange and used to be
+ * two paragraphs with identical styling, stacked back to back above the answer
+ * they were about. The middot between them is `aria-hidden` in the markup and
+ * the accessible text puts a comma there instead - see `Provenance` in
+ * VoiceSheet.tsx.
+ *
+ * NOT UPPERCASE AND NOT LETTERSPACED, WHICH IS WHAT THIS WAS. Twelve-pixel
+ * letterspaced small caps is the hardest text in the sheet to read, in the one
+ * part of the application whose stated purpose is bad conditions and a person
+ * who may not be looking. Sentence case at the size the other quiet lines use.
+ * What keeps it from being confused with `.said` above it is position: it is
+ * always the line directly under what was asked.
  */
 .engine {
-  font-size: var(--text-xs);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 /* Why Claude did not answer, above the answer the twenty-two rules gave instead. */
@@ -277,40 +297,139 @@
   border-top: 1px solid var(--border-subtle);
 }
 
-/*
- * The microphone, above the box rather than in the header. Both ways in are
- * the same feature and neither is a fallback for the other, so they sit next
- * to each other.
- */
-.micRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
-
-/* ---- The typed box -------------------------------------------------------- */
+/* ---- The composer, which is the dialog's footer --------------------------- */
 
 /*
- * Present on every platform. It is not a fallback: a device with no microphone
- * loses the button above and keeps the whole feature.
+ * A column rather than the row itself, because one thing appears above the row:
+ * the line saying Claude is being waited on, which has to stand outside the part
+ * that goes inert. The row is `.composerRow` below.
+ *
+ * `flex: 1` IS LOAD-BEARING AND IS NOT THE DEFAULT. Dialog's `.footer` is
+ * `justify-content: flex-end`, which is the right arrangement for the two or
+ * three buttons every other dialog in this application puts there and the wrong
+ * one for a box that should use the width it has; without this the whole
+ * composer would sit hard against the right edge on any screen wider than
+ * 40rem. Below 40rem `.footer > *` sets the same thing, and it only reaches this
+ * element - the microphone and Send are inside `.composerRow` rather than
+ * children of the footer, which is what keeps that rule from stretching a 44px
+ * icon button to the width of the text box.
  */
-.form {
+.composer {
   display: flex;
-  align-items: flex-end;
-  gap: var(--space-3);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border-subtle);
-}
-
-.formField {
+  flex-direction: column;
+  gap: var(--space-2);
   flex: 1;
   min-width: 0;
 }
 
-@media (max-width: 30rem) {
-  .form {
-    flex-direction: column;
-    align-items: stretch;
-  }
+/* Said only while Claude is being waited on - see VoiceSheet.tsx. */
+.working {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/*
+ * Microphone, box, Send - one row, in that order, and the order is the argument.
+ * Both ways in are the same feature and neither is a fallback for the other, so
+ * they are the same control group rather than a block above a block.
+ *
+ * It wraps so that the microphone's own row can claim the full width while a
+ * listen is open. See `.micSlotListening`.
+ */
+.composerRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/*
+ * `flex: none` keeps the microphone at its tap target. Everything else in the
+ * row can give ground; a 44px square that shrank to 30px to make room for a
+ * longer Send label would be a thumb target this application promises and does
+ * not deliver.
+ */
+.micSlot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+}
+
+/*
+ * While a listen is open the slot takes a row of its own and pushes the box and
+ * Send onto the next one.
+ *
+ * "Listening…" and "Stop listening" appear inside this slot, beside the button
+ * that opened the microphone, because stopping is the one urgent thing to be
+ * able to do while it is open: on Android this process holds the recorder and the
+ * platform puts nothing on screen while it does. They could not share the row - at
+ * 350px of inner width a status line and a second button leave the box no room
+ * at all - and they must not take the box away either, because somebody may
+ * have typed half a sentence before reaching for the microphone. So the footer
+ * grows by one row for as long as the listen lasts, the scroll box above
+ * shortens by the same amount, and the box keeps what is in it.
+ */
+.micSlotListening {
+  flex: 1 0 100%;
+}
+
+/*
+ * The box itself borrows `.control` from Field.module.css, which is the style
+ * `TextField` gives every other text box in this application; these two
+ * properties are the only thing particular to standing in a row. `min-width: 0`
+ * is what lets it shrink inside the flex row instead of forcing the row wider
+ * than the sheet.
+ */
+.box {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---- Going quiet while something is being worked out ---------------------- */
+
+/*
+ * ONE BUSY TREATMENT, IN TWO REGIONS, REPLACING SIX.
+ *
+ * The chips, the box, Send, Undo, Create and the microphone each used to carry
+ * their own `disabled={busy}`, and each dimmed itself through a `:disabled` rule
+ * of its own - `.button:disabled` in primitives.module.css for five of them and
+ * a `.chip:disabled` in this file for the sixth. Six places to remember meant
+ * six places to forget one, and a reader who cannot see dimming was told nothing
+ * at all. `inert` on the region does the whole job once: the subtree leaves the
+ * tab order, leaves the accessibility tree, and stops answering a pointer.
+ *
+ * It is safe on the platforms this application actually runs on. `inert` shipped
+ * in Chrome 102; docs/ANDROID.md puts the floor at Android System WebView 108,
+ * because below that there is no OPFS and the database does not open at all. So
+ * every device that can run this at all honours it, and React 19 passes it
+ * through as the boolean attribute it is.
+ *
+ * THE STATUS LINE IS OUTSIDE BOTH REGIONS, AND THAT IS THE WHOLE CATCH. `.working`
+ * is the only thing that says why the sheet has gone quiet. Inside an inert
+ * region it would be removed from the accessibility tree along with everything
+ * else, which would leave the explanation readable only by the people who did
+ * not need it.
+ *
+ * The dimming hangs off the attribute rather than off a class of its own, so one
+ * fact drives both and there is no second thing to remember to toggle. Note what
+ * this does NOT buy: `[inert]` is an attribute selector and matches whenever the
+ * attribute is present, so a browser that did not implement inertness would
+ * still grey these regions out while leaving them live. That is the argument for
+ * checking the browser floor rather than for this selector, and the paragraph
+ * above is where it is checked.
+ */
+.conversation[inert],
+.composerRow[inert] {
+  opacity: 0.55;
+}
+
+/*
+ * `cursor` is the one thing inertness leaves alone, so a pointer would still
+ * appear over a button that cannot be pressed. The buttons and chips set their
+ * own, which is why this has to reach inside rather than be inherited.
+ */
+.conversation[inert] *,
+.composerRow[inert] * {
+  cursor: default;
 }

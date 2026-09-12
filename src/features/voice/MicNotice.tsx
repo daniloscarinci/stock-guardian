@@ -13,6 +13,16 @@
  * out loud here. Only `cancelled` stays silent, because a banner after "never
  * mind" teaches people to ignore banners.
  *
+ * IT RENDERS AT THE TOP OF THE SCROLL BOX, NOT UNDER THE BUTTON IT IS ABOUT.
+ * `MicButton` used to render this above itself and the two moved as one unit;
+ * they are split now because the button belongs in the composer row Dialog pins
+ * to the bottom edge and this does not. The panel below runs to a paragraph, two
+ * buttons, a collapsible explanation, a settings switch and a conditional hint,
+ * which is up to two hundred pixels that would be taken straight off the log and
+ * held there until it was dismissed. A button is a control and a control belongs
+ * beside the other way in; this is a message, and messages belong where the
+ * reading happens. `VoiceSheet` holds the failure code and places both.
+ *
  * THE MISSING-MODEL PANEL IS RARER THAN IT WAS, AND IT SAYS SOMETHING DIFFERENT
  * WHEN IT APPEARS. A listen that fails on the device is now tried once more
  * over the internet, so there are only two ways to reach this panel: the phone

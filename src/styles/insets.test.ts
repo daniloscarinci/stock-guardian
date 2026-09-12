@@ -184,8 +184,10 @@ describe('the elements that meet a screen edge', () => {
     { file: 'components/ui/Dialog.module.css', target: '.dialog', edges: EDGES },
     // The dialog's actions sit exactly where the gesture bar is.
     { file: 'components/ui/Dialog.module.css', target: '.footer', edges: ['bottom'] },
-    // And the body carries that bottom edge itself in a dialog with no footer -
-    // the voice sheet, whose send button is the last thing in the scroll box.
+    // And the body carries that bottom edge itself in a dialog with no footer.
+    // No dialog is written that way today - the voice sheet was the last one,
+    // and its composer is a real footer now - so this defends the rule that
+    // would catch the next one rather than a sheet that currently needs it.
     {
       file: 'components/ui/Dialog.module.css',
       target: '.body',

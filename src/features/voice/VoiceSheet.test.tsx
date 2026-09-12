@@ -120,6 +120,20 @@ async function ready() {
   });
 }
 
+/**
+ * The log, which is the one live region in the sheet.
+ *
+ * Found by the attribute rather than by role, because what several assertions
+ * below are about is precisely which elements are INSIDE it: the log is
+ * announced as it grows, so anything placed in it is read out when it changes,
+ * and the examples must not be.
+ */
+function liveRegion(): HTMLElement {
+  const region = document.querySelector<HTMLElement>('[aria-live]');
+  if (region === null) throw new Error('the sheet lost its live region');
+  return region;
+}
+
 /** Presses the microphone and lets the listen settle. */
 async function listen(user: ReturnType<typeof userEvent.setup>) {
   await ready();
@@ -350,8 +364,10 @@ describe('VoiceSheet', () => {
 
     // Named after the line above it, so the list announces what it is for.
     const hints = screen.getByRole('list', { name: 'Try one of these' });
-    // Six of the grammar's twelve. The rest would push the microphone and the
-    // box off a phone screen; HELP still reads all of them out.
+    // Six of the grammar's twelve, which is the resting count and no longer a
+    // height budget: the other six are behind the disclosure below them, and the
+    // microphone and the box are pinned in the footer where no number of chips
+    // can reach them.
     expect(within(hints).getAllByRole('button')).toHaveLength(6);
 
     await user.click(within(hints).getByRole('button', { name: 'how much rice do i have?' }));
@@ -378,6 +394,192 @@ describe('VoiceSheet', () => {
 
     expect(screen.queryByRole('list', { name: 'Try one of these' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'how much rice do i have?' })).toBeNull();
+  });
+
+  /**
+   * THE PLACEMENT THAT CANNOT REGRESS.
+   *
+   * The chips are a sibling of the log, inside the same scroll box, and never a
+   * child of it. That `<ol>` is `aria-live="polite"`, so everything inside it is
+   * read out when it changes: six example sentences appearing as a sheet opens
+   * and vanishing as the first answer arrives would be six announcements about
+   * nothing. The second half of this is what made the rework worth doing - the
+   * twelve examples under "I did not understand that" used to be rendered INSIDE
+   * the live region, so somebody not looking at the screen heard the failure and
+   * then twelve whole sentences read at them.
+   */
+  it('keeps the examples outside the live region, at rest and after a failure', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    const log = liveRegion();
+    expect(log.getAttribute('aria-live')).toBe('polite');
+
+    const chips = screen.getByRole('list', { name: 'Try one of these' });
+    expect(log.contains(chips)).toBe(false);
+    // Siblings in the same scroll box, which is what makes them the log's empty
+    // state rather than a block standing above the controls they teach about.
+    expect(chips.closest('div')?.parentElement).toBe(log.parentElement);
+
+    await say(user, 'aaa bbb');
+    expect(await screen.findByText(/did not understand/i)).toBeTruthy();
+
+    expect(liveRegion().contains(screen.getByRole('list', { name: 'Try one of these' }))).toBe(
+      false,
+    );
+    // The failure is announced. The sentences to try are not.
+    expect(liveRegion().textContent).toMatch(/did not understand/i);
+    expect(liveRegion().textContent).not.toMatch(/how much rice do i have/i);
+  });
+
+  /**
+   * The other six, one press away rather than read at anybody.
+   *
+   * One list, lengthened - not a second list beside the first. `aria-expanded`
+   * on the button is what says so to a reader who cannot see the row grow, which
+   * is the same contract the install steps in `MicNotice` use.
+   */
+  it('reveals all twelve examples from a disclosure, in the same list', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    const chips = () => screen.getByRole('list', { name: 'Try one of these' });
+    expect(within(chips()).getAllByRole('button')).toHaveLength(6);
+
+    const more = screen.getByRole('button', { name: 'More examples' });
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(more.getAttribute('aria-controls')).toBe(chips().id);
+
+    await user.click(more);
+
+    expect(within(chips()).getAllByRole('button')).toHaveLength(12);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getAllByRole('list', { name: 'Try one of these' })).toHaveLength(1);
+    // The twelfth is the longest sentence the grammar accepts, and it is here
+    // rather than in a paragraph somewhere else.
+    expect(
+      within(chips()).getByRole('button', { name: 'new contact ana phone number 555 1234' }),
+    ).toBeTruthy();
+
+    await user.click(more);
+    expect(within(chips()).getAllByRole('button')).toHaveLength(6);
+  });
+
+  /**
+   * The box is the dialog's footer, and the footer is not in the scroll box.
+   *
+   * This is the whole point of the rework, asserted in the only honest form
+   * available without layout: happy-dom computes no heights, so "Send is below
+   * the fold" cannot be measured here. What CAN be pinned is the reason it can
+   * no longer happen - all three ways in are inside `<footer>`, which is a
+   * sibling of the scrolling body rather than its last block, so no amount of
+   * conversation and no number of example rows can move any of them.
+   */
+  it('keeps the composer out of the scroll box, so nothing in the log can move it', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    const footer = screen.getByRole('textbox').closest('footer');
+    expect(footer).not.toBeNull();
+    expect(footer?.contains(screen.getByRole('button', { name: /^send$/i }))).toBe(true);
+    expect(footer?.contains(screen.getByRole('button', { name: /speak instead of typing/i }))).toBe(
+      true,
+    );
+    expect(footer?.contains(liveRegion())).toBe(false);
+    expect(liveRegion().closest('footer')).toBeNull();
+
+    await say(user, 'how much rice do i have');
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    await say(user, 'what is expiring');
+    await vi.waitFor(() => {
+      expect(within(liveRegion()).getAllByRole('listitem')).toHaveLength(2);
+    });
+
+    // Still the same element, still outside the scroller.
+    expect(screen.getByRole('textbox').closest('footer')).toBe(footer);
+  });
+
+  /**
+   * The instruction moved into the header, AND THAT IS A TRADE.
+   *
+   * What it buys is the assertion below: the sentence is the dialog's
+   * description, so it is announced when the sheet opens, which a label sixty
+   * pixels above the box never was. What it costs is a visible label that
+   * persists - the placeholder disappears on the first keystroke and is not an
+   * accessible name in any case. So the box keeps a real `<label>`, hidden with
+   * the same `sr-only` utility the search boxes on the other screens use, and
+   * the assertion for that is the one that finds the box BY ITS NAME.
+   */
+  it('says what the box is for in the header, and still labels the box itself', async () => {
+    const { view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    const dialog = document.querySelector('dialog');
+    const describedBy = dialog === null ? null : dialog.getAttribute('aria-describedby');
+    expect(describedBy).not.toBeNull();
+    const description = describedBy === null ? null : document.getElementById(describedBy);
+    expect(description?.textContent).toBe('Ask a question, or type a command');
+
+    const box = screen.getByRole('textbox', { name: 'Ask a question, or type a command' });
+    expect(box.getAttribute('placeholder')).toBe('Type here');
+    const label = document.querySelector(`label[for="${box.id}"]`);
+    expect(label?.className).toContain('sr-only');
+  });
+
+  /**
+   * One busy treatment, over the two regions that hold controls.
+   *
+   * Six controls in this sheet used to carry a `disabled={busy}` of their own,
+   * and `:disabled` dimmed each one separately. `inert` on the region does the
+   * whole job twice instead of six times: the subtree leaves the tab order,
+   * leaves the accessibility tree, and stops answering a pointer.
+   *
+   * THE CATCH IS THE LAST THREE ASSERTIONS. The status line saying why the sheet
+   * has gone quiet has to stand outside both regions. Inside one, it would be
+   * removed from the accessibility tree along with everything else, which would
+   * leave the explanation for the greying readable only by people who could see
+   * the greying.
+   */
+  it('takes the log and the composer out of reach while Claude is waited on, and says why outside both', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    anthropic.create.mockImplementation(
+      () =>
+        new Promise<unknown>((resolve) => {
+          answer = resolve;
+        }),
+    );
+
+    const { user, view } = await setup(WITH_CLAUDE);
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'what should i eat before it goes off');
+
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toMatch(/reading your stock/i);
+
+    const conversation = liveRegion().parentElement;
+    const composer = screen.getByRole('textbox').closest('form');
+    expect(conversation?.hasAttribute('inert')).toBe(true);
+    expect(composer?.hasAttribute('inert')).toBe(true);
+
+    // happy-dom honours `inert` in the one way a test can observe it: nothing
+    // inside can take focus.
+    const box = screen.getByRole('textbox');
+    box.focus();
+    expect(document.activeElement).not.toBe(box);
+
+    expect(conversation?.contains(status)).toBe(false);
+    expect(composer?.contains(status)).toBe(false);
+    expect(status.closest('[inert]')).toBeNull();
+
+    await act(async () => {
+      answer(reply({ content: [spoke('Eat the milk first.')] }));
+    });
+
+    expect(await screen.findByText(/Eat the milk first/)).toBeTruthy();
+    expect(conversation?.hasAttribute('inert')).toBe(false);
+    expect(composer?.hasAttribute('inert')).toBe(false);
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('answers a typed question', async () => {
@@ -698,7 +900,16 @@ describe('VoiceSheet', () => {
     expect(await quantityOf('Beans')).toBe(12);
   });
 
-  it('shows what it heard when it did not understand, with examples to try', async () => {
+  /**
+   * One chip treatment, reached the second way.
+   *
+   * A sentence that was not understood used to be followed by a bulleted list of
+   * all twelve examples, inside the exchange, in a shape nothing could be done
+   * with. It is the same six chips as an empty sheet now, with the same
+   * disclosure behind them, and pressing one still fills the box rather than
+   * sending it - which is the assertion at the end.
+   */
+  it('shows what it heard when it did not understand, and offers the chips for it', async () => {
     const { user, view } = await setup();
     view(<VoiceSheet open onClose={vi.fn()} />);
 
@@ -706,7 +917,36 @@ describe('VoiceSheet', () => {
 
     expect(await screen.findByText(/aaa bbb/)).toBeTruthy();
     expect(screen.getByText(/did not understand/i)).toBeTruthy();
-    expect(screen.getByText('how much rice do i have?')).toBeTruthy();
+
+    const chips = screen.getByRole('list', { name: 'Try one of these' });
+    expect(within(chips).getAllByRole('button')).toHaveLength(6);
+    expect(screen.getByRole('button', { name: 'More examples' })).toBeTruthy();
+
+    await user.click(within(chips).getByRole('button', { name: 'how much rice do i have?' }));
+
+    const box = screen.getByRole('textbox') as HTMLInputElement;
+    expect(box.value).toBe('how much rice do i have?');
+    expect(document.activeElement).toBe(box);
+  });
+
+  /**
+   * And they go again the moment a sentence lands.
+   *
+   * They are help for the failure, not a permanent fixture of a sheet that has
+   * ever failed once: the chips hang off the LAST exchange, so an answer after a
+   * failure takes them away exactly as the first answer does on an empty sheet.
+   */
+  it('drops the chips again once a later sentence was understood', async () => {
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'aaa bbb');
+    expect(await screen.findByRole('list', { name: 'Try one of these' })).toBeTruthy();
+
+    await say(user, 'how much rice do i have');
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+
+    expect(screen.queryByRole('list', { name: 'Try one of these' })).toBeNull();
   });
 
   it('offers to create what a writing command could not find', async () => {
@@ -893,6 +1133,19 @@ describe('the microphone: why it produced nothing', () => {
 
     expect(await screen.findByText(/no offline speech pack/i)).toBeTruthy();
 
+    /*
+     * The panel is a message and the microphone is a control, so they are in
+     * different halves of the sheet: this goes at the top of the scroll box, and
+     * the button stays in the pinned footer beside the box. A paragraph, two
+     * buttons, a collapsible explanation, a switch and a hint cannot sit in a
+     * footer, and putting them there would be the original bug again - an
+     * explanation of the control that failed on top of the one that works.
+     */
+    expect(screen.getByText(/no offline speech pack/i).closest('footer')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /speak instead of typing/i }).closest('footer'),
+    ).not.toBeNull();
+
     // The install path is there, folded away until it is asked for.
     const steps = screen.getByText(/Offline speech recognition/i);
     expect(steps.hidden).toBe(true);
@@ -990,9 +1243,50 @@ describe('the microphone: stopping a listen', () => {
     await listen(user);
 
     expect(screen.getByRole('status').textContent).toMatch(/listening/i);
-    await user.click(screen.getByRole('button', { name: /stop listening/i }));
+
+    /*
+     * Both of them beside the button that opened the microphone, in the pinned
+     * footer. Stopping is the one urgent thing there is to do while a listen is
+     * open - on Android it is this process holding the recorder - so the control
+     * for it must not be somewhere a scrolled log could have taken it.
+     */
+    const mic = screen.getByRole('button', { name: /speak instead of typing/i });
+    const stop = screen.getByRole('button', { name: /stop listening/i });
+    expect(stop.parentElement).toBe(mic.parentElement);
+    expect(screen.getByRole('status').parentElement).toBe(mic.parentElement);
+    expect(stop.closest('footer')).not.toBeNull();
+
+    await user.click(stop);
 
     expect(listening.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The listening row takes a row of its own rather than the box's place.
+   *
+   * "Listening…" and "Stop listening" cannot share the composer row - at 350px of
+   * inner width a status line and a second button leave the box no room at all -
+   * so the microphone's slot claims the whole width while a listen is open and
+   * the box and Send wrap below it. What it must NOT do is replace them, and this
+   * is why: reaching for the microphone half way through typing a sentence is an
+   * ordinary thing to do, and losing those words would be this application
+   * throwing away work nobody asked it to.
+   */
+  it('keeps what was already typed while it is listening, and after it is stopped', async () => {
+    const listening = recognizerListening();
+    vi.mocked(selectRecognizer).mockResolvedValue(listening.recognizer);
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await user.type(screen.getByRole('textbox'), 'how much ri');
+    await listen(user);
+
+    expect(screen.getByRole('status').textContent).toMatch(/listening/i);
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('how much ri');
+
+    await user.click(screen.getByRole('button', { name: /stop listening/i }));
+
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('how much ri');
   });
 
   it('releases the microphone when the sheet goes away mid-listen', async () => {
@@ -1154,8 +1448,19 @@ describe('the microphone: a spoken question gets a spoken answer', () => {
 
     expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
     expect(screen.queryByText(/transcribed online/i)).toBeNull();
+    // One slot filled and no separator left standing where the other would be.
+    expect(screen.getByText(/answered on this device/i).parentElement?.children).toHaveLength(1);
   });
 
+  /**
+   * Both facts about one exchange, on one line.
+   *
+   * They were two paragraphs with identical styling that could stack back to
+   * back above the same answer. Merged, they are one row with two slots; the
+   * middot between them is for the eye only and the comma is for the ear only,
+   * because a separator read out as "middle dot" is noise and two phrases run
+   * together with nothing between them are one confusing phrase.
+   */
   it('marks the exchange when the words came over the internet', async () => {
     vi.mocked(selectRecognizer).mockResolvedValue(
       recognizerHearing('how much rice do i have', true),
@@ -1166,9 +1471,22 @@ describe('the microphone: a spoken question gets a spoken answer', () => {
     await listen(user);
 
     expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
-    expect(screen.getByText(/transcribed online/i)).toBeTruthy();
-    // Beside the marker that says which engine answered, not instead of it.
-    expect(screen.getByText(/answered on this device/i)).toBeTruthy();
+    const online = screen.getByText(/transcribed online/i);
+    // Beside the marker that says which engine answered, not instead of it, and
+    // in the same row rather than on a second line under it.
+    const engine = screen.getByText(/answered on this device/i);
+    expect(online.parentElement).toBe(engine.parentElement);
+
+    const slots = Array.from(online.parentElement?.children ?? []);
+    expect(slots.map((slot) => slot.textContent)).toEqual([
+      'Transcribed online',
+      ', ',
+      '·',
+      'Answered on this device',
+    ]);
+    expect(slots[1]?.className).toContain('sr-only');
+    expect(slots[1]?.getAttribute('aria-hidden')).toBeNull();
+    expect(slots[2]?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('keeps the mark on a typed question at nothing, because nothing was heard', async () => {
