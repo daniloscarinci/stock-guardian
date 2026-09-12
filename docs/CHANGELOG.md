@@ -1,5 +1,65 @@
 # Changelog
 
+## 2.6.1
+
+### The box is pinned to the bottom of the sheet
+
+2.6.0 gave the ask box six example sentences the moment it opens, and putting
+them above the box was a mistake that only shows on some phones. Whole
+sentences wrap differently at every width, so nothing bounded that block's
+height: an empty sheet measured anywhere between 534 and 690 pixels against a
+cap of 92% of the screen. At 360 by 640 - an ordinary Android - the **Send**
+button sat a hundred pixels below the fold before anybody had typed a word. On
+a Pixel in English it fit, which is why it took a survey to find.
+
+The cause was not the examples. Five things were competing to be looked at
+first, and the layout settled it by document order, which had been chosen for
+reading rather than for acting.
+
+So the box and the microphone are the dialog's footer now, pinned to the bottom
+edge where the thumb already is, and the conversation scrolls behind them.
+Nothing said or answered can push them off screen at any length, in any
+language. The examples became the empty state of the log instead of a block
+above the control they teach, which is why there is no limit on them anywhere.
+
+The box's instruction moved into the sheet's header, and that is a trade rather
+than a win: it is read out as the sheet opens, which a label at the far end of
+the sheet never was, and it stops standing visibly beside the box once you
+start typing.
+
+### One list of examples, and it is out of the way of the reader
+
+The same twelve sentences used to appear twice in two different shapes - six as
+chips when the sheet opened, and all twelve as a bulleted list after something
+was not understood. That second list was inside the part of the sheet a screen
+reader announces, so being told "I did not understand that" was followed by
+twelve whole sentences read out loud.
+
+They are one list now, in one shape, in the place a screen reader is not
+watching. Six at rest with the rest a press away, at both moments somebody does
+not know what to say. Asking for help still reads all twelve.
+
+### The card says what it is doing
+
+The confirmation card - the thing that appears before anything is written - had
+a one-pixel outline whose top and bottom are wherever the scroll left them, and
+five evenly spaced lines inside it, so an item's name sat as far from its shelf
+as the old quantity did from the button that commits the new one. It has an
+accent rule down its left edge that is visible at any scroll position, and its
+contents are grouped into three: what this is about, what changes, and what was
+guessed at.
+
+While something is being written the whole conversation goes inert in one move,
+rather than nine controls each dimming themselves. Two of those nine were the
+**Confirm** and **Cancel** buttons, which had been rendering at half the opacity
+of the sentences explaining them, because a disabled button's fade multiplies
+with the region's rather than replacing it.
+
+### Nothing in this release changes what the box can do
+
+No new sentence, no new tool, no new field. The seven ways in and the ten
+writes are the ones 2.6.0 shipped. This is where they sit and how they read.
+
 ## 2.6.0
 
 ### The ask box can make a place, a heading and a person

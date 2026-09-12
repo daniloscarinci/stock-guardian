@@ -1,7 +1,7 @@
 # Testing
 
 ```bash
-npm test              # 2278 unit tests, 47 files
+npm test              # 2288 unit tests, 47 files
 npm run smoke         # 18 browser checks against the production build
 npm run typecheck     # TypeScript, strict
 ```
