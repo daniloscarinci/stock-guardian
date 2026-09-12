@@ -693,12 +693,14 @@ describe('VoiceSheet', () => {
   /**
    * THE GUESSES ARE STILL A LIST, AND THE DASH IN FRONT OF EACH IS NOT IN IT.
    *
-   * The indent went so that these sentences get the card's own width - see
-   * `.guessList` in Voice.module.css, which also measures what that was worth -
-   * and an em dash took the bullet's place. Both halves are asserted, because
-   * both can regress on their own: the `<ul>` and its `<li>`s are what tell a
-   * screen reader how many separate things were filled in, which is work no run
-   * of paragraphs would do, while the dash is decoration and is hidden.
+   * The indent went so that these sentences get the card's own width, and a
+   * hanging en dash took the bullet's place - `.guessList` and `.guessDash` in
+   * Voice.module.css measure what each of those was worth. Both halves are
+   * asserted here, because both can regress on their own: the `<ul>` and its
+   * `<li>`s are what tell a screen reader how many separate things were filled
+   * in, which is work no run of paragraphs would do, while the dash is
+   * decoration and is hidden. What cannot be asserted in this file is the
+   * hanging itself, which is layout, and happy-dom computes none.
    *
    * The last assertion is the load-bearing one and is easy to misread.
    * `getByText` matches an element against ITS OWN text nodes, so the sentence
@@ -719,9 +721,9 @@ describe('VoiceSheet', () => {
     expect(guesses.length).toBeGreaterThan(0);
     for (const guess of guesses) {
       // There to look at...
-      expect(guess.textContent?.trimStart().startsWith('—')).toBe(true);
+      expect(guess.textContent?.trimStart().startsWith('–')).toBe(true);
       // ...and not there to hear.
-      expect(within(guess).getByText('—').getAttribute('aria-hidden')).toBe('true');
+      expect(within(guess).getByText('–').getAttribute('aria-hidden')).toBe('true');
     }
 
     const line = within(card).getByText('No place is called cellar. Confirming makes it.');

@@ -286,29 +286,35 @@
  * straight back to the thicker left border, the line box grows by 18px:
  * measured in Edge at a 390px viewport it went from 296px to 314px.
  *
- * AND THAT UNWRAPS NOTHING TODAY, WHICH IS WORTH WRITING DOWN, because the
- * reason for doing it was that it would. All ten English guesses and seven of
- * their Portuguese counterparts were measured at 360, 390 and 412px, before and
- * after: not one of them changes its line count. The em dash and the space
- * after it are worth about as much width as the indent that went, so the first
- * line of an item gets back roughly nothing and the lines after it get 18px
- * they were not short of. Take the dash away and the room shows up - two
- * sentences drop from two lines to one at 390px, both Portuguese, and one
- * English sentence does at 360px - so it is the marker, not the padding, that
- * is now costing the line. The width is real and it is banked against longer
- * names and longer translations. The saved line is not there yet, and nothing
- * here should claim it is.
+ * THE INDENT WAS NOT THE WHOLE COST, AND FINDING THAT OUT TOOK MEASURING IT.
+ * The first version of this change dropped the indent and put the marker back
+ * into the text as an inline dash, which took 17px off the first line of every
+ * item and handed the 18px almost entirely back. All ten English guesses and
+ * seven of their Portuguese counterparts were measured at 360, 390 and 412px:
+ * not one of them changed its line count. The room was real and it bought
+ * nothing, because it had been spent again a line lower down.
+ *
+ * With the marker hanging out of flow - see `.guessDash` below - the same
+ * seventeen sentences give up the lines they were holding: at 390px "Assumi a
+ * quantidade de 1. Você não disse um número." and "Nenhum lugar se chama porão.
+ * Confirmar vai criá-lo." each drop from two lines to one, at 360px "No
+ * category is called this. Confirming makes it." does, and at 412px two of the
+ * English ones do. Each of those is 20px off the card and one less sentence
+ * that has to be read across a break. The rest are simply longer than a phone's
+ * width - "Assumi kg, a unidade em que este item é guardado. Você contou em
+ * outra." needs 431px - and no gutter was ever going to fix those.
  *
  * `list-style: none` is what the indent was quietly paying for, and it took a
  * browser to establish that: an `<li>` inside a flex container keeps its
  * marker, so these guesses were bulleted, with the bullets sitting in that
  * 20px. A marker is drawn outside the item's own box, so with no padding left
  * for it to sit in it would be drawn into the card's padding instead, out of
- * line with every other line on the card. The em dash that replaces it is an
+ * line with every other line on the card. The dash that replaces it - see
+ * `.guessDash` below for where it hangs and why it is the short one - is an
  * `aria-hidden` span in ConfirmCard.tsx rather than a `::before` here, because
  * generated content is announced by some screen readers and this dash has
- * nothing to say - the `<ul>` and the `<li>`s are still real and still carry
- * the list to anyone reading with their ears.
+ * nothing to say. The `<ul>` and the `<li>`s are still real and still carry the
+ * list to anyone reading with their ears.
  */
 .guessList {
   display: flex;
@@ -319,6 +325,46 @@
   list-style: none;
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+/* The containing block for the marker below, and nothing else. */
+.guessList li {
+  position: relative;
+}
+
+/*
+ * The marker, hanging in the card's padding, which is the whole point of it.
+ *
+ * OUT OF FLOW, SO THAT IT COSTS THE SENTENCE NOTHING. Every line of a guess,
+ * the first and the wrapped ones alike, starts at the same left alignment as
+ * every other line on the card, and the marker sits to the left of all of them
+ * in padding that was empty. This is what a well-set list does, and what
+ * `list-style: outside` would have gone on doing with a bullet if the indent
+ * had stayed.
+ *
+ * It replaced an inline dash, and the arithmetic is why. An em dash is 13px
+ * wide at `--text-sm` and the space after it 3.6px - measured, not assumed - so
+ * an inline marker took 17px off the first line of every guess while dropping
+ * the indent had recovered 18px. Flattening the list and then spending the room
+ * again on a character in the text flow is a lateral move, and the measurements
+ * on `.guessList` above are what caught it: seventeen sentences, three widths,
+ * not one line saved. Hung, the same room buys lines.
+ *
+ * AND IT IS AN EN DASH, NOT AN EM DASH, BECAUSE OF THE SPINE. The gutter this
+ * hangs in is `--space-4`, 16px. `right: 100%` puts the marker's right edge
+ * against the text and `margin-right: var(--space-1)` backs it off by 4px, so an
+ * em dash would need 17px of the 16px there are - screenshotted at five times
+ * scale, its ink sits hard against the accent rule, reading as a tick growing
+ * out of it. An en dash is 6.5px, which hangs with 5.5px clear of the rule and
+ * 4px before the text, and a short dash is the conventional marker for a set
+ * list in any case. Nothing is clipped: `.card` sets no `overflow`, and the hang
+ * stays inside the card's border box, so it never reaches the dialog's scroll
+ * box and cannot put a horizontal scrollbar on it.
+ */
+.guessDash {
+  position: absolute;
+  right: 100%;
+  margin-right: var(--space-1);
 }
 
 .actions {

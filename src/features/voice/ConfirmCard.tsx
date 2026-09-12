@@ -474,20 +474,30 @@ export function ConfirmCard({
               {guesses.map((line) => (
                 <li key={line}>
                   {/*
-                    The dash is the bullet, and it is hidden. `.guessList` is no
-                    longer indented - it had a marker's worth of padding, 20px
-                    at a 16px root, inside a card that was already padded, which
-                    made these the only sentences on the card that did not get
-                    the card's width. A marker is still worth having to look at,
-                    so it is written here as a character and taken out of the
-                    accessibility tree: the `<ul>` and its `<li>`s already tell a
+                    The dash is the bullet, it hangs, and it is hidden.
+
+                    `.guessList` is no longer indented - it had a marker's worth
+                    of padding, 20px at a 16px root, inside a card that was
+                    already padded, which made these the only sentences on the
+                    card that did not get the card's width. So the marker that
+                    replaced the bullet is positioned out of the text flow and
+                    hangs in the card's own padding: a dash sitting in the
+                    sentence would have taken the recovered width straight back
+                    out of the first line, which is measured, and was what the
+                    first attempt at this did. It is an EN dash rather than an em
+                    dash because an em dash does not fit that padding beside the
+                    card's 3px rule. `.guessDash` in Voice.module.css carries
+                    both measurements.
+
+                    Hidden, because the `<ul>` and its `<li>`s already tell a
                     screen reader that this is a list and how many things are in
-                    it, and "em dash" read before each one would be that same
-                    fact again as noise. What the dash costs in width is measured
-                    in the note on `.guessList`, and it is most of what dropping
-                    the indent recovered.
+                    it. A dash read out before each one is that same fact again
+                    as noise.
                   */}
-                  <span aria-hidden="true">—</span> {line}
+                  <span className={styles.guessDash} aria-hidden="true">
+                    –
+                  </span>
+                  {line}
                 </li>
               ))}
             </ul>
