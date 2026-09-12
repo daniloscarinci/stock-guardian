@@ -413,7 +413,7 @@ export function ConfirmCard({
    * A group's name is announced when focus enters the group, and focus enters
    * this one the instant the card mounts, onto the Confirm button. That button's
    * accessible name is already the whole change, a sentence built from `detail`
-   * below: the name, every line under it, the field, and both values. So what
+   * above: the name, every line under it, the field, and both values. So what
    * somebody not looking at the screen hears is the group's label and then, in
    * the same breath, "Confirm: ana, Relationship: sister, Phone: 5551234, New
    * contact". Prefixing the group puts the word "confirm" immediately in front

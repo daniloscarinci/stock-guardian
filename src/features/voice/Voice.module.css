@@ -167,8 +167,10 @@
  * two buttons whose labels are Confirm and Cancel. The spine is where to look,
  * not what to know, and nothing here is carried by the accent being blue.
  *
- * `--radius-lg` stays on all four corners, which every other box in this
- * application has and this one should not be the exception to. The cost is that
+ * `--radius-lg` stays on all four corners, which is what the other raised
+ * boxes at this size use - the dialog around it takes `--radius-xl` and the
+ * controls inside it `--radius-md`, so this is the middle of three and not a
+ * single house value. The cost is that
  * the corner curve has to get from the 3px left border to the 1px top and
  * bottom ones, so the twelve pixels at each end of the spine taper instead of
  * ending square. That is one corner at each end of a rule that runs the whole
@@ -216,7 +218,12 @@
  *   NEW_CONTACT, with a relationship and a phone   291px -> 267px
  *
  * And at 360px, where more of the guesses wrap: 303px -> 287px and 291px ->
- * 267px. The arithmetic behind those four numbers is worth knowing before
+ * 267px.
+ *
+ * THOSE FOUR ARE THE BANDING ALONE, measured before the guess marker was hung
+ * in the gutter. The note on `.guessList` covers what that did, and it does not
+ * contradict this: it drops a line on sentences that straddled a wrap, and
+ * neither of these two cards has one. The arithmetic behind those four numbers is worth knowing before
  * anybody quotes a fifth: every gap that moved from `--space-3` to `--space-1`
  * is worth 8px, and nothing else on either card changed height - the guesses
  * kept their line counts, which is its own note on `.guessList` below. So a
@@ -355,7 +362,7 @@
  * against the text and `margin-right: var(--space-1)` backs it off by 4px, so an
  * em dash would need 17px of the 16px there are - screenshotted at five times
  * scale, its ink sits hard against the accent rule, reading as a tick growing
- * out of it. An en dash is 6.5px, which hangs with 5.5px clear of the rule and
+ * out of it. An en dash measures 6.5px, which hangs with 5.5px clear of the rule and
  * 4px before the text, and a short dash is the conventional marker for a set
  * list in any case. Nothing is clipped: `.card` sets no `overflow`, and the hang
  * stays inside the card's border box, so it never reaches the dialog's scroll
