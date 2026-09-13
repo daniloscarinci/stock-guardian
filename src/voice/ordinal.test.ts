@@ -23,7 +23,9 @@ describe('matchChoice: positions', () => {
     ['en', 'the first', 0],
     ['en', 'the first one', 0],
     ['en', 'number one', 0],
+    ['en', 'the number two', 1],
     ['en', 'number three', 2],
+    ['en', 'the number three', 2],
     ['en', 'second', 1],
     ['en', 'the second one', 1],
     ['en', 'third', 2],
@@ -34,6 +36,8 @@ describe('matchChoice: positions', () => {
     ['es', 'el segundo', 1],
     ['es', 'tercera', 2],
     ['es', 'el numero dos', 1],
+    ['es', 'primer', 0],
+    ['es', 'tercer', 2],
 
     ['pt-BR', 'primeiro', 0],
     ['pt-BR', 'o primeiro', 0],
@@ -60,6 +64,68 @@ describe('matchChoice: positions', () => {
     expect(matchChoice('pt-BR', 'O primeiro.', TWO)).toBe(0);
     expect(matchChoice('es', '¿La segunda?', TWO)).toBe(1);
     expect(matchChoice('en', 'The Second One!', TWO)).toBe(1);
+  });
+});
+
+/**
+ * A table that answers one position and not the next is a worse surprise than
+ * one that answers neither: the first success teaches a form the second refuses.
+ * These walk the same shape across all three positions rather than spot-checking,
+ * which is what caught "number one" being listed in English while "number two"
+ * was not.
+ */
+describe('matchChoice: the same shapes at every position', () => {
+  const shapes: Readonly<
+    Record<Parameters<typeof matchChoice>[0], readonly (readonly [string, string, string])[]>
+  > = {
+    en: [
+      ['first', 'second', 'third'],
+      ['the first', 'the second', 'the third'],
+      ['first one', 'second one', 'third one'],
+      ['the first one', 'the second one', 'the third one'],
+      ['number one', 'number two', 'number three'],
+      ['the number one', 'the number two', 'the number three'],
+    ],
+    es: [
+      ['primero', 'segundo', 'tercero'],
+      ['primera', 'segunda', 'tercera'],
+      ['el primero', 'el segundo', 'el tercero'],
+      ['la primera', 'la segunda', 'la tercera'],
+      ['numero uno', 'numero dos', 'numero tres'],
+      ['el numero uno', 'el numero dos', 'el numero tres'],
+    ],
+    'pt-BR': [
+      ['primeiro', 'segundo', 'terceiro'],
+      ['primeira', 'segunda', 'terceira'],
+      ['o primeiro', 'o segundo', 'o terceiro'],
+      ['a primeira', 'a segunda', 'a terceira'],
+      ['numero um', 'numero dois', 'numero tres'],
+      ['o numero um', 'o numero dois', 'o numero tres'],
+    ],
+  };
+
+  for (const [language, rows] of Object.entries(shapes)) {
+    for (const row of rows) {
+      it(`answers all three of "${row.join('" / "')}" in ${language}`, () => {
+        row.forEach((said, index) => {
+          expect(
+            matchChoice(language as Parameters<typeof matchChoice>[0], said, THREE),
+            said,
+          ).toBe(index);
+        });
+      });
+    }
+  }
+
+  /**
+   * Spanish clips the masculine before a noun, and only for one and three -
+   * "segundo" has no such form. Listed apart from the sweep above for exactly
+   * that reason: this is a gap in the language, not a gap in the table.
+   */
+  it('answers the two Spanish forms that clip, and knows there is no third', () => {
+    expect(matchChoice('es', 'primer', THREE)).toBe(0);
+    expect(matchChoice('es', 'tercer', THREE)).toBe(2);
+    expect(matchChoice('es', 'segund', THREE)).toBeNull();
   });
 });
 

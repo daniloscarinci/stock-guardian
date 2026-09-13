@@ -625,12 +625,13 @@ const heard = (outcome: SpeechOutcome): TurnResult =>
  * the chips below the log are teaching material rather than an answer to this
  * sentence.
  *
- * A CHOICE THAT WAS READ OUT NEVER REACHES THIS, and the sentence above is
- * still true of the ones that do. `turn` returns before consulting this
- * whenever it spoke a question - see `ANSWERABLE_ALOUD` - so what arrives here
- * as a `choice` is either raised by an intent that may not be answered aloud or
- * a question the platform would not read. Both of those want a finger, which is
- * what this says about them.
+ * A CHOICE WITH A SPOKEN FORM NEVER REACHES THIS, whether or not it was heard.
+ * `turn` returns before consulting this the moment `offerOf` hands it a question
+ * at all: `'choosing'` where the platform read the question out, `'waiting'`
+ * where it did not. So the only `choice` that arrives here is one raised by an
+ * intent that may not be answered aloud - see `ANSWERABLE_ALOUD` - and that one
+ * wants a finger, which is what this says about it. The sentence above is still
+ * true of every outcome that gets this far.
  *
  * Neither of the last two re-arms all the same, because neither says anything
  * out loud. Somebody who heard nothing has no way to know the microphone is

@@ -58,6 +58,14 @@ import { stripPunctuation } from './parse';
  * agree with a noun that was never spoken: a speaker looking at "Arroz Branco"
  * says "o primeiro" and one thinking of "a marca" says "a primeira", and
  * neither of them is wrong about a list this module cannot see the gender of.
+ * Spanish also clips the masculine before a noun - "primer", "tercer" - and a
+ * recognizer transcribing "el primer arroz" cut short by the speaker hands over
+ * exactly that, so both the bare and the articled form are listed.
+ *
+ * EVEN ACROSS THE THREE, DELIBERATELY. Every position carries the same set of
+ * shapes in every language it has them: a table that answers "number one" and
+ * not "number two" is a worse surprise than one that answers neither, because
+ * the first success teaches a form the second refuses.
  *
  * A BARE NUMBER IS NOT IN HERE. "one", "dois", "3" are quantities in every
  * other sentence this application listens to, and a person who says "two"
@@ -81,17 +89,20 @@ const ORDINALS: Readonly<Record<Language, Readonly<Record<string, number>>>> = {
     'second one': 2,
     'the second one': 2,
     'number two': 2,
+    'the number two': 2,
     third: 3,
     'the third': 3,
     'third one': 3,
     'the third one': 3,
     'number three': 3,
+    'the number three': 3,
   },
   es: {
     primero: 1,
     primera: 1,
     'el primero': 1,
     'la primera': 1,
+    primer: 1,
     'el primer': 1,
     'numero uno': 1,
     'el numero uno': 1,
@@ -105,6 +116,7 @@ const ORDINALS: Readonly<Record<Language, Readonly<Record<string, number>>>> = {
     tercera: 3,
     'el tercero': 3,
     'la tercera': 3,
+    tercer: 3,
     'el tercer': 3,
     'numero tres': 3,
     'el numero tres': 3,

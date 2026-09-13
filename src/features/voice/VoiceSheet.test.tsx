@@ -2388,14 +2388,53 @@ describe('the microphone: answering "Which one?" out loud', () => {
   });
 
   /**
+   * THE TYPED BOX GETS THE QUESTION READ OUT TOO, and that is a change from
+   * 2.7.0 rather than a side effect worth ignoring.
+   *
+   * Nothing was ever spoken for a choice before, because `sentence()` returned
+   * null for one. The spoken form now lives on the outcome rather than inside
+   * the conversation loop, so it is read aloud wherever any other answer would
+   * be - which is the rule every other sentence in this application follows, and
+   * is why it was not hidden behind the microphone. Nothing here presses the
+   * microphone at all: the recognizer is the beforeEach default and is never
+   * reached.
+   *
+   * Pinned because it is the kind of behaviour a refactor removes silently, and
+   * because the interesting failure is the other direction - the same rule
+   * quietly extended to a write, which the test below this one forbids.
+   */
+  it('reads a query’s choice out for a typed question, with no microphone in it', async () => {
+    const spoken = stubSpeaker();
+    await twoKindsOfOat();
+
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'how much oat do i have');
+
+    const list = await screen.findByRole('group', { name: 'Which one?' });
+    expect(within(list).getByRole('button', { name: /Oat Flakes/i })).toBeTruthy();
+
+    await vi.waitFor(() => {
+      expect(readAloud(spoken)).toEqual(['Which one? Oat Flakes, Oat Milk']);
+    });
+  });
+
+  /**
    * The same list, the same word, and a finger instead - which still works and
    * still writes, because that is a press and a press is consent.
    *
-   * Here so that the test above cannot be passed by breaking the choice list
-   * itself. What is forbidden is answering it by voice, not answering it.
+   * Here so that the write test above cannot be passed by breaking the choice
+   * list itself. What is forbidden is answering it by voice, not answering it.
+   *
+   * IT ALSO PINS THE TYPED HALF OF THE ALLOW-LIST. The question is typed, so no
+   * microphone is involved and nothing about a conversation applies - and the
+   * write’s choice is still not read out. The assertion sits before the press
+   * because the press produces a sentence of its own: what is being claimed is
+   * that nothing was said while the list stood, not that nothing is ever said.
    */
-  it('still writes when the same choice is answered with a press', async () => {
-    stubSpeaker();
+  it('still writes when the same choice is answered with a press, and speaks none of it first', async () => {
+    const spoken = stubSpeaker();
     await twoKindsOfOat();
     vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('cancelled'));
 
@@ -2405,6 +2444,8 @@ describe('the microphone: answering "Which one?" out loud', () => {
     await say(user, 'add five cans of oat');
 
     const list = await screen.findByRole('group', { name: 'Which one?' });
+    expect(readAloud(spoken)).toEqual([]);
+
     await user.click(within(list).getByRole('button', { name: /Oat Flakes/i }));
 
     await vi.waitFor(async () => {

@@ -401,6 +401,15 @@ before it says anything to the user at all.
 The **Read answers aloud** setting speaks through a system service rather than a
 network request — nothing in `speak.ts` fetches.
 
+**It reads one thing that is not an answer.** When a phrase fits several items,
+**Which one?** and the names under it are read out like any other sentence — for
+the four questions listed in *Answering Which one? out loud*, and whether the
+phrase was spoken or typed. Typing `quanto arroz eu tenho` with no microphone
+anywhere near it still gets the question aloud, because the spoken form belongs to
+the outcome rather than to the microphone; the screen shows the list either way.
+A **Which one?** raised by a sentence that would *change* something is never read
+out, in the box or in a conversation.
+
 **It is two implementations behind one seam**, exactly as the microphone is.
 `speak.ts` chooses per sentence: `tts.ts`, which reaches
 `android.speech.tts.TextToSpeech` through the hand-written `TtsPlugin`, inside
