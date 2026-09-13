@@ -68,16 +68,25 @@ function flush(synth: SpeechSynthesis): void {
 export const webSynthesisEngine: SpeechEngine = {
   async speak(text, tag, chosen): Promise<EngineOutcome> {
     const synth = getSynth();
-    const Utterance = getUtteranceConstructor();
-    // No synthesiser at all. Nothing was heard and nothing is playing, but this
-    // is still a sentence somebody asked for and did not get, which is exactly
-    // what `unknown` is for - `silent` is reserved for a deliberate quiet.
-    if (synth === undefined || Utterance === undefined) return 'unknown';
+    // No synthesiser at all, and nothing of ours can be playing through one
+    // that does not exist. Nothing was heard, but this is still a sentence
+    // somebody asked for and did not get, which is what `unknown` is for -
+    // `silent` is reserved for a deliberate quiet.
+    if (synth === undefined) return 'unknown';
 
     // An answer that arrives while the last one is still being read would
     // otherwise queue, and the user would hear a stale sentence first. The
-    // native path gets this from QUEUE_FLUSH; here it is explicit.
+    // native path gets this from QUEUE_FLUSH; here it is explicit. It sits
+    // ABOVE the guard below so that no way out of this function skips it: a new
+    // answer supersedes the one being read whether or not it can be spoken.
     flush(synth);
+
+    // The constructor arrives with the object on every platform there has ever
+    // been, so this is a guard against a stubbed-out global rather than a real
+    // device. It still returns `unknown` rather than `silent`, because a
+    // sentence nobody could speak is not a sentence anybody chose not to.
+    const Utterance = getUtteranceConstructor();
+    if (Utterance === undefined) return 'unknown';
 
     const utterance = new Utterance(text);
     utterance.lang = tag;
@@ -94,9 +103,10 @@ export const webSynthesisEngine: SpeechEngine = {
       /*
        * The single exit, modelled on `Session.finish` in SpeechPlugin.java.
        *
-       * Settles once and only once. Three things race for it - the platform's
-       * `end`, the platform's `error`, and the ceiling - and on a cancel two of
-       * them can arrive for the same utterance.
+       * Settles once and only once. Four things reach for it - the platform's
+       * `end`, the platform's `error`, the ceiling, and `flush` above, which
+       * answers the sentence itself when something is about to cut it off - and
+       * on a cancel two of them arrive for the same utterance.
        *
        * It reads `ceiling` from below its own declaration, which is safe
        * because nothing calls it until after the timer exists: the handlers are
@@ -130,8 +140,11 @@ export const webSynthesisEngine: SpeechEngine = {
         settle('unknown');
       }, speechCeilingMillis(text));
 
-      // Registered before the utterance is handed over, so a browser that
-      // fires `end` synchronously from `speak()` still finds its handler.
+      // Published before the utterance is handed over, so that a browser which
+      // ends it synchronously from inside `speak()` cannot leave this slot
+      // pointing at a sentence that has already finished. The handlers above
+      // were attached earlier still and would be found either way; this line is
+      // about the slot, not about them.
       outgoing = settle;
       synth.speak(utterance);
     });

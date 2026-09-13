@@ -40,23 +40,26 @@ export type EngineOutcome = 'spoken' | 'unknown';
  * setting is off, or the answer was empty - and answers with this word. The
  * switch on the side of the phone is a platform fact that `speak.ts`
  * deliberately knows nothing about, so the sheet composes it and answers with
- * the same word; see `VoiceSheet`. (`useWelcome` and the preview in Settings
- * consult the phone too, and simply return: nobody is waiting on either of
- * them for an answer.) However it was decided, it means one thing to somebody
- * waiting: the device deliberately made no sound, and there is nothing to
- * wait for.
+ * the same word; see `VoiceSheet`. Two other callers ask the phone and answer
+ * nobody: `useWelcome` returns, and the preview in Settings asks about the
+ * ringer AND the media volume and puts a line on the screen saying which one
+ * stopped it. Neither hands an outcome anywhere, because nothing is waiting on
+ * either. However it was decided, it means one thing to somebody waiting: the
+ * device deliberately made no sound, and there is nothing to wait for.
  */
 export type SpeechOutcome = EngineOutcome | 'silent';
 
 /**
  * The floor under the watchdog, in milliseconds.
  *
- * Short answers are the common case - "Rice: 3 kg" is ten characters and takes
- * well under a second to say - and for those the ceiling is not about the
- * sentence at all. It is about how long an engine may take to make its first
- * sound: a cold `TextToSpeech` binding a service, or a browser fetching a voice
- * it has not loaded yet. It is the same order as `INIT_TIMEOUT_MILLIS` in
- * TtsPlugin.java, and generous for the same reason.
+ * ESTIMATED, NOT MEASURED, like everything else about this ceiling. Short
+ * answers are the common case - "Rice: 3 kg" is ten characters and takes well
+ * under a second to say - and for those the wait is not about the sentence at
+ * all. It is about how long an engine may take to make its first sound: a cold
+ * `TextToSpeech` binding a service, or a browser fetching a voice it has not
+ * loaded yet. Neither was timed. It is a second more than
+ * `INIT_TIMEOUT_MILLIS` in TtsPlugin.java, and generous for the reason that one
+ * is: cutting off an engine that was about to work is worse than waiting.
  */
 const SPEECH_FLOOR_MILLIS = 6000;
 
@@ -65,12 +68,17 @@ const SPEECH_FLOOR_MILLIS = 6000;
  *
  * ESTIMATED, NOT MEASURED. Nothing here has been timed on a device - there is
  * no Android SDK on the machine this was written on - so the number is derived
- * from published speaking rates and then doubled. Synthesised speech runs at
+ * from published speaking rates and then loosened. Synthesised speech runs at
  * roughly 150 to 200 words a minute, and words in the three languages this
- * application speaks average around five letters and a space, which puts a
- * sentence at something like fifteen characters a second, or 65ms a character.
- * 120 is a little under twice that, so an engine set to half speed still
- * finishes inside the ceiling.
+ * application speaks average around six characters counting the space, which
+ * puts a sentence at fifteen to twenty characters a second: 50 to 67ms each.
+ *
+ * WHAT 120 ACTUALLY BUYS, since a number like this invites a rounder claim than
+ * it can support. It is about 1.8 times the slow end of that range, so a
+ * sentence read up to 1.8 times slower than the estimate still finishes inside
+ * the ceiling. An engine set to HALF speed does not: that is 134ms a character,
+ * and on any sentence long enough to clear the floor the watchdog would fire
+ * first and report `unknown` for a sentence that was in fact being read.
  */
 const MILLIS_PER_CHARACTER = 120;
 
@@ -80,20 +88,27 @@ const MILLIS_PER_CHARACTER = 120;
  * THIS IS THE ANSWER TO THE OBJECTION THAT USED TO BE WRITTEN HERE, and the
  * objection was correct: some Android engines never report that an utterance
  * ended. A promise that waited for a signal that may never arrive would be a
- * promise that sometimes never settles, and the two plugin files already hold
- * five timers standing between this application and exactly that - four in
- * SpeechPlugin.java and one in TtsPlugin.java. This is the rule the new ones
- * use: the sixth is in TtsPlugin.java, for the native path, and
- * `websynthesis.ts` arms its own from this function because a browser has no
- * plugin behind it to arm one for it.
+ * promise that sometimes never settles, and the two plugin files already stand
+ * three timers of exactly this shape between this application and that: in
+ * SpeechPlugin.java one Runnable re-armed with three different ceilings as a
+ * listen progresses (ready, utterance, result) and a second on the on-device
+ * language query, and in TtsPlugin.java one on initialisation. Five ceilings,
+ * three timers, counted off the files.
+ *
+ * This is the rule the two new ones use. TtsPlugin.java arms one per utterance
+ * for the native path; `websynthesis.ts` arms its own from this function,
+ * because a browser has no plugin behind it to arm one for it.
  *
  * It resolves; it never rejects. A slow engine is not an error to show anybody,
  * and the outcome it produces is `unknown`, which says precisely what has
  * happened: the sentence was handed over and the platform never said how it
  * went.
  *
- * Nothing is shared across the language boundary: TtsPlugin.java writes the
- * same two numbers out again, under the same names.
+ * BOTH NUMBERS ARE ESTIMATES AND NEITHER WAS MEASURED - see the two constants
+ * above, which say where they came from. Nothing is shared across the language
+ * boundary: TtsPlugin.java declares `SPEECH_FLOOR_MILLIS` and
+ * `MILLIS_PER_CHARACTER` again, with the same values, and the names are kept
+ * identical so that a grep finds both halves of any change to either.
  */
 export function speechCeilingMillis(text: string): number {
   return Math.max(SPEECH_FLOOR_MILLIS, text.length * MILLIS_PER_CHARACTER);

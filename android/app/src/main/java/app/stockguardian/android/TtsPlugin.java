@@ -125,8 +125,10 @@ public class TtsPlugin extends Plugin {
      * expiring with the engine having said nothing at all.
      *
      * There is no third word here. The web layer's `silent` means a sentence
-     * that was never handed to an engine, and a sentence that was never handed
-     * to an engine never reaches this file.
+     * that was never handed to an engine, and it is decided above the bridge -
+     * with one exception, the whitespace-only string that `speak` turns away
+     * below, which has nothing to report but `unknown` because this file has no
+     * word for a deliberate quiet.
      */
     private static final String OUTCOME_SPOKEN = "spoken";
     private static final String OUTCOME_UNKNOWN = "unknown";
@@ -144,27 +146,38 @@ public class TtsPlugin extends Plugin {
     /**
      * The floor under the wait for one sentence to finish.
      *
-     * Short answers are the common case and for those this is not about the
+     * ESTIMATED, NOT MEASURED, like everything else about this ceiling. Short
+     * answers are the common case and for those the wait is not about the
      * sentence at all - it is about how long the engine may take to make its
-     * first sound. The same order as INIT_TIMEOUT_MILLIS above, and generous
-     * for the same reason: cutting off an engine that was about to work is
-     * worse than waiting.
+     * first sound, and nobody here has timed that. It is a second more than
+     * INIT_TIMEOUT_MILLIS above, and generous for the reason that one is:
+     * cutting off an engine that was about to work is worse than waiting.
+     *
+     * Named exactly as src/services/speech/engine.ts names it, so that a grep
+     * finds both halves of any change to either.
      */
-    private static final long SPEAK_FLOOR_MILLIS = 6000L;
+    private static final long SPEECH_FLOOR_MILLIS = 6000L;
 
     /**
      * How much longer to wait per character of the sentence.
      *
      * ESTIMATED, NOT MEASURED. Nothing here was timed on a device. Synthesised
      * speech runs at something like 150 to 200 words a minute and the languages
-     * this application speaks average around six characters to a word, which
-     * puts a sentence at roughly fifteen characters a second, or 65ms each.
-     * This is a little under twice that, so an engine set to half speed still
-     * finishes inside the ceiling.
+     * this application speaks average around six characters to a word counting
+     * the space, which puts a sentence at fifteen to twenty characters a
+     * second: 50 to 67ms each.
+     *
+     * WHAT 120 ACTUALLY BUYS, since a number like this invites a rounder claim
+     * than it can support. It is about 1.8 times the slow end of that range, so
+     * a sentence read up to 1.8 times slower than the estimate still finishes
+     * inside the ceiling. An engine set to HALF speed does not: that is 134ms a
+     * character, and on any sentence long enough to clear the floor the
+     * watchdog would fire first and report `unknown` for a sentence that was in
+     * fact still being read.
      *
      * src/services/speech/engine.ts carries the same two numbers for the
      * browser path. Nothing shares them across that boundary; they are written
-     * out twice and named the same on both sides.
+     * out twice, under the same two names on both sides.
      */
     private static final long MILLIS_PER_CHARACTER = 120L;
 
@@ -225,12 +238,13 @@ public class TtsPlugin extends Plugin {
      * One sentence in flight: the call waiting on it, the id the engine knows
      * it by, and the single exit every ending leaves by.
      *
-     * MODELLED ON SpeechPlugin.Session, which has had this exact problem for
-     * longer. Five things can end a sentence - onDone, onError, onStop, the
-     * watchdog, and `flushReading` when something upstream is about to cut it
-     * off - and on an interruption two of them arrive for the same utterance.
-     * `settled` is what makes the second one a no-op instead of a second answer
-     * to a PluginCall that has already been resolved.
+     * MODELLED ON SpeechPlugin.Session, down to the private `settle(Runnable)`
+     * that both answers go through. Five things can end a sentence - onDone,
+     * onError, onStop, the watchdog, and `flushReading` when something upstream
+     * is about to cut it off - and on an interruption two of them arrive for
+     * the same utterance. A sixth, `refuse`, answers a call for a sentence the
+     * engine would not start at all. `settled` is what makes the second arrival
+     * a no-op rather than a second answer to one PluginCall.
      */
     private final class Utterance {
 
@@ -251,7 +265,7 @@ public class TtsPlugin extends Plugin {
         }
 
         /**
-         * The only way out, whichever way it went.
+         * The sentence ended, and this is how.
          *
          * IT RESOLVES AND NEVER REJECTS, including from the watchdog. A slow
          * engine turned into an error would be a banner in front of somebody
@@ -261,10 +275,31 @@ public class TtsPlugin extends Plugin {
          */
         @MainThread
         void finish(String outcome) {
+            settle(() -> call.resolve(new JSObject().put("outcome", outcome)));
+        }
+
+        /**
+         * The engine would not take the sentence at all.
+         *
+         * The one answer here that is a rejection rather than an outcome:
+         * nothing is playing, nothing will, and `failed` says so. It goes
+         * through the same exit as everything else because it has to - see
+         * `say`, which registers this utterance BEFORE handing the sentence
+         * over, so an engine that answered its own listener from inside
+         * `speak()` could have resolved this call already.
+         */
+        @MainThread
+        void refuse() {
+            settle(() -> call.reject(CODE_FAILED));
+        }
+
+        /** The only way out, whichever answer is being given. */
+        @MainThread
+        private void settle(Runnable answer) {
             if (!settled.compareAndSet(false, true)) return;
             main.removeCallbacks(watchdog);
             if (reading == this) reading = null;
-            call.resolve(new JSObject().put("outcome", outcome));
+            answer.run();
         }
     }
 
@@ -434,9 +469,15 @@ public class TtsPlugin extends Plugin {
                 @Override
                 @SuppressWarnings("deprecation")
                 public void onError(String utteranceId) {
-                    // The deprecated single-argument form, because it is the
-                    // abstract one and the two-argument form delegates to it.
-                    // Overriding both would answer the same failure twice.
+                    /*
+                     * The deprecated one-argument form, and only it. It is the
+                     * abstract one, so it has to be here at all; and the
+                     * two-argument form the framework dispatches to has a
+                     * default that delegates down to this one, so this one
+                     * catches both. Overriding the pair as well would be two
+                     * methods saying the same thing, with the newer one's error
+                     * code read by nobody.
+                     */
                     onMain(() -> ended(utteranceId, OUTCOME_UNKNOWN));
                 }
             });
@@ -472,9 +513,15 @@ public class TtsPlugin extends Plugin {
         if (current != null) current.finish(OUTCOME_UNKNOWN);
     }
 
-    /** How long this particular sentence is given before it is given up on. */
+    /**
+     * How long this particular sentence is given before it is given up on.
+     *
+     * BOTH NUMBERS ARE ESTIMATES AND NEITHER WAS MEASURED - see the two
+     * constants at the top of the file, which say where they came from. The
+     * same rule runs in src/services/speech/engine.ts for the browser path.
+     */
     private static long ceiling(String text) {
-        return Math.max(SPEAK_FLOOR_MILLIS, (long) text.length() * MILLIS_PER_CHARACTER);
+        return Math.max(SPEECH_FLOOR_MILLIS, (long) text.length() * MILLIS_PER_CHARACTER);
     }
 
     /** Answers everything that was parked. Each entry re-checks the state itself. */
@@ -538,8 +585,9 @@ public class TtsPlugin extends Plugin {
      * which. It used to resolve on handover, and the reason it did was sound:
      * an engine that never reports the end would leave the call pending
      * forever. The answer to that is a watchdog rather than a guess - see
-     * `ceiling` - which is the sixth guard of this shape across the two plugin
-     * files and the second in this one.
+     * `ceiling` - which is the second timer in this file, after the one on
+     * initialisation, and the fourth of this shape across the two plugin
+     * files.
      *
      * WHY THE END OF A SENTENCE IS WORTH KNOWING. Nothing in this application
      * coordinates audio focus, and there is no echo cancellation anywhere in
@@ -553,10 +601,31 @@ public class TtsPlugin extends Plugin {
         String tag = call.getString("lang", DEFAULT_LANGUAGE);
         String voiceName = call.getString("voice", "");
 
-        // Empty is a legitimate "nothing to say", not a failure. The web layer
-        // stops the previous sentence itself and never gets here with one.
+        /*
+         * Nothing to say, which is not a failure.
+         *
+         * The empty string never gets here: speak.ts stops the sentence in
+         * flight itself and answers `silent` without crossing the bridge. What
+         * it does not filter is a string holding nothing but spaces, so that
+         * one arrives, and it is stopped HERE for the reason it would have been
+         * stopped there - an answer supersedes the one being read whether or
+         * not there is anything in it to read out. Resolving without the flush
+         * left the previous sentence playing on, which is the bug the
+         * empty-answer rule was written against in the first place.
+         *
+         * The two platforms do not agree about what such a string reports, and
+         * the difference is written down rather than papered over: the browser
+         * is handed the spaces, reads them in no time and fires `onend`, so
+         * `websynthesis` answers `spoken`; this answers `unknown`, because
+         * nothing was given to an engine. No answer this application composes
+         * is whitespace, so nothing but a direct caller of the plugin reaches
+         * either.
+         */
         if (text == null || text.trim().isEmpty()) {
-            call.resolve();
+            onMain(() -> {
+                flushReading();
+                call.resolve(new JSObject().put("outcome", OUTCOME_UNKNOWN));
+            });
             return;
         }
 
@@ -610,11 +679,16 @@ public class TtsPlugin extends Plugin {
          * Recorded BEFORE the engine is given the sentence, and the order is
          * deliberate rather than incidental. An engine that answered its own
          * listener from inside speak() - on this thread, before it returned -
-         * would otherwise find no utterance to match and the call would wait
+         * would otherwise find no utterance to match, and the call would wait
          * for a watchdog that had not been armed yet. That is not behaviour
-         * anybody here has seen, and it has not been tested: there is no
-         * device on the machine this was written on. Registering first costs
-         * two unwindings and makes the question moot.
+         * anybody here has seen, and it has not been tested: there is no device
+         * on the machine this was written on.
+         *
+         * The price of defending against it is that neither line below may
+         * answer the call directly. If that hypothetical happened, `settle` has
+         * already resolved it, and a rejection on top would be a second answer
+         * to one PluginCall - so both go through `refuse`, which is settle-once
+         * like every other exit here.
          */
         Utterance mine = new Utterance(call, id);
         reading = mine;
@@ -623,22 +697,19 @@ public class TtsPlugin extends Plugin {
         try {
             queued = engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, id);
         } catch (Throwable refused) {
-            if (reading == mine) reading = null;
-            call.reject(CODE_FAILED);
+            mine.refuse();
             return;
         }
 
         if (queued != TextToSpeech.SUCCESS) {
-            // Refused at the door. Nothing is playing and nothing will, so this
-            // is a rejection like the two above rather than an outcome.
-            if (reading == mine) reading = null;
-            call.reject(CODE_FAILED);
+            // Turned away at the door. Nothing is playing and nothing will.
+            mine.refuse();
             return;
         }
 
-        // Unless it has already ended, which is the case the ordering above is
-        // about: `finish` has cleared the slot and answered the call, and a
-        // watchdog armed now would only fire into a settled utterance.
+        // Not armed if it has already ended, for the same reason: `settle` has
+        // cleared the slot and answered the call, and a watchdog posted now
+        // would only fire into an utterance that is over.
         if (reading == mine) mine.arm(ceiling(text));
     }
 

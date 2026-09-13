@@ -48,8 +48,14 @@ vi.mock('@capacitor/core', () => ({
 const { createSpeaker, inferVoiceGender, isSpeaking, listVoices, onVoicesChanged, speechAvailable } =
   await import('./speak');
 
-// The rule the watchdog is derived from, imported rather than copied: a test
-// that wrote the ceiling out by hand would keep passing after somebody moved it.
+/*
+ * The rule the watchdog is derived from.
+ *
+ * Imported for the watchdog test, which advances a fake clock to one
+ * millisecond either side of the ceiling and would have to be edited by hand
+ * every time the ceiling moved. The block at the end of this file, which is
+ * about the rule itself, deliberately writes the numbers out instead.
+ */
 const { speechCeilingMillis } = await import('./engine');
 
 /**
@@ -294,6 +300,24 @@ describe('createSpeaker', () => {
       await expect(createSpeaker(() => false).say('doze latas', 'pt-BR')).resolves.toBe('silent');
     });
 
+    /*
+     * Whitespace is not the empty string, and the seam does not pretend it is:
+     * `speak.ts` tests for `''` exactly. So the browser is handed the spaces,
+     * reads them in no time and reports the end of them, which is `spoken`.
+     *
+     * TtsPlugin.java turns the same string away and answers `unknown` - it has
+     * no word for a deliberate quiet - after stopping the sentence in flight,
+     * which is what this path does too. That outcome is the one thing the two
+     * platforms disagree about, and it is written down in both files. No answer
+     * this application composes is whitespace.
+     */
+    it('hands whitespace to the browser rather than treating it as nothing', async () => {
+      const { speak } = endingBrowser();
+
+      await expect(createSpeaker(() => true).say('   ', 'pt-BR')).resolves.toBe('spoken');
+      expect(speak).toHaveBeenCalledOnce();
+    });
+
     it('resolves silent for an empty answer, having stopped the last one', async () => {
       silentBrowser();
 
@@ -308,10 +332,14 @@ describe('createSpeaker', () => {
   });
 
   /*
-   * The ceiling, as an artefact rather than as an intention. Both numbers in it
-   * are estimates - nothing here was timed on a device - so what is worth
-   * pinning is the shape: a floor for the short answers that are the common
-   * case, and growth with the sentence for the long ones.
+   * The ceiling, read off the artefact.
+   *
+   * Both numbers behind it are estimates and neither was measured - `engine.ts`
+   * says so at each of them - which is exactly why this block writes the
+   * results out as literals rather than recomputing them. A test that derived
+   * 6120 from the same constants the function uses would agree with any value
+   * of them and pin nothing. These four fail if either number moves, so moving
+   * one means coming here and saying what it is now.
    */
   describe('how long a sentence is waited for', () => {
     it('gives a short answer the floor rather than its own length', () => {
@@ -320,7 +348,8 @@ describe('createSpeaker', () => {
     });
 
     it('gives a long one room to be read', () => {
-      // Fifty characters is where 120ms each overtakes the floor.
+      // Fifty characters is where 120ms each draws level with the floor. Fifty
+      // one is where it starts to matter.
       expect(speechCeilingMillis('x'.repeat(50))).toBe(6000);
       expect(speechCeilingMillis('x'.repeat(51))).toBe(6120);
       expect(speechCeilingMillis('x'.repeat(200))).toBe(24000);
