@@ -1,5 +1,50 @@
 # Changelog
 
+## 2.8.0
+
+### "Which one?" can be answered out loud
+
+A conversation used to stop dead on the commonest interruption there is. Ask
+*"quanto arroz eu tenho?"* with two rices on the shelf and the box asks which one
+— and then waited for a finger, which is the one thing a conversation exists to
+avoid.
+
+Now it reads the question out and takes the answer:
+
+> — Which one? Arroz Branco, Arroz Integral.
+> — o primeiro
+
+Or *"arroz branco"*, because the names were read aloud a second earlier and
+saying one back is more natural than counting. Ordinals, the counted forms
+(*number two*, *el número dos*, *o número dois*) and the names themselves, in all
+three languages. Never a bare numeral: a number is a quantity in every other
+sentence this box hears.
+
+### Only where answering writes nothing, and that is the whole design
+
+Ten kinds of sentence can raise a **Which one?**. Four are questions. Six are
+changes — and picking a row from one of those supplies the exact name that makes
+the change certain, which is the branch that stores without asking. A spoken word
+would then have written something, which is a promise this release does not make.
+
+So four speak and six wait. *"usei três arroz"* still puts the list on the screen
+and stops; the list is there, and a press answers it exactly as before.
+
+The line is a table with one entry per kind of sentence, so **a new kind of
+sentence will not compile until somebody decides which side it is on.** It cannot
+be forgotten into the wrong half, which matters more than where the line sits
+today.
+
+**Nothing new can be written by talking.** That was 2.7.0's promise and it is
+unchanged: everything a conversation stores is a thing one press already stored,
+by the same rule, with the same ten seconds to take it back.
+
+### A question is read out whether you typed it or said it
+
+The spoken form of **Which one?** belongs to the answer, not to the microphone,
+so a typed question gets it read out too when *Read answers aloud* is on — like
+every other answer. A change's **Which one?** is read out in neither.
+
 ## 2.7.0
 
 ### One press, and then a conversation
