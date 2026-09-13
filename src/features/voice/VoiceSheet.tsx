@@ -732,7 +732,24 @@ function VoiceExchange({
         <div className={styles.actions}>
           <Button
             aria-label={t('voice.undoAction', { detail: entry.text ?? entry.said })}
+            /*
+             * Ends the conversation before it takes anything back, and that
+             * ordering is the point rather than tidiness.
+             *
+             * Undoing SPEAKS - "Desfeito. Your stock is back to what it was."
+             * A conversation is listening in the gaps between its own turns, so
+             * pressing this while one runs would hand a sentence to the speaker
+             * with a recogniser already open, and the phone would transcribe
+             * itself. That is the one thing the arming gate exists to prevent,
+             * and the gate cannot see a press.
+             *
+             * Stopping first rather than going inert while a conversation runs:
+             * inert would have closed the hole by taking the button away, and
+             * the ten seconds this button exists for do not pause while
+             * somebody works out how to reach it.
+             */
             onClick={() => {
+              voice.endConversation();
               void voice.takeBack(index);
             }}
           >

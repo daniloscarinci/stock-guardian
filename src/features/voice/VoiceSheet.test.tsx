@@ -2377,6 +2377,43 @@ describe('the microphone: stopping a conversation', () => {
     // and pressing stop is a deliberate one.
     expect(screen.queryByText(/I did not hear anything/i)).toBeNull();
   });
+
+  /**
+   * Undoing speaks, so it cannot happen with a microphone open.
+   *
+   * A conversation spends most of its life listening in the gap after an answer,
+   * and the log stays live in that gap on purpose - the ten seconds Undo exists
+   * for do not pause while somebody works out how to reach a button that went
+   * inert. So the press has to close the microphone itself, before the sentence
+   * "Undone. Your stock is back to what it was." is handed to the speaker.
+   *
+   * Without that ordering the phone talks into its own recogniser, which is the
+   * single thing the arming gate was built to prevent - and the gate cannot see
+   * a press, only a turn.
+   */
+  it('ends the conversation before it undoes, so nothing speaks into an open microphone', async () => {
+    stubSpeaker();
+    const mic = recognizerThenWaiting('add five cans of beans');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    // An explicit write: stored without asking, with its way back offered - and
+    // the conversation still running behind it, waiting for the next sentence.
+    const undo = await screen.findByRole('button', { name: /^undo/i });
+    expect(screen.queryByRole('button', { name: /stop the conversation/i })).not.toBeNull();
+
+    await user.click(undo);
+
+    expect(mic.cancel).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('button', { name: /stop the conversation/i })).toBeNull();
+    });
+    expect(await screen.findByText(/Undone/i)).toBeTruthy();
+  });
 });
 
 /**

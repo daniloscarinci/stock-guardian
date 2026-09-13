@@ -605,9 +605,14 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
    * `inert` and the thinking line for the whole of the newer one.
    *
    * Before the speaking change that window was sub-millisecond and nobody could
-   * reach it. After it, it is the length of an answer. With a conversation it is
-   * not a race at all: a conversation IS a sequence of turns whose utterances
-   * overlap their successors, and the loop's own `run` is the second turn.
+   * reach it. After it, it is the length of an answer.
+   *
+   * NOT REACHED BY THE CONVERSATION, WHICH IS WORTH SAYING BECAUSE IT IS THE
+   * FIRST PLACE ANYBODY WILL LOOK. The loop awaits `run` to the end of the
+   * utterance before it listens again, so it never overlaps its own turns. What
+   * reaches this is a second question typed by hand while the first answer is
+   * still being read - which is why the test that pins it drives Claude rather
+   * than the loop.
    *
    * A TOKEN RATHER THAN TAKING `setBusy(false)` OUT OF THE `finally` BLOCKS,
    * which was the other way to fix it. Those blocks are the only thing that

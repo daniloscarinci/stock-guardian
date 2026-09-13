@@ -69,9 +69,12 @@ export type ListenResult =
 /**
  * The two things anything above here does with a microphone.
  *
- * Held apart from the rendering state below on purpose: this object is stable
- * across renders, so the conversation loop can close over it for the length of a
- * conversation without capturing a stale `listening`.
+ * Held apart from the rendering state below on purpose, so the conversation
+ * loop can close over it without capturing a stale `listening`. It is stable
+ * across the renders that happen during a conversation - `open` is not one of
+ * its dependencies - rather than stable unconditionally: `tag`, `options` and
+ * the resolved recogniser all rebuild it. That is harmless, because the guard
+ * the loop actually depends on is a ref and is shared by every version of it.
  */
 export interface Microphone {
   /** Opens the microphone for one utterance. Never rejects, and settles once. */

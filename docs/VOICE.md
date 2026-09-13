@@ -959,8 +959,8 @@ is not one; the stored value is untouched and comes back when speaking does.
 
 **Settings → Ask → Keep listening after each answer** is off. Switching it on
 makes one press a conversation — see *One press, and then a conversation*. Off,
-one press is one sentence, which is how this feature worked for its first four
-releases.
+one press is one sentence, which is how this feature worked from 2.3.0, when
+the microphone first transcribed anything, until now.
 
 **Settings → Ask → Transcribe on this device only** is off. Switching it on
 removes the second attempt entirely and returns the microphone to the absolute
