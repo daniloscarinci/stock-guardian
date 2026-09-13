@@ -129,6 +129,19 @@ digits rather than added up as a quantity. And a move to a shelf that does not
 exist yet no longer stops there: the same card offers to make the shelf, in one
 press, with an undo that takes back the move and the shelf together.
 
+And it can hold a conversation, if you ask it to. **Settings → Ask → Keep
+listening after each answer** is off until you switch it on; switched on, one
+press starts a run rather than a sentence. Ask, hear the answer, ask the next
+thing, and stop talking when you are done — the microphone closes on its own
+after a few seconds of quiet. One press for a whole shelf, which is the point,
+because the situation this exists for is the one where both your hands are
+already full.
+
+It will not start on a silenced phone, and says so rather than failing quietly:
+a conversation is a question you have to hear before you can answer it. Nothing
+new can be written this way — everything a conversation stores is a thing one
+press already stored, with the same ten seconds to take it back.
+
 Five things about it belong here rather than in a footnote.
 
 *The microphone tries your phone first, every time, and uses the internet only
@@ -320,7 +333,7 @@ import shows you what the file contains and asks before writing anything.
 | `npm run dev` | Development server with hot reload |
 | `npm run build` | Production build, then the offline audit |
 | `npm run preview` | Serve the production build locally |
-| `npm test` | The 2288-test unit suite |
+| `npm test` | The 2326-test unit suite |
 | `npm run smoke` | Drive the production build in a real browser (needs Edge or Chrome) |
 | `npm run typecheck` | TypeScript, strict |
 | `npm run lint` | ESLint |

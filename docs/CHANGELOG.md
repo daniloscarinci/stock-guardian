@@ -1,5 +1,59 @@
 # Changelog
 
+## 2.7.0
+
+### One press, and then a conversation
+
+Talking to this application cost a press per sentence. A ten-sentence stock-take
+was ten presses, which is nine too many for somebody holding a torch in one hand
+and a box in the other — the situation the whole thing exists for.
+
+**Settings → Ask → Keep listening after each answer**, off until you switch it
+on. Switched on, a press starts a run: ask, hear the answer, ask the next thing,
+and stop talking when you are done. The microphone closes itself after a few
+seconds of quiet, and a conversation ends where a person stops rather than where
+a timer says so.
+
+**Nothing new can be written this way, and that is a property rather than a
+promise.** Everything a conversation stores is a thing one press already stored,
+by the same rule, with the same ten seconds to take it back. It holds because a
+sentence is only ever read aloud for an answer — a confirmation card produces no
+sentence, and only a sentence that was heard re-opens the microphone. A card
+cannot continue a conversation even if everything else went wrong.
+
+It stops on anything that needs a finger: a card, a choice between two items, an
+offer to create something. It stops when nobody speaks. And it stops after twelve
+turns, which bounds both the number of times the phone rebinds its recogniser and
+the number of paid requests when Claude is answering.
+
+### It will not start on a phone that cannot be heard
+
+A conversation is a question you have to hear before you can answer it, so
+starting one on a silenced phone would be asking into nothing and then waiting.
+It refuses, and says which of the three reasons applied — the switch on the side
+of the phone, the media volume, or *Read answers aloud* being off.
+
+That check now costs one call across the bridge instead of two, and the Settings
+preview was reading the same phone a different way; both go through one function
+now.
+
+### The application knows when it has stopped talking
+
+Underneath all of it: `speak` used to resolve when a sentence had been handed to
+the platform, not when it had been heard. Nothing could act on the end of a
+sentence, and there is no echo cancellation anywhere — so a microphone opened
+after a receipt would have transcribed the phone's own voice.
+
+Android's text-to-speech has always been able to report this and was never asked;
+the identifier needed to correlate the answer was already being passed. The
+browser's `onend` was never attached. Both are now, behind a watchdog, because an
+engine that never reports is a real thing and a promise that waits forever is
+worse than one that gives up and says it does not know.
+
+The one honest limit, written down where the number lives: the watchdog allows
+about 1.8× the estimated reading time. A voice set to half speed will trip it,
+and the sentence is then reported as unheard while it is still being read.
+
 ## 2.6.1
 
 ### The box is pinned to the bottom of the sheet
