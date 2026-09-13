@@ -154,9 +154,16 @@ const FETCH_PATTERNS = [
  * one module again is the whole of what that cost.
  *
  * That module has one documented way to set `processLocally` false: the
- * `voiceAllowOnline` setting, off by default, which a person switches on under
- * a label naming Google - in Settings, or on the panel that says a listen found
- * no local model. This script has nothing to say about it: no fetch, no URL and
+ * `voiceOfflineOnly` setting - and note which way round it runs, because this
+ * paragraph had it backwards until 2026-09-13. It is false by default, so the
+ * fallback is ALLOWED unless somebody refuses it; a person switches it ON, under
+ * a label naming Google, to say the recording must never leave. In Settings, or
+ * on the panel that says a listen found no local model.
+ *
+ * What makes that default defensible is not this script. It is that the device
+ * is always asked first, that the network attempt only happens when the device
+ * could not, and that the exchange is marked `Transcribed online` afterwards -
+ * so the fallback is visible in the log rather than silent. This script has nothing to say about it: no fetch, no URL and
  * no second use site are involved, so there is nothing here that would or
  * should catch it. The disclosure lives in docs/OFFLINE.md, which is where a
  * decision a user makes belongs.
