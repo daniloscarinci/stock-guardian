@@ -30,7 +30,7 @@
  */
 import { registerPlugin } from '@capacitor/core';
 import { inferVoiceGender, pickVoice, sortVoices, type VoiceChoice, type VoiceListing } from './voices';
-import type { SpeechEngine } from './engine';
+import type { EngineOutcome, SpeechEngine } from './engine';
 
 /** One voice as `TextToSpeech.getVoices()` describes it, flattened by the plugin. */
 interface NativeVoice {
@@ -51,7 +51,22 @@ interface NativeVoice {
 }
 
 interface TtsPlugin {
-  speak: (options: { text: string; lang: string; voice: string }) => Promise<void>;
+  /**
+   * Resolves when the sentence has been heard, and says how it ended.
+   *
+   * `outcome` is optional and the optionality is load-bearing. An APK built
+   * before this existed answers the same call the moment the utterance is
+   * handed to the engine, with no payload at all, and a web layer that read a
+   * missing field as "it finished" would be claiming a sentence was heard at
+   * the instant it started. Anything that is not exactly `spoken` is read as
+   * `unknown` below, so the old plugin degrades to "we cannot say" rather than
+   * to a confident lie.
+   */
+  speak: (options: {
+    text: string;
+    lang: string;
+    voice: string;
+  }) => Promise<{ outcome?: string } | undefined>;
   stop: () => Promise<void>;
   voices: (options: { lang: string }) => Promise<{ voices: NativeVoice[] }>;
   isAvailable: (options: { lang: string }) => Promise<{ available: boolean }>;
@@ -101,7 +116,7 @@ async function listNative(tag: string): Promise<VoiceChoice[]> {
 }
 
 export const nativeTtsEngine: SpeechEngine = {
-  async speak(text, tag, chosen) {
+  async speak(text, tag, chosen): Promise<EngineOutcome> {
     /*
      * Read fresh on every sentence, exactly as the browser path does. The list
      * is a bridge call rather than a property read, and it is worth it: a voice
@@ -111,7 +126,16 @@ export const nativeTtsEngine: SpeechEngine = {
      */
     const voice = pickVoice(await listNative(tag), tag, chosen);
 
-    await Tts.speak({ text, lang: tag, voice: voice?.voiceURI ?? '' });
+    /*
+     * The bridge call is held open for the length of the sentence now, so this
+     * await is the sentence being read rather than the sentence being queued.
+     * There is no watchdog on this side: TtsPlugin.java carries its own, and it
+     * has to - a PluginCall that is never answered is a leak in the bridge, not
+     * merely a promise nobody here settles. A second timer here would only
+     * argue with it.
+     */
+    const answer = await Tts.speak({ text, lang: tag, voice: voice?.voiceURI ?? '' });
+    return answer?.outcome === 'spoken' ? 'spoken' : 'unknown';
   },
 
   stop() {

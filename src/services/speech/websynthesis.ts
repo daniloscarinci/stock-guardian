@@ -16,7 +16,7 @@
  * for constructs that fetch, and this is not one.
  */
 import { pickVoice, sortVoices, sameLanguage, inferVoiceGender, type VoiceListing } from './voices';
-import type { SpeechEngine } from './engine';
+import { speechCeilingMillis, type EngineOutcome, type SpeechEngine } from './engine';
 
 function getSynth(): SpeechSynthesis | undefined {
   return (globalThis as unknown as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
@@ -28,16 +28,56 @@ function getUtteranceConstructor(): (new (text: string) => SpeechSynthesisUttera
   }).SpeechSynthesisUtterance;
 }
 
+/**
+ * How to settle the sentence being read right now, or undefined.
+ *
+ * THIS IS WHAT MAKES AN INTERRUPTION DETERMINISTIC, and an interruption is the
+ * normal case here rather than the exception: every new answer cancels the last
+ * one, an empty answer cancels without queueing anything, and closing the sheet
+ * cancels from a teardown path.
+ *
+ * The specification says a cancelled utterance should end with an `error` whose
+ * code is `interrupted` or `canceled` rather than with `end`, and that would be
+ * enough on its own if implementations could be relied on to do it. This module
+ * exists because one of them cannot: the WebView accepts an utterance, plays
+ * nothing and reports neither event. So the cancel path settles the outgoing
+ * sentence itself, before the platform gets a chance to describe it, and
+ * whichever event arrives afterwards - if any does - finds a promise that has
+ * already been answered. Nothing here depends on which one it is.
+ *
+ * One at a time, because `speechSynthesis` is one queue and this module flushes
+ * it before every sentence: there is never a second utterance of ours waiting
+ * behind the first.
+ */
+let outgoing: ((outcome: EngineOutcome) => void) | undefined;
+
+/**
+ * Empties the queue, settling anything of ours that was in it.
+ *
+ * A sentence cut off is `unknown` rather than `spoken`: some of it was heard,
+ * possibly none of it, and nothing here can say how much. For the caller that
+ * matters as much as a failure does - it is not a sentence that finished.
+ */
+function flush(synth: SpeechSynthesis): void {
+  const settle = outgoing;
+  outgoing = undefined;
+  settle?.('unknown');
+  synth.cancel();
+}
+
 export const webSynthesisEngine: SpeechEngine = {
-  async speak(text, tag, chosen) {
+  async speak(text, tag, chosen): Promise<EngineOutcome> {
     const synth = getSynth();
     const Utterance = getUtteranceConstructor();
-    if (synth === undefined || Utterance === undefined) return;
+    // No synthesiser at all. Nothing was heard and nothing is playing, but this
+    // is still a sentence somebody asked for and did not get, which is exactly
+    // what `unknown` is for - `silent` is reserved for a deliberate quiet.
+    if (synth === undefined || Utterance === undefined) return 'unknown';
 
     // An answer that arrives while the last one is still being read would
     // otherwise queue, and the user would hear a stale sentence first. The
     // native path gets this from QUEUE_FLUSH; here it is explicit.
-    synth.cancel();
+    flush(synth);
 
     const utterance = new Utterance(text);
     utterance.lang = tag;
@@ -48,11 +88,58 @@ export const webSynthesisEngine: SpeechEngine = {
     const voice = pickVoice(synth.getVoices(), tag, chosen);
     if (voice !== undefined) utterance.voice = voice;
 
-    synth.speak(utterance);
+    return new Promise<EngineOutcome>((resolve) => {
+      let done = false;
+
+      /*
+       * The single exit, modelled on `Session.finish` in SpeechPlugin.java.
+       *
+       * Settles once and only once. Three things race for it - the platform's
+       * `end`, the platform's `error`, and the ceiling - and on a cancel two of
+       * them can arrive for the same utterance.
+       *
+       * It reads `ceiling` from below its own declaration, which is safe
+       * because nothing calls it until after the timer exists: the handlers are
+       * attached here and fired by the platform, and the earliest the platform
+       * can fire one is inside the `speak` at the bottom.
+       */
+      const settle = (outcome: EngineOutcome): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(ceiling);
+        utterance.onend = null;
+        utterance.onerror = null;
+        if (outgoing === settle) outgoing = undefined;
+        resolve(outcome);
+      };
+
+      utterance.onend = () => {
+        settle('spoken');
+      };
+      /*
+       * `error` covers a synthesiser that refused the utterance, a voice that
+       * could not be loaded and a language it will not read. It is not a
+       * rejection: a sentence nobody heard is a fact for the caller to act on,
+       * not an exception to throw through whichever screen asked a question.
+       */
+      utterance.onerror = () => {
+        settle('unknown');
+      };
+
+      const ceiling = setTimeout(() => {
+        settle('unknown');
+      }, speechCeilingMillis(text));
+
+      // Registered before the utterance is handed over, so a browser that
+      // fires `end` synchronously from `speak()` still finds its handler.
+      outgoing = settle;
+      synth.speak(utterance);
+    });
   },
 
   stop() {
-    getSynth()?.cancel();
+    const synth = getSynth();
+    if (synth !== undefined) flush(synth);
   },
 
   /**

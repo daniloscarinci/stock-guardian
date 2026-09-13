@@ -17,6 +17,88 @@
  */
 import type { VoiceListing } from './voices';
 
+/**
+ * What became of a sentence an engine was given.
+ *
+ * `spoken` means the platform said the utterance finished. `unknown` means
+ * nobody can say: the engine reported a failure, or something cut the sentence
+ * off, or the watchdog below expired with the platform still silent about it.
+ *
+ * A union rather than the boolean this could obviously have been, because the
+ * difference between "it was heard" and "we do not know whether it was heard"
+ * is the whole reason the type exists. A caller about to open a microphone can
+ * act on the first and must not act on the second, and `false` would have
+ * collapsed them into one word.
+ */
+export type EngineOutcome = 'spoken' | 'unknown';
+
+/**
+ * What became of a sentence the application asked for.
+ *
+ * `silent` is the third case and no engine ever produces it: nothing was handed
+ * to a platform at all, on purpose. `speak.ts` decides two of those - the
+ * setting is off, or the answer was empty - and answers with this word. The
+ * switch on the side of the phone is a platform fact that `speak.ts`
+ * deliberately knows nothing about, so the sheet composes it and answers with
+ * the same word; see `VoiceSheet`. (`useWelcome` and the preview in Settings
+ * consult the phone too, and simply return: nobody is waiting on either of
+ * them for an answer.) However it was decided, it means one thing to somebody
+ * waiting: the device deliberately made no sound, and there is nothing to
+ * wait for.
+ */
+export type SpeechOutcome = EngineOutcome | 'silent';
+
+/**
+ * The floor under the watchdog, in milliseconds.
+ *
+ * Short answers are the common case - "Rice: 3 kg" is ten characters and takes
+ * well under a second to say - and for those the ceiling is not about the
+ * sentence at all. It is about how long an engine may take to make its first
+ * sound: a cold `TextToSpeech` binding a service, or a browser fetching a voice
+ * it has not loaded yet. It is the same order as `INIT_TIMEOUT_MILLIS` in
+ * TtsPlugin.java, and generous for the same reason.
+ */
+const SPEECH_FLOOR_MILLIS = 6000;
+
+/**
+ * How much to allow per character of the sentence.
+ *
+ * ESTIMATED, NOT MEASURED. Nothing here has been timed on a device - there is
+ * no Android SDK on the machine this was written on - so the number is derived
+ * from published speaking rates and then doubled. Synthesised speech runs at
+ * roughly 150 to 200 words a minute, and words in the three languages this
+ * application speaks average around five letters and a space, which puts a
+ * sentence at something like fifteen characters a second, or 65ms a character.
+ * 120 is a little under twice that, so an engine set to half speed still
+ * finishes inside the ceiling.
+ */
+const MILLIS_PER_CHARACTER = 120;
+
+/**
+ * The longest one sentence is waited for before it is given up on.
+ *
+ * THIS IS THE ANSWER TO THE OBJECTION THAT USED TO BE WRITTEN HERE, and the
+ * objection was correct: some Android engines never report that an utterance
+ * ended. A promise that waited for a signal that may never arrive would be a
+ * promise that sometimes never settles, and the two plugin files already hold
+ * five timers standing between this application and exactly that - four in
+ * SpeechPlugin.java and one in TtsPlugin.java. This is the rule the new ones
+ * use: the sixth is in TtsPlugin.java, for the native path, and
+ * `websynthesis.ts` arms its own from this function because a browser has no
+ * plugin behind it to arm one for it.
+ *
+ * It resolves; it never rejects. A slow engine is not an error to show anybody,
+ * and the outcome it produces is `unknown`, which says precisely what has
+ * happened: the sentence was handed over and the platform never said how it
+ * went.
+ *
+ * Nothing is shared across the language boundary: TtsPlugin.java writes the
+ * same two numbers out again, under the same names.
+ */
+export function speechCeilingMillis(text: string): number {
+  return Math.max(SPEECH_FLOOR_MILLIS, text.length * MILLIS_PER_CHARACTER);
+}
+
 export interface SpeechEngine {
   /**
    * Reads one sentence, replacing anything still being read.
@@ -25,15 +107,45 @@ export interface SpeechEngine {
    * behind a stale one is heard several seconds after the screen it describes
    * has gone. `speechSynthesis.cancel()` on the web, `QUEUE_FLUSH` on Android.
    *
-   * Resolves when the sentence has been HANDED OVER, not when it has been
-   * heard. Both platforms behave that way and neither reports the end reliably,
-   * so a promise that waited would be a promise that sometimes never settles.
+   * RESOLVES WHEN THE SENTENCE HAS BEEN HEARD, not when it was handed over.
+   * That is the opposite of what this contract said until now, and the reason
+   * it said the opposite has not gone away: neither platform reports the end
+   * dependably. Some third-party Android engines are reported never to call
+   * `onDone` at all, and a WebView that accepts an utterance and plays silence
+   * is the failure this whole seam was built to work around. Neither claim was
+   * measured here - there is no device on the machine this was written on.
+   * What changed is that a watchdog now stands behind the signal - see
+   * `speechCeilingMillis` - so the promise settles whether or not the platform
+   * ever speaks up.
+   *
+   * The three ways it can settle are the three the caller has to tell apart:
+   * `spoken` because the platform said so, `unknown` because the sentence was
+   * cut off or failed or the ceiling expired. `silent` never comes from here;
+   * it is the Speaker's word for a sentence that was never handed over.
+   *
+   * WHY ANY OF THIS MATTERS. There is no echo cancellation in this application
+   * and nothing coordinates audio focus between the engine that speaks and the
+   * recogniser that listens. TTS plays on the media stream and the recogniser
+   * records from the microphone, so a microphone opened while the phone is
+   * still talking transcribes the phone. Knowing when a sentence has actually
+   * finished is what makes it safe to listen for an answer to it.
+   *
+   * It may reject. `speak.ts` maps a rejection to `unknown`, which is where
+   * an older APK with no such plugin and an engine that will not start both
+   * end up.
    *
    * `chosen` is the stored `speakingVoiceUri`, empty when nobody has chosen.
    */
-  readonly speak: (text: string, tag: string, chosen: string) => Promise<void>;
+  readonly speak: (text: string, tag: string, chosen: string) => Promise<EngineOutcome>;
 
-  /** Stops whatever is being read. Never throws: it runs from teardown paths. */
+  /**
+   * Stops whatever is being read. Never throws: it runs from teardown paths.
+   *
+   * A sentence stopped this way settles as `unknown` rather than being left
+   * pending. One promise per interrupted sentence is a leak, and this
+   * application interrupts on purpose: every new answer flushes the last one,
+   * and an empty answer stops the previous one without queueing anything.
+   */
   readonly stop: () => void;
 
   /** The voices for one language, best first, and whether the answer is final. */
@@ -51,6 +163,13 @@ export interface SpeechEngine {
   /** Whether this device can speak this language at all. */
   readonly available: (tag: string) => Promise<boolean>;
 
-  /** Whether something is being read right now. */
+  /**
+   * Whether the platform says something is being read right now.
+   *
+   * Asked only where the signal above cannot answer - see `isSpeaking` in
+   * `speak.ts`, which prefers the sentence it knows is in flight and falls
+   * back to this for the one case the signal cannot cover: a sentence whose
+   * watchdog expired, which the engine may still be reading out.
+   */
   readonly speaking: () => Promise<boolean>;
 }

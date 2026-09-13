@@ -50,6 +50,7 @@ import type { AiDeps } from '../../services/ai/tools';
 import { LOCALE_TAGS } from '../../i18n/translate';
 import type { Intent } from '../../voice/intents';
 import type { InventoryItemView } from '../../types/domain';
+import type { SpeechOutcome } from '../../services/speech/speak';
 
 /** Which of the two answered, or would answer next. */
 export type Engine = 'claude' | 'device';
@@ -132,8 +133,23 @@ export interface ClaudeExchange extends HeardExchange {
 /** One thing asked and what came of it. */
 export type Exchange = DeviceExchange | ClaudeExchange;
 
-/** Reads a sentence aloud. Supplied by the sheet, which composes the platform. */
-export type Speak = (text: string, tag: string) => Promise<void>;
+/**
+ * Reads a sentence aloud, and resolves when it has been heard.
+ *
+ * Supplied by the sheet, which composes the platform: the seam decides the
+ * setting and the empty answer, the sheet decides the switch on the side of the
+ * phone, and the three outcomes come back through here whichever of them
+ * decided.
+ *
+ * NOTHING IN THIS FILE READS THE OUTCOME YET, and that is not an oversight. The
+ * conversation loop that would - press once, then question, answer, listen,
+ * next sentence - cannot open a microphone until it knows the phone has
+ * stopped talking, and `spoken` is the only one of the three that says so.
+ * What this release needs from the type is that the awaits below now wait for
+ * the sentence rather than for the handover, which is why `setBusy` had to
+ * move.
+ */
+export type Speak = (text: string, tag: string) => Promise<SpeechOutcome>;
 
 export interface Voice {
   readonly history: readonly Exchange[];
@@ -439,6 +455,31 @@ export function useVoice(speak: Speak): Voice {
   );
 
   /**
+   * Lifts `busy`, and only then reads the answer out.
+   *
+   * THE ORDER IS THE WHOLE POINT, and it changed when `speak` did. It used to
+   * resolve the instant a sentence had been handed to a platform, so `busy`
+   * came down a few milliseconds after the answer appeared and the `inert`
+   * window was the length of the query. It now resolves when the sentence has
+   * been HEARD - which is what makes a spoken conversation possible at all -
+   * and leaving `setBusy(false)` in the `finally` would have quietly extended
+   * every inert window by the length of the utterance. On a phone that is
+   * seconds of a sheet that cannot be typed into or scrolled, for an answer
+   * that is already on the screen in front of the person waiting.
+   *
+   * Speaking is not working. The `finally` blocks still lift `busy` and still
+   * have to: this only runs on the paths that reach a sentence, and the ones
+   * that throw first never get here. Lifting it twice costs a no-op setState.
+   */
+  const announce = useCallback(
+    async (text: string): Promise<void> => {
+      setBusy(false);
+      await speak(text, tag);
+    },
+    [speak, tag],
+  );
+
+  /**
    * Where a result lands - appended for something newly asked, or over the top
    * of the exchange that raised the question.
    */
@@ -520,9 +561,9 @@ export function useVoice(speak: Speak): Voice {
         index,
       );
       if (undoable) armUndo(receipt);
-      if (text !== null) await speak(text, tag);
+      if (text !== null) await announce(text);
     },
-    [armUndo, deps, invalidate, place, sentence, speak, tag],
+    [announce, armUndo, deps, invalidate, place, sentence],
   );
 
   /**
@@ -570,14 +611,14 @@ export function useVoice(speak: Speak): Voice {
         // A card is not a fact, and `sentence` returns null for one. The card
         // announces itself by moving focus to a button that carries the whole
         // change; speaking it here would say a change happened that has not.
-        if (text !== null) await speak(text, tag);
+        if (text !== null) await announce(text);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
         setBusy(false);
       }
     },
-    [deps, place, sentence, speak, store, tag, withExamples],
+    [announce, deps, place, sentence, store, withExamples],
   );
 
   const askParser = useCallback(
@@ -653,14 +694,14 @@ export function useVoice(speak: Speak): Voice {
         // Read aloud like any other answer. Nothing here has been written, and
         // the cards below say so, so this states what was found rather than
         // what was done.
-        if (text !== '') await speak(text, tag);
+        if (text !== '') await announce(text);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
         setBusy(false);
       }
     },
-    [aiDeps, aiOptions, askParser, place, speak, t, tag],
+    [aiDeps, aiOptions, announce, askParser, place, t],
   );
 
   const run = useCallback(
@@ -731,14 +772,14 @@ export function useVoice(speak: Speak): Voice {
                 },
           ),
         );
-        if (said !== '') await speak(said, tag);
+        if (said !== '') await announce(said);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
         setBusy(false);
       }
     },
-    [deps, history, invalidate, sentence, speak, tag],
+    [announce, deps, history, invalidate, sentence],
   );
 
   /** Says no to one proposal. Nothing was written, so nothing is undone. */
@@ -779,14 +820,14 @@ export function useVoice(speak: Speak): Voice {
               : existing,
           ),
         );
-        await speak(text, tag);
+        await announce(text);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
         setBusy(false);
       }
     },
-    [deps, history, invalidate, speak, t, tag],
+    [announce, deps, history, invalidate, t],
   );
 
   /** Picking from "Which one?" re-runs the intent against an exact name. */

@@ -62,7 +62,7 @@ import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Button } from '../../components/ui/primitives';
 import { fieldStyles } from '../../components/ui/Field';
 import { cx } from '../../components/ui/cx';
-import { createSpeaker } from '../../services/speech/speak';
+import { createSpeaker, type SpeechOutcome } from '../../services/speech/speak';
 import { androidIsSilent } from '../../services/speech/ringer';
 import { CREATABLE_INTENTS } from '../../voice/intents';
 import { useVoice, type Exchange, type Voice } from './useVoice';
@@ -153,11 +153,20 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
    * ringer switch is a platform fact. On Android the switch wins over the
    * setting; in a browser `androidIsSilent` resolves false, because a browser
    * cannot read that state and the setting is the only control there is.
+   *
+   * A SILENCED PHONE IS `silent`, NOT NOTHING. This used to return early with
+   * no answer at all, which is the same nothing a failed engine produced, so
+   * the state machine below could not tell "the person asked for quiet" from
+   * "we do not know whether anybody heard that". The word is the seam's own -
+   * `say` answers with it for the setting and for an empty answer - and the
+   * ringer is answered with it here, because here is where the platform is
+   * known. No check moved and none was added: the one that was already here
+   * only changed what it returns.
    */
   const speak = useCallback(
-    async (text: string, tag: string) => {
-      if (await androidIsSilent()) return;
-      await speaker.say(text, tag);
+    async (text: string, tag: string): Promise<SpeechOutcome> => {
+      if (await androidIsSilent()) return 'silent';
+      return speaker.say(text, tag);
     },
     [speaker],
   );

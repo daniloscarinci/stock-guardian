@@ -16,7 +16,19 @@ const capacitor = vi.hoisted(() => ({
   native: false,
   platform: 'web',
   tts: {
-    speak: vi.fn(async (_options: { text: string; lang: string; voice: string }) => undefined),
+    /*
+     * The plugin answers when the sentence has been heard, and says how it
+     * ended. `spoken` is the ordinary case and is the default here for that
+     * reason; the two tests that care about the others set their own.
+     */
+    // The answer is typed exactly as the plugin interface types it - `outcome`
+    // optional, the whole payload allowed to be missing - so that the older-APK
+    // case can be expressed here at all.
+    speak: vi.fn(
+      async (_options: { text: string; lang: string; voice: string }): Promise<
+        { outcome?: string } | undefined
+      > => ({ outcome: 'spoken' }),
+    ),
     stop: vi.fn(async () => undefined),
     voices: vi.fn(async (_options: { lang: string }) => ({ voices: [] as unknown[] })),
     isAvailable: vi.fn(async (_options: { lang: string }) => ({ available: true })),
@@ -36,6 +48,25 @@ vi.mock('@capacitor/core', () => ({
 const { createSpeaker, inferVoiceGender, isSpeaking, listVoices, onVoicesChanged, speechAvailable } =
   await import('./speak');
 
+// The rule the watchdog is derived from, imported rather than copied: a test
+// that wrote the ceiling out by hand would keep passing after somebody moved it.
+const { speechCeilingMillis } = await import('./engine');
+
+/**
+ * A `speechSynthesis.speak` that behaves like a browser which reads a sentence.
+ *
+ * `say` resolves when the utterance ENDS now rather than when it was handed
+ * over, so a stub that accepts an utterance and is never heard from again is a
+ * stub that hangs every test awaiting one - until the watchdog in `engine.ts`,
+ * which is six seconds away for a sentence this short. Firing `onend` at once
+ * is simply the fastest a browser could possibly read it. The tests that are
+ * about the waiting rather than about the sentence say so themselves, with a
+ * stub of their own and fake timers.
+ */
+function finishing() {
+  return vi.fn((utterance: { onend?: (() => void) | null }) => utterance.onend?.());
+}
+
 /** Pretends the code is running inside the APK. */
 function onAndroid(): void {
   capacitor.native = true;
@@ -48,16 +79,20 @@ beforeEach(() => {
   capacitor.tts.voices.mockResolvedValue({ voices: [] });
   capacitor.tts.isAvailable.mockResolvedValue({ available: true });
   capacitor.tts.isSpeaking.mockResolvedValue({ speaking: false });
+  capacitor.tts.speak.mockResolvedValue({ outcome: 'spoken' });
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  // The watchdog test below runs on fake timers. One left installed would make
+  // every later suite's setTimeout wait for a tick nobody is going to give it.
+  vi.useRealTimers();
 });
 
 describe('createSpeaker', () => {
   it('says nothing when the setting is off', async () => {
-    const speak = vi.fn();
+    const speak = finishing();
     vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn(), getVoices: () => [] });
     vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
 
@@ -66,7 +101,7 @@ describe('createSpeaker', () => {
   });
 
   it('speaks when the setting is on', async () => {
-    const speak = vi.fn();
+    const speak = finishing();
     vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn(), getVoices: () => [] });
     vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
 
@@ -74,14 +109,16 @@ describe('createSpeaker', () => {
     expect(speak).toHaveBeenCalledOnce();
   });
 
-  it('does not throw where speechSynthesis does not exist', async () => {
+  // Not `silent`, which is reserved for a quiet somebody chose. A browser with
+  // no synthesiser was asked to read a sentence and nobody heard it.
+  it('reports unknown rather than throwing where speechSynthesis does not exist', async () => {
     vi.stubGlobal('speechSynthesis', undefined);
-    await expect(createSpeaker(() => true).say('oi', 'pt-BR')).resolves.toBeUndefined();
+    await expect(createSpeaker(() => true).say('oi', 'pt-BR')).resolves.toBe('unknown');
   });
 
   it('cancels anything still being spoken before starting', async () => {
     const cancel = vi.fn();
-    vi.stubGlobal('speechSynthesis', { speak: vi.fn(), cancel, getVoices: () => [] });
+    vi.stubGlobal('speechSynthesis', { speak: finishing(), cancel, getVoices: () => [] });
     vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
 
     await createSpeaker(() => true).say('oi', 'pt-BR');
@@ -93,7 +130,7 @@ describe('createSpeaker', () => {
   // return before the cancel, so that sentence kept reading.
   it('cancels a sentence in flight even when the new answer is empty', async () => {
     const cancel = vi.fn();
-    const speak = vi.fn();
+    const speak = finishing();
     vi.stubGlobal('speechSynthesis', { speak, cancel, getVoices: () => [] });
     vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
 
@@ -109,7 +146,7 @@ describe('createSpeaker', () => {
 
   it('stops what is being spoken', () => {
     const cancel = vi.fn();
-    vi.stubGlobal('speechSynthesis', { speak: vi.fn(), cancel, getVoices: () => [] });
+    vi.stubGlobal('speechSynthesis', { speak: finishing(), cancel, getVoices: () => [] });
 
     createSpeaker(() => true).stop();
     expect(cancel).toHaveBeenCalledOnce();
@@ -120,7 +157,7 @@ describe('createSpeaker', () => {
   // sentence already in flight playing on.
   it('stops even when the setting is off', () => {
     const cancel = vi.fn();
-    vi.stubGlobal('speechSynthesis', { speak: vi.fn(), cancel, getVoices: () => [] });
+    vi.stubGlobal('speechSynthesis', { speak: finishing(), cancel, getVoices: () => [] });
 
     createSpeaker(() => false).stop();
     expect(cancel).toHaveBeenCalledOnce();
@@ -129,6 +166,165 @@ describe('createSpeaker', () => {
   it('does not throw when stopping where speechSynthesis does not exist', () => {
     vi.stubGlobal('speechSynthesis', undefined);
     expect(() => createSpeaker(() => true).stop()).not.toThrow();
+  });
+
+  /*
+   * WHEN THE SENTENCE HAS BEEN HEARD, WHICH IS THE WHOLE OF WHAT `say` NOW SAYS.
+   *
+   * Three outcomes and no boolean, because the difference between "it played to
+   * the end" and "we do not know whether anybody heard it" is what a caller
+   * about to open a microphone has to act on. There is no echo cancellation in
+   * this application and nothing coordinates audio focus, so a microphone
+   * opened over a sentence still playing records the phone.
+   */
+  describe('what became of the sentence', () => {
+    /** A browser that takes an utterance and is never heard from about it. */
+    function silentBrowser() {
+      const speak = vi.fn();
+      const cancel = vi.fn();
+      vi.stubGlobal('speechSynthesis', { speak, cancel, getVoices: () => [] });
+      vi.stubGlobal(
+        'SpeechSynthesisUtterance',
+        class {
+          lang = '';
+          voice: unknown = null;
+          onend: unknown = null;
+          onerror: unknown = null;
+          constructor(public text: string) {}
+        },
+      );
+      return { speak, cancel };
+    }
+
+    /** The same, but it reports the end of the sentence the way a browser does. */
+    function endingBrowser() {
+      const started = silentBrowser();
+      started.speak.mockImplementation((utterance: { onend?: (() => void) | null }) =>
+        utterance.onend?.(),
+      );
+      return started;
+    }
+
+    it('resolves spoken when the browser reports the end of the utterance', async () => {
+      endingBrowser();
+      await expect(createSpeaker(() => true).say('doze latas', 'pt-BR')).resolves.toBe('spoken');
+    });
+
+    /*
+     * A synthesiser that refuses the utterance, a voice that will not load, a
+     * language it will not read. None of them is an exception to throw through
+     * whichever screen asked the question; all of them are a sentence nobody
+     * heard, which is a fact the caller can act on.
+     */
+    it('resolves unknown when the browser reports an error instead', async () => {
+      const { speak } = silentBrowser();
+      speak.mockImplementation((utterance: { onerror?: (() => void) | null }) =>
+        utterance.onerror?.(),
+      );
+
+      await expect(createSpeaker(() => true).say('doze latas', 'pt-BR')).resolves.toBe('unknown');
+    });
+
+    /*
+     * THE WATCHDOG, WHICH IS THE ANSWER TO THE OBJECTION THAT KEPT THIS
+     * CONTRACT AS IT WAS. Some engines never report the end of an utterance. A
+     * promise that only waited for the signal would be a promise that sometimes
+     * never settles, so the ceiling settles it instead - and it RESOLVES,
+     * because a slow engine is not an error to put in front of anybody.
+     */
+    it('gives up on a sentence the browser never finishes, and says it cannot say', async () => {
+      vi.useFakeTimers();
+      silentBrowser();
+
+      const text = 'doze latas';
+      const said = createSpeaker(() => true).say(text, 'pt-BR');
+      let settled = false;
+      void said.then(() => {
+        settled = true;
+      });
+
+      await vi.advanceTimersByTimeAsync(speechCeilingMillis(text) - 1);
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(said).resolves.toBe('unknown');
+    });
+
+    /*
+     * `stop()` runs from teardown - a sheet being closed over a sentence still
+     * playing. The promise for that sentence has to be answered rather than
+     * left open, or every interruption leaks one, and this application
+     * interrupts on purpose.
+     */
+    it('settles the sentence a stop cuts off', async () => {
+      const { cancel } = silentBrowser();
+
+      const speaker = createSpeaker(() => true);
+      const said = speaker.say('doze latas de feijao', 'pt-BR');
+      speaker.stop();
+
+      await expect(said).resolves.toBe('unknown');
+      expect(cancel).toHaveBeenCalled();
+    });
+
+    /*
+     * And the same for the ordinary case, which is not teardown at all: every
+     * answer flushes the one before it, so a second question asked while the
+     * first answer is still being read ends the first sentence.
+     */
+    it('settles the sentence the next one flushes', async () => {
+      silentBrowser();
+
+      const speaker = createSpeaker(() => true);
+      const first = speaker.say('a primeira resposta', 'pt-BR');
+      const second = speaker.say('a segunda resposta', 'pt-BR');
+
+      await expect(first).resolves.toBe('unknown');
+
+      // The second is left playing, so it is stopped rather than left to a
+      // watchdog that would still be running when this test finished.
+      speaker.stop();
+      await expect(second).resolves.toBe('unknown');
+    });
+
+    // Deliberate quiet, and it is answered without waiting for anything: no
+    // engine was asked, so there is nothing to wait for.
+    it('resolves silent when the setting is off', async () => {
+      endingBrowser();
+      await expect(createSpeaker(() => false).say('doze latas', 'pt-BR')).resolves.toBe('silent');
+    });
+
+    it('resolves silent for an empty answer, having stopped the last one', async () => {
+      silentBrowser();
+
+      const speaker = createSpeaker(() => true);
+      const said = speaker.say('doze latas', 'pt-BR');
+
+      await expect(speaker.say('', 'pt-BR')).resolves.toBe('silent');
+      // The empty answer is about a screen the user has left, so the sentence
+      // describing it stops - and its promise is answered rather than dropped.
+      await expect(said).resolves.toBe('unknown');
+    });
+  });
+
+  /*
+   * The ceiling, as an artefact rather than as an intention. Both numbers in it
+   * are estimates - nothing here was timed on a device - so what is worth
+   * pinning is the shape: a floor for the short answers that are the common
+   * case, and growth with the sentence for the long ones.
+   */
+  describe('how long a sentence is waited for', () => {
+    it('gives a short answer the floor rather than its own length', () => {
+      expect(speechCeilingMillis('Arroz: 3 kg')).toBe(6000);
+      expect(speechCeilingMillis('')).toBe(6000);
+    });
+
+    it('gives a long one room to be read', () => {
+      // Fifty characters is where 120ms each overtakes the floor.
+      expect(speechCeilingMillis('x'.repeat(50))).toBe(6000);
+      expect(speechCeilingMillis('x'.repeat(51))).toBe(6120);
+      expect(speechCeilingMillis('x'.repeat(200))).toBe(24000);
+    });
   });
 
   // The answer names what is in someone's pantry. A server-synthesised voice
@@ -156,7 +352,7 @@ describe('createSpeaker', () => {
     };
 
     function speakWith(voices: readonly unknown[]) {
-      const speak = vi.fn();
+      const speak = finishing();
       vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn(), getVoices: () => voices });
       vi.stubGlobal(
         'SpeechSynthesisUtterance',
@@ -357,7 +553,7 @@ describe('createSpeaker', () => {
        */
       it('picks up a voice that appears after the speaker was built', async () => {
         let voices: readonly unknown[] = [];
-        const speak = vi.fn();
+        const speak = finishing();
         vi.stubGlobal('speechSynthesis', {
           speak,
           cancel: vi.fn(),
@@ -608,7 +804,7 @@ describe('the automatic local-first choice, across language tags', () => {
   const remote = (lang: string, name: string) => ({ lang, name, voiceURI: name, localService: false });
 
   function spoken(voices: readonly unknown[], tag: string) {
-    const speak = vi.fn();
+    const speak = finishing();
     vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn(), getVoices: () => voices });
     vi.stubGlobal('SpeechSynthesisUtterance', class {
       lang = ''; voice: unknown = undefined; constructor(public text: string) {}
@@ -658,7 +854,7 @@ describe('the automatic local-first choice, across language tags', () => {
  */
 describe('the seam', () => {
   function withSynthesis() {
-    const speak = vi.fn();
+    const speak = finishing();
     const cancel = vi.fn();
     vi.stubGlobal('speechSynthesis', { speak, cancel, getVoices: () => [] });
     vi.stubGlobal(
@@ -850,7 +1046,37 @@ describe('the seam', () => {
       onAndroid();
       capacitor.tts.speak.mockRejectedValueOnce(new Error('no-engine'));
 
-      await expect(createSpeaker(() => true).say('doze latas', 'pt-BR')).resolves.toBeUndefined();
+      await expect(createSpeaker(() => true).say('doze latas', 'pt-BR')).resolves.toBe('unknown');
+    });
+
+    /*
+     * WHAT THE PLUGIN NOW SAYS BACK, AND WHAT AN OLDER ONE DOES NOT.
+     *
+     * The bridge call is held open for the length of the sentence and answered
+     * with an outcome. An APK built before that answers the same call the
+     * instant the utterance reaches the engine, with no payload at all, so a
+     * web layer reading a missing field as "it finished" would be claiming a
+     * sentence had been heard at the moment it started.
+     */
+    it('reports spoken when the plugin says the utterance finished', async () => {
+      onAndroid();
+      capacitor.tts.speak.mockResolvedValue({ outcome: 'spoken' });
+
+      await expect(createSpeaker(() => true).say('doze latas', 'pt-BR')).resolves.toBe('spoken');
+    });
+
+    it('reports unknown when the plugin says the utterance did not', async () => {
+      onAndroid();
+      capacitor.tts.speak.mockResolvedValue({ outcome: 'unknown' });
+
+      await expect(createSpeaker(() => true).say('doze latas', 'pt-BR')).resolves.toBe('unknown');
+    });
+
+    it('reports unknown for an older APK that answers with no outcome at all', async () => {
+      onAndroid();
+      capacitor.tts.speak.mockResolvedValue(undefined);
+
+      await expect(createSpeaker(() => true).say('doze latas', 'pt-BR')).resolves.toBe('unknown');
     });
 
     it('does not throw when stopping through a plugin that rejects', () => {
@@ -1022,6 +1248,62 @@ describe('the seam', () => {
       onAndroid();
       capacitor.tts.isSpeaking.mockRejectedValue(new Error('no-engine'));
       await expect(isSpeaking()).resolves.toBe(false);
+    });
+
+    /*
+     * THE SIGNAL BEFORE THE POLL. A sentence `say` is still waiting on is being
+     * read, and the seam knows that without asking anybody - so the platform is
+     * not asked at all. This is what the welcome's don't-talk-over guard reads
+     * now, and it is exact where the poll it replaced could not see a sentence
+     * the engine had been handed and not yet made a sound about.
+     */
+    it('is true while a sentence is in flight, without asking the platform', async () => {
+      onAndroid();
+      // The plugin would say no, and its answer is the one being bypassed.
+      capacitor.tts.isSpeaking.mockResolvedValue({ speaking: false });
+
+      let finish = (): void => undefined;
+      capacitor.tts.speak.mockReturnValue(
+        new Promise((resolve) => {
+          finish = () => {
+            resolve({ outcome: 'spoken' });
+          };
+        }),
+      );
+
+      const speaker = createSpeaker(() => true);
+      const said = speaker.say('doze latas', 'pt-BR');
+
+      await expect(isSpeaking()).resolves.toBe(true);
+      expect(capacitor.tts.isSpeaking).not.toHaveBeenCalled();
+
+      finish();
+      await expect(said).resolves.toBe('spoken');
+
+      // Over, so the record has nothing to say and the platform is asked.
+      await expect(isSpeaking()).resolves.toBe(false);
+      expect(capacitor.tts.isSpeaking).toHaveBeenCalledOnce();
+    });
+
+    /*
+     * And a stop clears the record at once rather than leaving it insisting for
+     * the length of a round trip. Closing a sheet over a sentence is the answer
+     * to "is anything being read"; the engine finding out is a consequence.
+     */
+    it('stops claiming a sentence is in flight the moment a stop is asked for', async () => {
+      onAndroid();
+      capacitor.tts.isSpeaking.mockResolvedValue({ speaking: false });
+      capacitor.tts.speak.mockReturnValue(new Promise(() => undefined));
+
+      const speaker = createSpeaker(() => true);
+      void speaker.say('doze latas', 'pt-BR');
+
+      await expect(isSpeaking()).resolves.toBe(true);
+      expect(capacitor.tts.isSpeaking).not.toHaveBeenCalled();
+
+      speaker.stop();
+      await expect(isSpeaking()).resolves.toBe(false);
+      expect(capacitor.tts.isSpeaking).toHaveBeenCalledOnce();
     });
   });
 });

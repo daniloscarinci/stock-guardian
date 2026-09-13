@@ -7,6 +7,11 @@
  * speaker, so NOTHING HERE MAKES A SOUND. And the phone's silent switch, which
  * has no answer outside an APK.
  *
+ * `isSpeaking` is still the hook's don't-talk-over guard and is still stubbed
+ * here, but what answers it changed underneath: the seam holds the sentence in
+ * flight and reads that before it asks any platform anything. From this file
+ * the question and the answer look exactly as they did.
+ *
  * `composeWelcome` is real, so the sentence asserted below is the sentence the
  * phone would say.
  */
@@ -18,7 +23,13 @@ import type { DashboardStats } from '../../repositories/items.repository';
 
 const mocks = vi.hoisted(() => ({
   app: { value: undefined as unknown },
-  say: vi.fn(async (_text: string, _tag: string) => undefined),
+  /*
+   * `say` answers with what became of the sentence now. The greeting never
+   * reads it - nothing follows a greeting, so there is nothing waiting to hear
+   * whether it finished - but the stub answers the way the real seam does, so
+   * that a future caller which does read it is not written against a lie.
+   */
+  say: vi.fn(async (_text: string, _tag: string) => 'spoken' as const),
   stop: vi.fn(),
   speaking: vi.fn(async () => false),
   silent: vi.fn(async () => false),

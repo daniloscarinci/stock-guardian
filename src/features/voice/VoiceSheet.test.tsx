@@ -141,19 +141,60 @@ async function listen(user: ReturnType<typeof userEvent.setup>) {
   await ready();
 }
 
-/** A `speechSynthesis` that records what it was asked to read. */
+/** One utterance, as much of it as anything here touches. */
+interface StubUtterance {
+  onend?: (() => void) | null;
+}
+
+/**
+ * A `speechSynthesis` that records what it was asked to read, and finishes it.
+ *
+ * FINISHING IT IS THE PART THAT IS NEW. `say` resolves when the sentence has
+ * been heard rather than when it was handed over, so a stub that accepts an
+ * utterance and is never heard from about it again leaves a promise open until
+ * the seam's watchdog expires - seconds of a timer still running when the test
+ * has finished. Calling `onend` from `speak` is simply the fastest a browser
+ * could possibly read the sentence.
+ */
 function stubSpeaker() {
-  const spoken = vi.fn();
+  const spoken = vi.fn((utterance: StubUtterance) => utterance.onend?.());
+  stubSynthesis(spoken);
+  return spoken;
+}
+
+/**
+ * The same, except the sentence goes on being read until `finish` is called.
+ *
+ * What it is for: asserting what the sheet looks like WHILE an answer is being
+ * spoken, which was not a state that could be observed before - `say` used to
+ * resolve at once, so there was no while.
+ */
+function stubSlowSpeaker() {
+  const reading: StubUtterance[] = [];
+  const spoken = vi.fn((utterance: StubUtterance) => {
+    reading.push(utterance);
+  });
+  stubSynthesis(spoken);
+  return {
+    spoken,
+    finish: () => {
+      for (const utterance of reading.splice(0)) utterance.onend?.();
+    },
+  };
+}
+
+function stubSynthesis(spoken: (utterance: StubUtterance) => void) {
   vi.stubGlobal('speechSynthesis', { speak: spoken, cancel: vi.fn(), getVoices: () => [] });
   vi.stubGlobal(
     'SpeechSynthesisUtterance',
     class {
       lang = '';
       voice: unknown = null;
+      onend: (() => void) | null = null;
+      onerror: (() => void) | null = null;
       constructor(public text: string) {}
     },
   );
-  return spoken;
 }
 
 /*
@@ -1516,6 +1557,45 @@ describe('the microphone: a spoken question gets a spoken answer', () => {
       expect(spoken).toHaveBeenCalled();
     });
     expect((spoken.mock.calls[0]?.[0] as { text: string }).text).toMatch(/Rice: 3 kg/i);
+  });
+
+  /*
+   * THE SHEET COMES BACK BEFORE THE SENTENCE ENDS, AND THAT IS DELIBERATE.
+   *
+   * `speak` waits for the whole utterance now. `busy` drives `inert` over the
+   * log and the composer, so leaving it up until the sentence finished would
+   * have added the length of every answer to a window that used to be the
+   * length of the query - seconds of a sheet nobody can type into or scroll,
+   * for an answer already on the screen in front of them. `useVoice` lifts it
+   * before it speaks for exactly that reason. Speaking is not working.
+   */
+  it('gives the sheet back before the answer has finished being read out', async () => {
+    const { spoken, finish } = stubSlowSpeaker();
+
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'how much rice do i have');
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(spoken).toHaveBeenCalled();
+    });
+
+    // Nothing has reported the end of the utterance, so it is still being read.
+    const conversation = liveRegion().parentElement;
+    const composer = screen.getByRole('textbox').closest('form');
+    expect(conversation?.hasAttribute('inert')).toBe(false);
+    expect(composer?.hasAttribute('inert')).toBe(false);
+
+    const box = screen.getByRole('textbox');
+    box.focus();
+    expect(document.activeElement).toBe(box);
+
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+    });
   });
 
   it('says nothing aloud when the setting is off, and still answers on screen', async () => {

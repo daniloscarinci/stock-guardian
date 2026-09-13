@@ -31,6 +31,15 @@
  *     purpose: an answer requested a moment later flushes the greeting, because
  *     between a pleasantry and the thing that was asked for, the thing that was
  *     asked for wins.
+ *
+ * THE THIRD ONE USED TO BE A POLL AND IS NOW A SIGNAL. `isSpeaking` asked the
+ * platform and nothing else: `speechSynthesis.speaking || pending` in a
+ * browser, a bridge call to `TextToSpeech.isSpeaking` on the phone. `say` now
+ * resolves when a sentence has been HEARD rather than when it was handed over,
+ * which means the seam is holding the sentence in flight and can answer this
+ * from a field - see `isSpeaking` in speak.ts, which reads that record first
+ * and asks a platform only for the one case the record cannot cover. The
+ * question asked here has not changed. What answers it has.
  */
 import { useEffect, useRef } from 'react';
 import { useApp } from '../../app/AppContext';
@@ -77,12 +86,18 @@ export function useWelcome(stats: DashboardStats | undefined): void {
       if (await androidIsSilent()) return;
       /*
        * Checked immediately before speaking rather than at the top, because the
-       * two awaits above take real time on a phone. Between this check and the
+       * await above takes real time on a phone. Between this check and the
        * sentence there is still a gap in which an answer could start, and if it
        * does the answer's own flush wins - which is the right way round.
        */
       if (await isSpeaking()) return;
 
+      /*
+       * The outcome is deliberately not read. A greeting is the one sentence in
+       * this application that nothing follows: nobody is waiting to hear
+       * whether it finished, and there is no reply to listen for. The answers
+       * in the ask sheet are the ones where `spoken` will matter.
+       */
       await createSpeaker(
         () => settings.voiceSpeakWelcome,
         () => settings.speakingVoiceUri,
