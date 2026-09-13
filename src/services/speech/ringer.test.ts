@@ -9,7 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const capacitor = vi.hoisted(() => ({
   native: false,
   platform: 'web',
-  isSilent: vi.fn(async () => ({ silent: true })),
+  // The media volume is optional in the plugin's own result - an older APK
+  // reports the ringer and nothing else - so the stub's type says so too.
+  isSilent: vi.fn(async (): Promise<{ silent: boolean; mediaVolume?: number }> => ({
+    silent: true,
+  })),
 }));
 
 vi.mock('@capacitor/core', () => ({
@@ -20,7 +24,7 @@ vi.mock('@capacitor/core', () => ({
   registerPlugin: () => ({ isSilent: capacitor.isSilent }),
 }));
 
-const { androidIsSilent, isNativeAndroid } = await import('./ringer');
+const { androidAudibility, androidIsSilent, isNativeAndroid } = await import('./ringer');
 
 /** Pretends the code is running inside the APK. */
 function onAndroid(): void {
@@ -71,5 +75,72 @@ describe('on Android', () => {
     onAndroid();
     capacitor.isSilent.mockRejectedValueOnce(new Error('no such plugin'));
     await expect(androidIsSilent()).resolves.toBe(false);
+  });
+});
+
+/**
+ * Both silences, from one bridge call.
+ *
+ * They are different states with different answers - the ringer switch is
+ * somebody saying "not now", the media slider at zero is usually somebody who
+ * does not know they moved it - and both used to be asked separately, which is
+ * two `Ringer.isSilent` round trips for one plugin result. The conversation loop
+ * asks before every sentence of every turn, so once matters.
+ */
+describe('what the phone would do with a sentence', () => {
+  it('says audible off Android, and asks the bridge nothing', async () => {
+    await expect(androidAudibility()).resolves.toBe('audible');
+    expect(capacitor.isSilent).not.toHaveBeenCalled();
+  });
+
+  it('reads the ringer and the media volume in one call', async () => {
+    onAndroid();
+    capacitor.isSilent.mockResolvedValueOnce({ silent: false, mediaVolume: 7 });
+
+    await expect(androidAudibility()).resolves.toBe('audible');
+    expect(capacitor.isSilent).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a silenced phone as silenced', async () => {
+    onAndroid();
+    capacitor.isSilent.mockResolvedValueOnce({ silent: true, mediaVolume: 7 });
+    await expect(androidAudibility()).resolves.toBe('silenced');
+  });
+
+  /*
+   * The gap this closes. `TextToSpeech` plays on the media stream and the ringer
+   * says nothing about it, so this phone speaks perfectly and is heard by
+   * nobody - which used to be reported as an answer that had been read out.
+   */
+  it('reports a phone that is not silenced but cannot be heard', async () => {
+    onAndroid();
+    capacitor.isSilent.mockResolvedValueOnce({ silent: false, mediaVolume: 0 });
+    await expect(androidAudibility()).resolves.toBe('mediaMuted');
+  });
+
+  /*
+   * Both at once is `silenced`, because that is the one of the two the person
+   * chose on purpose and the one whose sentence is worth showing them.
+   */
+  it('blames the ringer when the ringer and the volume are both against it', async () => {
+    onAndroid();
+    capacitor.isSilent.mockResolvedValueOnce({ silent: true, mediaVolume: 0 });
+    await expect(androidAudibility()).resolves.toBe('silenced');
+  });
+
+  /*
+   * An older APK reports no such field. Claiming the volume is down when nobody
+   * said so would send somebody to fix a setting that was never the problem.
+   */
+  it('says audible when the plugin does not report a volume at all', async () => {
+    onAndroid();
+    capacitor.isSilent.mockResolvedValueOnce({ silent: false });
+    await expect(androidAudibility()).resolves.toBe('audible');
+  });
+
+  it('says audible when the bridge call is refused outright', async () => {
+    onAndroid();
+    capacitor.isSilent.mockRejectedValueOnce(new Error('no such plugin'));
+    await expect(androidAudibility()).resolves.toBe('audible');
   });
 });

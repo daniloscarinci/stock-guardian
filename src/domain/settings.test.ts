@@ -19,6 +19,19 @@ describe('settings', () => {
       expect(DEFAULT_SETTINGS.voiceOfflineOnly).toBe(false);
     });
 
+    /*
+     * The other setting that ships off, and for the same shape of reason: it
+     * re-opens a microphone without a press. Speaking, the welcome and the ask
+     * button are all the behaviour somebody would choose anyway, and a
+     * recording nobody asked for at that instant is not - so it waits to be
+     * switched on, and a database that predates it has it off.
+     */
+    it('defaults keeping the microphone open after an answer OFF', () => {
+      expect(DEFAULT_SETTINGS.voiceKeepListening).toBe(false);
+      const { settings } = parseSettings([{ key: 'askEnabled', value: 'true' }]);
+      expect(settings.voiceKeepListening).toBe(false);
+    });
+
     it('leaves it off for a database that predates the setting', () => {
       const { settings } = parseSettings([{ key: 'askEnabled', value: 'true' }]);
       expect(settings.voiceOfflineOnly).toBe(false);

@@ -500,6 +500,8 @@ export const ptBR: LocaleTree = {
     micButton: 'Falar em vez de digitar',
     listening: 'Ouvindo…',
     stopListening: 'Parar de ouvir',
+    stopConversation: 'Parar a conversa',
+    conversationNext: 'Em uma conversa — o microfone abre de novo depois da resposta.',
     unavailable: 'Este aparelho não transcreve voz por conta própria, então a caixa abaixo é o caminho.',
     installable: 'Nenhum pacote de voz para este idioma está instalado neste aparelho.',
     installDownloads: 'Instalar faz o download do pacote. Nada seu é enviado em troca.',
@@ -543,6 +545,19 @@ export const ptBR: LocaleTree = {
       'Mostra o botão no cabeçalho. A caixa de perguntas só abre por ele, então desligar aqui remove os dois.',
     settingSpeak: 'Ler respostas em voz alta',
     settingSpeakHelp: 'Usa a voz do sistema. No Android, o botão de silencioso do aparelho tem prioridade.',
+    settingConversation: 'Continuar ouvindo depois de cada resposta',
+    settingConversationHelp:
+      'Desligado. Aperte o microfone uma vez e ele continua com você: diga uma frase, ouça a resposta, diga a próxima. Termina quando você para de falar, quando alguma coisa precisa de um toque — um cartão para confirmar, um nome para escolher, um item para criar — ou depois de doze frases. Nada de novo pode ser gravado assim: tudo o que uma conversa muda, um toque já muda hoje.',
+    settingConversationNeedsSpeech:
+      'Isto precisa de Ler respostas em voz alta, que está desligado. Uma conversa com um aplicativo que não responde nada não é uma conversa.',
+    conversationSilenced:
+      'A conversa parou depois de uma resposta: o botão de silencioso do aparelho está ligado, então nada foi lido em voz alta. A resposta está acima.',
+    conversationMediaMuted:
+      'A conversa parou depois de uma resposta: o volume de mídia está em zero, então nada seria ouvido. Aumente com as teclas de volume e aperte o microfone de novo.',
+    conversationMute:
+      'A conversa parou depois de uma resposta: ler as respostas em voz alta está desligado, e uma conversa precisa ser ouvida.',
+    conversationUnheard:
+      'A conversa parou: este aparelho nunca disse se a resposta foi lida em voz alta, então o microfone ficou fechado.',
     settingVoice: 'Qual voz',
     settingVoiceHelp:
       'As vozes que este aparelho já tem para o idioma da interface. Nada é baixado para preencher a lista, e a voz escolhida é usada até deixar de estar instalada.',

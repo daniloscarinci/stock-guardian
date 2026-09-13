@@ -615,8 +615,10 @@ application is drawn, scrollable and usable before a word is said.
 ## Speaking instead of typing
 
 The microphone is in the sheet, beside the box, not in the header. Press it, say
-one sentence, and what comes back goes to the same `run` the **Send** button
+a sentence, and what comes back goes to the same `run` the **Send** button
 calls: a spoken question and a typed one take the same path from the first line.
+One press is one sentence unless **Keep listening after each answer** is on, in
+which case it is a conversation — see below.
 
 It is in the sheet rather than in the header on purpose, and the reason is the
 bug this feature died of. The header button used to be the microphone: pressing
@@ -677,6 +679,73 @@ says *refused*.
 
 Nothing switches it for you. Not a retry, not a failure, not an upgrade. A
 failure may put the switch in front of you; only you move it.
+
+### One press, and then a conversation
+
+**Settings → Ask → Keep listening after each answer** is off as shipped. With it
+on, one press of the microphone is a whole stock-take rather than one sentence:
+
+```
+"quanto arroz eu tenho?"  → "Arroz: 12 quilos, na Despensa."   still listening
+"usei três ovos"          → "Ovos: 9 unidades, na Despensa."   still listening
+[silence]                 → the conversation ends
+```
+
+The reason it exists is the reason the box exists: a person holding a torch in
+one hand and a box in the other. Ten sentences used to be ten presses.
+
+**It adds nothing to what can be written.** Everything a conversation can commit,
+one press already commits today — a sentence naming an item exactly and giving a
+number, stored at once with **Desfazer** offered for ten seconds. Everything the
+engine had to guess at goes to a confirmation card, and a card ends the
+conversation. The set of things that reach the database is exactly what it was.
+
+**It ends when you stop talking.** Android maps both `ERROR_NO_MATCH` and
+`ERROR_SPEECH_TIMEOUT` to the same code, so "nobody spoke" arrives as a distinct
+answer rather than as an error, and that is the natural way out. It is the one
+failure a running conversation does not put a panel up for: *I did not hear
+anything* is the right thing to say to a press that heard nothing and the wrong
+thing to say at the end of every conversation. A first listen that hears nothing
+still says it.
+
+**And it ends on anything that needs a finger.** A confirmation card, a list of
+names to choose between, an offer to create something that was not found. There
+is no spoken yes or no in this release, so listening again while a card stands
+would let the next sentence be parsed as though nobody had been asked anything.
+Stop, the sheet closing, a listen that fails for any other reason, and a
+recognizer that reports itself busy all end it too — the last one because asking
+again would land on the same refusal.
+
+**It will not start on a phone nobody could hear.** A turn that was not actually
+spoken does not re-open the microphone, and the sheet says which silence it was:
+the ringer switch, the media volume at zero, **Read answers aloud** switched off,
+or a speech engine that took the sentence and never reported what became of it.
+The last one is the case that matters most for a microphone — with no echo
+cancellation and nothing coordinating audio focus, a microphone opened while the
+phone is still talking records the phone. The first three matter for a different
+reason: somebody who did not hear the answer has no way of knowing the
+microphone came back.
+
+**Twelve sentences, and then it stops.** The stock-take this is for is about ten;
+twelve leaves room for the ones that come back wrong. It bounds two real costs. A
+turn is a fresh bind of Android's recognition service — the recognizer is
+destroyed on every settle, deliberately, so that the microphone is released on
+every path — and some devices are reported to degrade over a long run of them.
+And where **Ask Claude** is answering, every turn is a paid request, so a
+misheard air conditioner spends money twelve times and then stops. Claude's
+answers usually carry proposals, which are cards, so a conversation with the
+assistant that proposes anything is one turn long. That is honest rather than
+ideal.
+
+**No recognizer is held open between turns.** The answer being read out is the
+gap between them. Keeping one alive would be faster and would weaken the
+strongest promise `SpeechPlugin` makes.
+
+The switch is disabled, with a line saying why, while **Read answers aloud** is
+off: a conversation with an application that says nothing back is not a
+conversation. It is a separate setting rather than a mode of that one, because
+two switches that each mean what their label says are better than one that
+quietly overrides the other.
 
 ### When it fails, it says which failure
 
@@ -801,19 +870,26 @@ code it describes.
 
 ## What it will not do
 
-- **No wake word, and no continuous listening.** One utterance per press, ended
-  by the recognizer, by the stop button beside *Ouvindo…*, or by closing the
-  sheet — and the recognizer is released on every one of those. An application
-  that listens without being asked is not one to build on a promise about what
-  leaves the device.
+- **No wake word, and no session that stays open.** Nothing here listens until
+  the microphone is pressed, and every listen is one utterance, ended by the
+  recognizer, by the stop button, or by closing the sheet — the recognizer is
+  released on every one of those. **Keep listening after each answer** takes
+  another utterance after an answer that was actually heard, up to twelve from
+  one press, and each of those is a fresh listen with a fresh recognizer; it is
+  off as shipped, it stops the moment you stop talking, and there is a stop
+  control on screen the whole time it is running. What there is no way to reach
+  is an application listening without having been asked to.
 - **No permission but the network and the microphone.** That list used to read
   "no `RECORD_AUDIO`, ever", and *The permission, and the design it replaced*
   above is the account of why it does not any more. The check in
   `.github/workflows/android.yml` was narrowed to those two names and still
   fails the build on camera, location, contacts, storage and anything else.
-- **No conversation.** The engine answers the forms in the tables above.
-  Anything else is UNKNOWN with examples, not a guess. It has no memory between
-  sentences: each one is parsed on its own, so "and two more" refers to nothing.
+- **No memory between sentences.** The engine answers the forms in the tables
+  above. Anything else is UNKNOWN with examples, not a guess. **Keep listening
+  after each answer** strings sentences together but does not join them up: each
+  one is parsed entirely on its own, so "and two more" still refers to nothing,
+  and a card cannot be answered out loud — a card ends the conversation instead.
+  There is no spoken yes, no spoken no, and no pronoun that reaches back.
 - **No settings from the box, and no editing of what it made.** It reads the
   inventory; it changes quantities, expiry dates, minimums and targets; it moves
   items; and it creates items, places, categories and contacts. A new row
@@ -877,7 +953,14 @@ out, but it is a limit and not a total.
 and the box inside it are reached through that button and through nothing else,
 so switching it off removes the feature rather than only its entry point.
 
-**Settings → Ask → Read answers aloud** keeps the box and stops the speaking.
+**Settings → Ask → Read answers aloud** keeps the box and stops the speaking. It
+also greys out the switch below it, because a conversation that cannot be heard
+is not one; the stored value is untouched and comes back when speaking does.
+
+**Settings → Ask → Keep listening after each answer** is off. Switching it on
+makes one press a conversation — see *One press, and then a conversation*. Off,
+one press is one sentence, which is how this feature worked for its first four
+releases.
 
 **Settings → Ask → Transcribe on this device only** is off. Switching it on
 removes the second attempt entirely and returns the microphone to the absolute

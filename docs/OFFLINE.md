@@ -389,11 +389,15 @@ but that one and `INTERNET`, and the command to check a built APK yourself is in
 `docs/ANDROID.md`.
 
 What the permission does not change: it lets this process open the microphone,
-and nothing more. There is no continuous listening and no wake word — one
-utterance per press, ended by the recognizer, by the stop button, or by closing
-the sheet, and the recognizer is destroyed on every one of those paths because a
-leaked one holds the microphone open. Audio is never written to storage and
-never passes through this application's own network code, which the
+and nothing more. There is no wake word and no session that stays open — every
+listen is one utterance, ended by the recognizer, by the stop button, or by
+closing the sheet, and the recognizer is destroyed on every one of those paths
+because a leaked one holds the microphone open. **Settings → Ask → Keep
+listening after each answer** takes another utterance after an answer that was
+actually heard, up to twelve from one press, and each of those is a fresh listen
+with a fresh recognizer; it is off as shipped and stops the moment nobody
+speaks. Nothing listens that was not asked to. Audio is never written to storage
+and never passes through this application's own network code, which the
 Content-Security-Policy above would refuse anyway.
 
 **Failures are named rather than swallowed.** The plugin returns a stable code

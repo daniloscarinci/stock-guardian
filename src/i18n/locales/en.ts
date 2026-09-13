@@ -500,6 +500,8 @@ export const en = {
     micButton: 'Speak instead of typing',
     listening: 'Listening…',
     stopListening: 'Stop listening',
+    stopConversation: 'Stop the conversation',
+    conversationNext: 'In a conversation — the microphone opens again after the answer.',
     unavailable: 'This device cannot transcribe speech on its own, so the box below is the way in.',
     installable: 'No speech pack for this language is installed on this device yet.',
     installDownloads: 'Installing downloads the pack. Nothing of yours is sent in exchange.',
@@ -543,6 +545,19 @@ export const en = {
       'Shows the button in the header. The question box opens only from it, so switching this off removes both.',
     settingSpeak: 'Read answers aloud',
     settingSpeakHelp: "Uses the system voice. On Android the phone's silent switch wins over this.",
+    settingConversation: 'Keep listening after each answer',
+    settingConversationHelp:
+      'Off. Press the microphone once and it stays with you: say a sentence, hear the answer, say the next one. It ends when you stop talking, when anything needs a press — a card to confirm, a name to choose, an item to create — or after twelve sentences. Nothing new can be written this way: everything a conversation can change, one press already changes today.',
+    settingConversationNeedsSpeech:
+      'This needs Read answers aloud, which is off. A conversation with an application that says nothing back is not a conversation.',
+    conversationSilenced:
+      'The conversation stopped after one answer: the phone’s silent switch is on, so nothing was read out. The answer is above.',
+    conversationMediaMuted:
+      'The conversation stopped after one answer: the media volume is at zero, so nothing would be heard. Turn it up with the volume keys and press the microphone again.',
+    conversationMute:
+      'The conversation stopped after one answer: reading answers aloud is switched off, and a conversation needs to be heard.',
+    conversationUnheard:
+      'The conversation stopped: this phone never said whether the answer was read out, so the microphone was left shut.',
     settingVoice: 'Which voice',
     settingVoiceHelp:
       'The voices this device already has for the interface language. Nothing is downloaded to fill the list, and a voice you pick is used until it is not installed any more.',

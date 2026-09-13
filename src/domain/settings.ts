@@ -143,6 +143,39 @@ export const settingsSchema = z.object({
   voiceSpeakWelcome: z.boolean().default(true),
 
   /**
+   * KEEPS THE MICROPHONE COMING BACK AFTER EACH ANSWER, so one press is a
+   * conversation rather than one sentence. Off.
+   *
+   * What it buys: a ten-sentence stock-take is one press instead of ten, which
+   * matters to the person this application is for - holding a torch in one hand
+   * and a box in the other. Press once, say a sentence, hear the answer, say the
+   * next one, and stop talking to end it.
+   *
+   * OFF IS THE DECISION, AND IT IS THE OPPOSITE OF `voiceSpeakWelcome`'S. The
+   * test that file applies is whether the default is the behaviour somebody
+   * would choose anyway. This one is not. It re-opens a microphone without a
+   * press - after an answer, on its own - and however carefully that is bounded
+   * it is still a recording somebody did not ask for at that instant. On the
+   * assistant it also spends money per turn. So it ships off and stays off until
+   * a person presses it.
+   *
+   * INDEPENDENT OF `voiceSpeakAnswers`, AND NOT MERGED WITH IT. The comment on
+   * `voiceSpeakWelcome` above makes the argument once already and it holds here:
+   * coupling two speech switches is how one reads "on" while the other silently
+   * overrides it. What this one does do is depend on the other to be USEFUL - a
+   * conversation with an application that says nothing back is not a
+   * conversation - so Settings disables the row and says why while speaking is
+   * off. Disabling a control is not the same as merging two settings: the stored
+   * value is untouched and comes back when speaking does.
+   *
+   * The loop refuses to arm on any answer that was not actually heard - the
+   * setting off, the ringer switch, the media volume at zero, or an engine that
+   * never reported the end of the sentence. See `useVoice`, which is where the
+   * turns are counted and stopped.
+   */
+  voiceKeepListening: z.boolean().default(false),
+
+  /**
    * Keeps recorded speech on the device even when that means no transcription
    * at all.
    *

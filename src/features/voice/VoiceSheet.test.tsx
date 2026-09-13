@@ -2,12 +2,19 @@
 /**
  * The ask sheet, driven through the box it is made of.
  *
- * Two things are stubbed and nothing else. The network - the Anthropic SDK, so
+ * Three things are stubbed and nothing else. The network - the Anthropic SDK, so
  * that not one assertion here can reach the real API or spend anybody's money.
- * And the choice of recognizer, in the last blocks only, because speech cannot
- * be typed and what those blocks test is precisely what the interface does with
- * a listen that fails. `speechFailureReason` and the failure codes stay real:
+ * The choice of recognizer, in the last blocks only, because speech cannot be
+ * typed and what those blocks test is precisely what the interface does with a
+ * listen that fails. `speechFailureReason` and the failure codes stay real:
  * reading a reason out of what a platform threw is half of what is checked.
+ *
+ * And the phone's own audibility, which is the third and the newest. It reads
+ * the ringer mode and the media volume across the Capacitor bridge, so off a
+ * phone it can only ever answer `audible` - and a conversation turns on exactly
+ * that answer, because it will not open a microphone for an answer nobody heard.
+ * The stub is `audible` for every test but the two that set it, so nothing else
+ * in this file changes behaviour.
  *
  * The database is real - the same in-memory SQLite driver the repository tests
  * use, migrated and seeded. That is what lets the central promise of this
@@ -40,6 +47,8 @@ import type * as AnthropicSdk from '@anthropic-ai/sdk';
 import type * as ConverseModule from '../../services/ai/converse';
 import type { AiOutcome } from '../../services/ai/converse';
 import type * as RecognizerModule from '../../services/speech/recognizer';
+import type * as RingerModule from '../../services/speech/ringer';
+import type { Audibility } from '../../services/speech/ringer';
 import {
   openAppSettings,
   selectRecognizer,
@@ -57,6 +66,18 @@ vi.mock('../../services/speech/recognizer', async (importOriginal) => {
   // `openAppSettings` leaves the application, so it is a spy rather than the
   // real thing. What is asserted is that the button reaches it at all.
   return { ...actual, selectRecognizer: vi.fn(), openAppSettings: vi.fn() };
+});
+
+/*
+ * The phone, as far as sound is concerned. `audible` unless a test says
+ * otherwise, which is what the real function answers off Android anyway - so
+ * every test that does not touch this behaves exactly as it did.
+ */
+const phone = vi.hoisted(() => ({ audibility: 'audible' as Audibility }));
+
+vi.mock('../../services/speech/ringer', async (importOriginal) => {
+  const actual = await importOriginal<typeof RingerModule>();
+  return { ...actual, androidAudibility: () => Promise.resolve(phone.audibility) };
 });
 
 /** A device that can listen, and whose every listen ends the same way. */
@@ -79,6 +100,41 @@ function recognizerHearing(phrase: string, online = false): SpeechRecognizer {
   return {
     availability: () => Promise.resolve('ready'),
     listen: () => Promise.resolve({ text: phrase, online }),
+  };
+}
+
+/**
+ * A device that hears these sentences in order, and then hears nothing.
+ *
+ * A WHOLE CONVERSATION, WITH ITS OWN ENDING. `recognizerHearing` above answers
+ * every listen with the same phrase forever, which is exactly what is wanted for
+ * pinning the turn cap and exactly wrong for everything else: a loop against it
+ * only ever stops because it ran out of turns. This one runs out of sentences
+ * instead, and then rejects with `no-match` - which is what Android sends when
+ * nobody speaks, ERROR_NO_MATCH and ERROR_SPEECH_TIMEOUT both, and which is how
+ * a conversation is meant to end.
+ *
+ * `heard` counts the listens, because "the second sentence ran without a second
+ * press" is a claim about how many times the microphone was opened.
+ */
+function recognizerSaying(...phrases: readonly string[]): {
+  readonly recognizer: SpeechRecognizer;
+  readonly heard: () => number;
+} {
+  const queue = [...phrases];
+  let opened = 0;
+  return {
+    recognizer: {
+      availability: () => Promise.resolve('ready'),
+      listen: () => {
+        opened += 1;
+        const next = queue.shift();
+        return next === undefined
+          ? Promise.reject(new SpeechFailureError('no-match'))
+          : Promise.resolve({ text: next, online: false });
+      },
+    },
+    heard: () => opened,
   };
 }
 
@@ -144,6 +200,7 @@ async function listen(user: ReturnType<typeof userEvent.setup>) {
 /** One utterance, as much of it as anything here touches. */
 interface StubUtterance {
   onend?: (() => void) | null;
+  onerror?: (() => void) | null;
 }
 
 /**
@@ -181,6 +238,21 @@ function stubSlowSpeaker() {
       for (const utterance of reading.splice(0)) utterance.onend?.();
     },
   };
+}
+
+/**
+ * A `speechSynthesis` that takes the sentence and fails it.
+ *
+ * `onerror` is the browser's way of saying a voice would not load, a language is
+ * not readable, or the synthesiser refused the utterance - and `websynthesis.ts`
+ * settles those as `unknown`, which is the outcome that means nobody can say
+ * whether the phone is still talking. It is the one arming-gate case that is not
+ * a setting and not a switch on a phone.
+ */
+function stubFailingSpeaker() {
+  const spoken = vi.fn((utterance: StubUtterance) => utterance.onerror?.());
+  stubSynthesis(spoken);
+  return spoken;
 }
 
 function stubSynthesis(spoken: (utterance: StubUtterance) => void) {
@@ -372,6 +444,7 @@ beforeEach(async () => {
   await items.create({ name: 'Leite', quantity: 2, unit: 'l' });
 
   ai.outcome = null;
+  phone.audibility = 'audible';
   anthropic.create.mockReset();
   anthropic.constructed.mockReset();
 
@@ -1384,16 +1457,30 @@ describe('the microphone: stopping a listen', () => {
     expect(screen.getByRole('status').textContent).toMatch(/listening/i);
 
     /*
-     * Both of them beside the button that opened the microphone, in the pinned
-     * footer. Stopping is the one urgent thing there is to do while a listen is
-     * open - on Android it is this process holding the recorder - so the control
-     * for it must not be somewhere a scrolled log could have taken it.
+     * Both of them in the pinned footer, one line above the microphone that
+     * opened the listen. Stopping is the one urgent thing there is to do while a
+     * listen is open - on Android it is this process holding the recorder - so
+     * the control for it must not be somewhere a scrolled log could have taken
+     * it.
+     *
+     * AND OUTSIDE THE FORM, WHICH IS THE PART THAT CHANGED AND THE PART THAT
+     * MATTERS MOST. It used to share a parent with the microphone, inside the
+     * row that carries `inert` while the sheet is working something out. A
+     * conversation lives in that window, and `inert` does not dim a control - it
+     * removes it from the accessibility tree. So the assertion is now the
+     * stronger one: the stop control is in the footer, adjacent to the composer
+     * row, and no ancestor of it is the form that goes inert.
      */
     const mic = screen.getByRole('button', { name: /speak instead of typing/i });
     const stop = screen.getByRole('button', { name: /stop listening/i });
-    expect(stop.parentElement).toBe(mic.parentElement);
-    expect(screen.getByRole('status').parentElement).toBe(mic.parentElement);
+    const composer = screen.getByRole('textbox').closest('form');
     expect(stop.closest('footer')).not.toBeNull();
+    expect(stop.parentElement).toBe(screen.getByRole('status').parentElement);
+    // Immediately above the composer rather than anywhere in the footer, so a
+    // longer log can never put distance between the two.
+    expect(composer?.previousElementSibling?.contains(stop)).toBe(true);
+    expect(mic.closest('form')).toBe(composer);
+    expect(stop.closest('form')).toBeNull();
 
     await user.click(stop);
 
@@ -1956,5 +2043,408 @@ describe('the proposals Claude makes', () => {
     expect(screen.getByText(/Ask something narrower/i)).toBeTruthy();
     expect(await screen.findByRole('group', { name: 'Beans' })).toBeTruthy();
     expect(await quantityOf('Beans')).toBe(12);
+  });
+});
+
+/**
+ * One press, and then a conversation.
+ *
+ * The feature this exists for is a stock-take: a person with a torch in one hand
+ * and a box in the other, saying ten sentences that used to be ten presses. The
+ * setting is off, so the whole block turns it on; every assertion here is either
+ * about the loop running WITHOUT a second press or about one of the ways it has
+ * to stop.
+ *
+ * IT ADDS NO WRITE PATH, and the assertions are made against the database rather
+ * than the screen for exactly that reason: what a conversation writes is what one
+ * press already writes today, which is a sentence naming an item exactly and
+ * giving a number. Everything guessed at goes to a card, and a card ends the
+ * conversation.
+ */
+describe('the microphone: a conversation', () => {
+  it('runs the second sentence with no second press, and writes what it said', async () => {
+    stubSpeaker();
+    const mic = recognizerSaying('how much rice do i have', 'add five cans of beans');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    // ONE press. Everything below happened without the finger coming back.
+    await listen(user);
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    expect(await screen.findByText(/Beans: 17 cans/i)).toBeTruthy();
+
+    // The promise this feature rests on, asserted against the table: the second
+    // sentence was not merely echoed, it moved the stock.
+    await vi.waitFor(async () => {
+      expect(await quantityOf('Beans')).toBe(17);
+    });
+
+    // Three listens from one press: two sentences and the silence after them.
+    await vi.waitFor(() => {
+      expect(mic.heard()).toBe(3);
+    });
+  });
+
+  /**
+   * Ending on silence is how a conversation is supposed to end.
+   *
+   * `MicNotice` renders "I did not hear anything" for `no-match`, which is right
+   * for a press that heard nothing and would turn the ordinary end of every
+   * conversation into an error panel. This is the assertion that the panel does
+   * not appear - and the one below it is the assertion that suppressing it did
+   * not cost the case it was written for.
+   */
+  it('ends on the silence after the last sentence, and calls it nothing at all', async () => {
+    stubSpeaker();
+    const mic = recognizerSaying('how much rice do i have');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(mic.heard()).toBe(2);
+    });
+
+    expect(screen.queryByText(/I did not hear anything/i)).toBeNull();
+    // And it really did stop: the way out is gone and the button is pressable.
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('button', { name: /stop the conversation/i })).toBeNull();
+    });
+  });
+
+  it('still says it heard nothing when the very first listen hears nothing', async () => {
+    stubSpeaker();
+    const mic = recognizerSaying();
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/I did not hear anything/i)).toBeTruthy();
+  });
+
+  /**
+   * A card is a question, and there is no way to answer one out loud yet.
+   *
+   * This is the stop condition the whole design turns on. Without consent
+   * vocabulary - which is a later release - listening again while a card stands
+   * would let the next sentence be parsed as though nobody had been asked
+   * anything, and the third sentence below is the proof that it is not.
+   */
+  it('stops when something needs a press, and never hears the sentence after it', async () => {
+    stubSpeaker();
+    const mic = recognizerSaying(
+      'how much rice do i have',
+      'i bought beans',
+      'add five cans of beans',
+    );
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    expect(await screen.findByRole('group', { name: 'Beans' })).toBeTruthy();
+
+    // Two listens, not three. The third sentence was never asked for.
+    await vi.waitFor(() => {
+      expect(mic.heard()).toBe(2);
+    });
+    // And nothing was written: not the guess on the card, not the sentence
+    // behind it.
+    expect(await quantityOf('Beans')).toBe(12);
+  });
+
+  /**
+   * The turn cap, pinned by a microphone that never stops talking.
+   *
+   * `recognizerHearing` answers every listen with the same sentence forever,
+   * which is a runaway loop by construction - a misheard air conditioner, or a
+   * radio left on in the kitchen. Each turn here adds five cans, so the stock is
+   * the turn counter: twelve turns is sixty cans on top of the twelve there
+   * were. Waiting for exactly 72 fails if the loop overshoots, because it would
+   * pass straight through the number and never come back to it.
+   */
+  it('stops after twelve sentences, however long the room goes on talking', async () => {
+    stubSpeaker();
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerHearing('add five cans of beans'));
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    await vi.waitFor(
+      async () => {
+        expect(await quantityOf('Beans')).toBe(12 + 12 * 5);
+      },
+      { timeout: 10_000 },
+    );
+
+    // A ceiling holds only if it still holds after the loop has had every
+    // chance to take another turn.
+    await ready();
+    await ready();
+    expect(await quantityOf('Beans')).toBe(72);
+    expect(screen.queryByRole('button', { name: /stop the conversation/i })).toBeNull();
+  });
+
+  /**
+   * One press is one sentence again the moment the setting is off, which is how
+   * it ships.
+   */
+  it('takes one sentence per press while the setting is off', async () => {
+    stubSpeaker();
+    const mic = recognizerSaying('how much rice do i have', 'add five cans of beans');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    expect(mic.heard()).toBe(1);
+    expect(await quantityOf('Beans')).toBe(12);
+  });
+});
+
+/**
+ * The arming gate: a turn nobody heard does not open a microphone.
+ *
+ * There is no echo cancellation here and nothing coordinates audio focus, and
+ * that is the smaller half of the argument. The larger half is that somebody who
+ * did not hear the answer has no way of knowing the microphone came back - so a
+ * conversation that cannot be heard stops after one turn and says which of the
+ * four silences it was.
+ */
+describe('the microphone: a conversation that could not be heard', () => {
+  /** One press, two sentences queued, and how far it got. */
+  async function pressWith(overrides: Partial<Settings>) {
+    const mic = recognizerSaying('how much rice do i have', 'add five cans of beans');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true, ...overrides });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+    await listen(user);
+    return mic;
+  }
+
+  /** Nothing after the first sentence: not a second listen, not a second write. */
+  async function stoppedAfterOne(mic: { readonly heard: () => number }) {
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    expect(mic.heard()).toBe(1);
+    expect(await quantityOf('Beans')).toBe(12);
+  }
+
+  it('stops, and says so, when reading answers aloud is switched off', async () => {
+    stubSpeaker();
+    const mic = await pressWith({ voiceSpeakAnswers: false });
+
+    await stoppedAfterOne(mic);
+    expect(await screen.findByText(/reading answers aloud is switched off/i)).toBeTruthy();
+  });
+
+  it('stops, and blames the switch on the side of the phone, when that is why', async () => {
+    stubSpeaker();
+    phone.audibility = 'silenced';
+    const mic = await pressWith({});
+
+    await stoppedAfterOne(mic);
+    expect(await screen.findByText(/silent switch is on/i)).toBeTruthy();
+  });
+
+  /*
+   * The gap the speaking seam deliberately left. `say` reports `silent` for the
+   * setting and for an empty answer and knows nothing about a phone; the ringer
+   * check the sheet already had knew about the switch and not about the media
+   * volume, so a phone with the ringer ON and the slider at zero read every
+   * answer out to nobody and reported that it had been heard. It is a different
+   * sentence from the one above because it has a different fix.
+   */
+  it('stops, and blames the media volume, when the ringer is on and the slider is not', async () => {
+    stubSpeaker();
+    phone.audibility = 'mediaMuted';
+    const mic = await pressWith({});
+
+    await stoppedAfterOne(mic);
+    expect(await screen.findByText(/media volume is at zero/i)).toBeTruthy();
+  });
+
+  /*
+   * The one silence that is nobody's decision. An engine that takes the sentence
+   * and reports an error - or a watchdog expiring with the platform still saying
+   * nothing - leaves the phone possibly still talking, which is the case where
+   * opening a microphone would record the answer to the last question.
+   */
+  it('stops when the platform never says whether the answer was read out', async () => {
+    stubFailingSpeaker();
+    const mic = await pressWith({});
+
+    await stoppedAfterOne(mic);
+    expect(await screen.findByText(/never said whether the answer was read out/i)).toBeTruthy();
+  });
+
+  it('says none of that when the setting is off, because nothing was going to continue', async () => {
+    stubSpeaker();
+    phone.audibility = 'silenced';
+    const mic = recognizerSaying('how much rice do i have');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    expect(screen.queryByText(/silent switch is on/i)).toBeNull();
+  });
+});
+
+/**
+ * Getting out of a conversation, which is not the same as getting out of a
+ * listen.
+ *
+ * A conversation spends most of its life NOT listening: the answer is being read
+ * out, and there is no recognizer to cancel. So the stop control has two jobs -
+ * release a microphone if one is open, and see to it that no further turn is
+ * taken - and it has to be reachable in a window the sheet otherwise declares
+ * non-interactive.
+ */
+describe('the microphone: stopping a conversation', () => {
+  /** Hears one sentence, then holds the microphone open until it is cancelled. */
+  function recognizerThenWaiting(phrase: string) {
+    let refuse: ((cause: unknown) => void) | undefined;
+    const cancel = vi.fn(async () => {
+      refuse?.(new SpeechFailureError('cancelled'));
+    });
+    let first = true;
+    const recognizer: SpeechRecognizer = {
+      availability: () => Promise.resolve('ready'),
+      cancel,
+      listen: () => {
+        if (first) {
+          first = false;
+          return Promise.resolve({ text: phrase, online: false });
+        }
+        return new Promise<never>((_, reject) => {
+          refuse = reject;
+        });
+      },
+    };
+    return { cancel, recognizer };
+  }
+
+  it('ends the conversation on the stop control, and explains nothing afterwards', async () => {
+    stubSpeaker();
+    const mic = recognizerThenWaiting('how much rice do i have');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/Rice: 3 kg/i)).toBeTruthy();
+    const stop = await screen.findByRole('button', { name: /stop the conversation/i });
+
+    /*
+     * OUTSIDE THE REGION THAT GOES INERT, which is the whole reason it moved out
+     * of the composer row. A conversation runs inside that window, and `inert`
+     * does not dim a control - it takes it out of the accessibility tree.
+     */
+    expect(stop.closest('form')).toBeNull();
+    expect(stop.closest('footer')).not.toBeNull();
+
+    await user.click(stop);
+
+    expect(mic.cancel).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('button', { name: /stop the conversation/i })).toBeNull();
+    });
+    // A cancellation is the one failure this interface answers with silence,
+    // and pressing stop is a deliberate one.
+    expect(screen.queryByText(/I did not hear anything/i)).toBeNull();
+  });
+});
+
+/**
+ * Two turns overlapping, and which of them owns the sheet.
+ *
+ * THIS IS A REAL DEFECT AND NOT A HYPOTHETICAL. `announce` lifts `busy` before
+ * awaiting the utterance, deliberately - otherwise the sheet would be inert for
+ * the length of every answer - so the sheet is interactive while a sentence
+ * plays, and a second question can be asked into that window. When the FIRST
+ * utterance then finishes, the first turn's `finally` used to lift `busy` while
+ * the second turn was still in flight: `inert` came off, the thinking line went
+ * away, and the sheet said it was idle in the middle of a request.
+ *
+ * Before the speaking change that window was sub-millisecond. After it, it is
+ * the length of a spoken answer.
+ *
+ * IT IS DRIVEN THROUGH CLAUDE BECAUSE THE PARSER IS TOO FAST TO CATCH. Holding a
+ * turn open needs one await this test controls, and `anthropic.create` is the
+ * only one there is - the parser's own turn is a database query that has settled
+ * before an assertion could look at it. Note also what this could NOT be driven
+ * through: the conversation loop itself never overlaps its own turns, because it
+ * awaits `run` to the end of the utterance before it listens again. The reachable
+ * overlap is a second question asked by hand while the first answer plays.
+ */
+describe('two turns at once', () => {
+  it('keeps the sheet busy for the newer turn when an older one finishes speaking', async () => {
+    const { finish } = stubSlowSpeaker();
+
+    anthropic.create.mockResolvedValueOnce(reply({ content: [spoke('Twelve cans of beans.')] }));
+    let release: ((value: unknown) => void) | undefined;
+    anthropic.create.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    const { user, view } = await setup(WITH_CLAUDE);
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'how many beans have i got');
+    expect(await screen.findByText('Twelve cans of beans.')).toBeTruthy();
+
+    // The first answer is being read out, and the sheet is deliberately back.
+    const composer = screen.getByRole('textbox').closest('form');
+    expect(composer?.hasAttribute('inert')).toBe(false);
+
+    // A second question, asked into exactly that window.
+    await say(user, 'and how much rice');
+    expect(await screen.findByText('Reading your stock…')).toBeTruthy();
+    expect(composer?.hasAttribute('inert')).toBe(true);
+
+    // The FIRST utterance ends. Its turn is over; the second one is not.
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Reading your stock…')).toBeTruthy();
+    expect(composer?.hasAttribute('inert')).toBe(true);
+
+    // And the second turn still gives the sheet back when it is really done.
+    await act(async () => {
+      release?.(reply({ content: [spoke('Three kilos of rice.')] }));
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => {
+      expect(composer?.hasAttribute('inert')).toBe(false);
+    });
   });
 });

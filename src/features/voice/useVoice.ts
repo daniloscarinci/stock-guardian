@@ -27,6 +27,21 @@
  * parser's own narrow case, an item named exactly and a number actually
  * spoken, is unchanged: it is stored at once and offered back for ten seconds.
  *
+ * AND THE CONVERSATION LOOP LIVES HERE, WHICH IS THE NEWEST THING IN THIS FILE.
+ * `Settings → Ask → Keep listening after each answer` turns one press into a
+ * conversation: question, spoken answer, listening, next sentence, ending when
+ * somebody stops talking. It is here rather than in the sheet or in the button
+ * because it has to know what the turn it just ran produced, and the only place
+ * that fact exists in time is the value `run` hands back - `history` is state,
+ * and the closure awaiting a turn holds the array from before the turn ran. See
+ * `converse` below for every way it stops, and `TurnResult` for what a turn is
+ * allowed to say about itself.
+ *
+ * IT ADDS NO WRITE PATH. Everything a conversation can commit, one press already
+ * commits today: an item named exactly with a number actually spoken is stored
+ * at once and offered back for ten seconds, and everything else goes to a card -
+ * which stops the loop. The set of things reaching `commit` is unchanged.
+ *
  * Two things happen here that cannot happen in the layers below:
  *
  *   The grammar's examples are filled in. `execute` deliberately owns no
@@ -45,12 +60,14 @@ import { grammarFor } from '../../voice/grammar/registry';
 import { execute, type Outcome, type PendingWrite, type VoiceDeps } from '../../services/voice/execute';
 import { commit, undo, type Receipt } from '../../services/voice/commit';
 import { renderAnswer, type AnswerOptions } from '../../services/voice/answer';
-import { converse, type AiFailureReason, type AiOptions } from '../../services/ai/converse';
+import { converse as askAssistant, type AiFailureReason, type AiOptions } from '../../services/ai/converse';
 import type { AiDeps } from '../../services/ai/tools';
 import { LOCALE_TAGS } from '../../i18n/translate';
-import type { Intent } from '../../voice/intents';
+import { CREATABLE_INTENTS, type Intent } from '../../voice/intents';
 import type { InventoryItemView } from '../../types/domain';
 import type { SpeechOutcome } from '../../services/speech/speak';
+import type { SpeechFailure } from '../../services/speech/recognizer';
+import type { Microphone } from './useListen';
 
 /** Which of the two answered, or would answer next. */
 export type Engine = 'claude' | 'device';
@@ -137,19 +154,74 @@ export type Exchange = DeviceExchange | ClaudeExchange;
  * Reads a sentence aloud, and resolves when it has been heard.
  *
  * Supplied by the sheet, which composes the platform: the seam decides the
- * setting and the empty answer, the sheet decides the switch on the side of the
- * phone, and the three outcomes come back through here whichever of them
- * decided.
+ * setting and the empty answer, the sheet decides everything the phone decides -
+ * the switch on its side and the media volume - and the three outcomes come back
+ * through here whichever of them decided.
  *
- * NOTHING IN THIS FILE READS THE OUTCOME YET, and that is not an oversight. The
- * conversation loop that would - press once, then question, answer, listen,
- * next sentence - cannot open a microphone until it knows the phone has
- * stopped talking, and `spoken` is the only one of the three that says so.
- * What this release needs from the type is that the awaits below now wait for
- * the sentence rather than for the handover, which is why `setBusy` had to
- * move.
+ * `spoken` IS THE ARMING GATE, AND IT IS THE WHOLE REASON THE TYPE EXISTS. A
+ * conversation may not open a microphone until it knows the phone has stopped
+ * talking: there is no echo cancellation here and nothing coordinates audio
+ * focus, so a microphone opened while the phone is still reading an answer
+ * records the answer. `spoken` is the only one of the three that says the
+ * sentence was heard. `silent` says the device deliberately made no sound and
+ * `unknown` says nobody can tell - and a loop that re-listened on either would
+ * be listening for the answer to a question nobody heard.
  */
 export type Speak = (text: string, tag: string) => Promise<SpeechOutcome>;
+
+/**
+ * What one turn left behind, for whatever has to decide what happens next.
+ *
+ * Three words rather than the `void` this used to be, because a conversation
+ * cannot read them off `history`: that is React state, and the closure awaiting
+ * a turn holds the array from before the turn ran. The value has to come back
+ * from the call.
+ *
+ * It is deliberately this small. Everything the sheet needs in order to DRAW an
+ * exchange is already in `history` and none of it is here; the only question
+ * this answers is the one a loop has to ask - may the microphone open again, and
+ * if not, what stopped it.
+ */
+export type TurnResult =
+  /**
+   * A sentence was read out, the platform reported the end of it, and nothing
+   * on screen is waiting for a press. The only one of the three that re-arms.
+   */
+  | 'answered'
+  /**
+   * Something wants a finger: a confirmation card, a list of names to choose
+   * between, or an offer to create what was not found.
+   *
+   * This is the stop condition that matters most, and it is about consent rather
+   * than about tidiness. There is no spoken yes or no in this release, so
+   * listening again while a card stands would let the next sentence be parsed as
+   * though the question were not on the screen.
+   */
+  | 'waiting'
+  /**
+   * Nothing came of it that anybody heard: the turn threw, or it produced an
+   * outcome that has no sentence, or the answer was silenced, or the platform
+   * never said whether it was read out.
+   */
+  | 'unheard';
+
+/**
+ * How many utterances one press may become.
+ *
+ * TWELVE, AND THE NUMBER IS AN ARGUMENT RATHER THAN A ROUND FIGURE. The case
+ * this feature exists for is a stock-take: ten boxes, ten sentences, which used
+ * to be ten presses. Twelve covers that with two spare for the ones that come
+ * back wrong, and it bounds the two costs a runaway loop has. Every turn is a
+ * fresh bind of Android's recognition service - `Session.finish` destroys the
+ * recognizer on every settle, deliberately, so that the microphone is released
+ * on every path - and some devices are reported to degrade over a long run of
+ * them. And where the assistant is answering, every turn is a paid request, so
+ * a misheard air conditioner spends money twelve times and then stops.
+ *
+ * It counts every utterance including the press that started it, so a
+ * conversation opens the microphone unasked at most eleven times.
+ */
+const MAX_CONVERSATION_TURNS = 12;
 
 export interface Voice {
   readonly history: readonly Exchange[];
@@ -163,7 +235,25 @@ export interface Voice {
    * One question. `transcribedOnline` is the microphone saying the words were
    * captured over the network; a typed question leaves it out and is false.
    */
-  readonly run: (question: string, transcribedOnline?: boolean) => Promise<void>;
+  readonly run: (question: string, transcribedOnline?: boolean) => Promise<TurnResult>;
+  /**
+   * True while a conversation is running, between turns as well as during them.
+   *
+   * The stop control renders from this rather than from the microphone being
+   * open, because most of a conversation is spent NOT listening: the answer is
+   * being read out, and that is exactly the window somebody would want out of.
+   */
+  readonly conversing: boolean;
+  /**
+   * One press of the microphone, and everything that follows from it.
+   *
+   * Listens, answers, and - where the setting asks for it and the turn allows
+   * it - listens again. Resolves with the failure worth explaining, or null when
+   * there is nothing to explain, which the sheet hands straight to `MicNotice`.
+   */
+  readonly converse: () => Promise<SpeechFailure | null>;
+  /** The stop control: the listen in flight, and any turn that would follow it. */
+  readonly endConversation: () => void;
   readonly confirm: (index: number) => Promise<void>;
   /** Confirms one of Claude's proposals. Nothing has been written before this. */
   readonly confirmProposal: (index: number, proposal: number) => Promise<void>;
@@ -344,17 +434,65 @@ function receiptIntent(write: PendingWrite): Intent {
  */
 const UNDO_WINDOW_MS = 10_000;
 
-export function useVoice(speak: Speak): Voice {
+/**
+ * A sentence's fate, as a turn result.
+ *
+ * `spoken` and nothing else re-arms. `silent` is a device that deliberately
+ * made no sound - the setting, the ringer switch, the media volume at zero -
+ * and `unknown` is a watchdog expiring with the platform still saying nothing,
+ * which means the phone may well still be talking. Listening over either is
+ * the failure mode this whole gate exists to prevent.
+ */
+const heard = (outcome: SpeechOutcome): TurnResult =>
+  outcome === 'spoken' ? 'answered' : 'unheard';
+
+/**
+ * Whether an outcome with no sentence to read is waiting for a press.
+ *
+ * `pending` is a confirmation card and `choice` is a list of names, so both
+ * are. A `notFound` is only one where the intent is worth creating - the sheet
+ * draws the Create button off exactly this list - and "where is the rice?"
+ * finding no rice offers nothing to press. `unknown` offers nothing either:
+ * the chips below the log are teaching material rather than an answer to this
+ * sentence.
+ *
+ * Neither of the last two re-arms all the same, because neither says anything
+ * out loud. Somebody who heard nothing has no way to know the microphone is
+ * still open, and a loop that listens into that silence is recording a room.
+ */
+const needsPress = (outcome: Outcome): boolean =>
+  outcome.kind === 'pending' ||
+  outcome.kind === 'choice' ||
+  (outcome.kind === 'notFound' && CREATABLE_INTENTS.includes(outcome.intent.kind));
+
+export function useVoice(speak: Speak, microphone: Microphone): Voice {
   const { repositories, itemContext, settings, t, invalidate } = useApp();
   const [history, setHistory] = useState<readonly Exchange[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conversing, setConversing] = useState(false);
+
+  /*
+   * Whether a conversation is running, and whether it has been told to stop.
+   *
+   * Refs and not state, because the loop reads them between two awaits and state
+   * read from a closure is the value from the render the closure was made in.
+   * `conversing` above is the same fact for anything that RENDERS from it; these
+   * two are the same fact for the loop itself, which is the only place that can
+   * act on them in time.
+   */
+  const running = useRef(false);
+  const ended = useRef(false);
 
   // Every armed Undo window, so a sheet that goes away takes its timers with it.
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   useEffect(
     () => () => {
       for (const timer of timers.current) clearTimeout(timer);
+      // A conversation outlives nothing. Unmounting sets the flag the loop
+      // checks after every await, so a listen that settles into a sheet which is
+      // no longer on screen runs no further turn.
+      ended.current = true;
     },
     [],
   );
@@ -455,6 +593,45 @@ export function useVoice(speak: Speak): Voice {
   );
 
   /**
+   * Which turn owns `busy`, so that an older one cannot lift it.
+   *
+   * THIS IS A REAL BUG AND NOT A PRECAUTION, AND THE LOOP IS WHAT MADE IT
+   * ROUTINE. `announce` below lifts `busy` BEFORE awaiting the utterance, which
+   * is deliberate and is the whole of the paragraph under it. The consequence is
+   * that the sheet is interactive while a sentence plays, so a second turn can
+   * begin while the first is still speaking - and every one of the five
+   * `finally` blocks below runs after its own utterance, which is to say after
+   * the newer turn has already raised `busy`. The older turn would then drop
+   * `inert` and the thinking line for the whole of the newer one.
+   *
+   * Before the speaking change that window was sub-millisecond and nobody could
+   * reach it. After it, it is the length of an answer. With a conversation it is
+   * not a race at all: a conversation IS a sequence of turns whose utterances
+   * overlap their successors, and the loop's own `run` is the second turn.
+   *
+   * A TOKEN RATHER THAN TAKING `setBusy(false)` OUT OF THE `finally` BLOCKS,
+   * which was the other way to fix it. Those blocks are the only thing that
+   * lifts `busy` on the paths that never reach a sentence - a card, a choice, a
+   * throw - so removing them would mean every one of those paths growing its own
+   * lift, in five places, with nothing to catch the sixth. The counter says the
+   * one true thing instead: only the newest turn may say the sheet is free.
+   */
+  const turnId = useRef(0);
+
+  /** Raises `busy`, clears the last error, and claims the sheet for this turn. */
+  const beginTurn = useCallback((): number => {
+    setBusy(true);
+    setError(null);
+    turnId.current += 1;
+    return turnId.current;
+  }, []);
+
+  /** Gives the sheet back, unless a newer turn has taken it in the meantime. */
+  const endTurn = useCallback((token: number) => {
+    if (turnId.current === token) setBusy(false);
+  }, []);
+
+  /**
    * Lifts `busy`, and only then reads the answer out.
    *
    * THE ORDER IS THE WHOLE POINT, and it changed when `speak` did. It used to
@@ -469,14 +646,20 @@ export function useVoice(speak: Speak): Voice {
    *
    * Speaking is not working. The `finally` blocks still lift `busy` and still
    * have to: this only runs on the paths that reach a sentence, and the ones
-   * that throw first never get here. Lifting it twice costs a no-op setState.
+   * that throw first never get here. Both go through `endTurn`, so the second
+   * lift is a no-op when this turn is still the newest and is refused when it is
+   * not - see the counter above, which is what makes that sentence true.
+   *
+   * IT HANDS THE OUTCOME BACK NOW. A conversation may only re-open the
+   * microphone for a sentence that was actually heard, and this is the one place
+   * that knows.
    */
   const announce = useCallback(
-    async (text: string): Promise<void> => {
-      setBusy(false);
-      await speak(text, tag);
+    async (text: string, token: number): Promise<SpeechOutcome> => {
+      endTurn(token);
+      return speak(text, tag);
     },
-    [speak, tag],
+    [endTurn, speak, tag],
   );
 
   /**
@@ -530,7 +713,9 @@ export function useVoice(speak: Speak): Voice {
       index: number | null,
       undoable: boolean,
       transcribedOnline: boolean,
-    ) => {
+      /** The turn that raised `busy`, so only it may put the sheet back. */
+      token: number,
+    ): Promise<TurnResult> => {
       const { receipt } = await commit(deps, write);
       // Every open list re-reads; the database stays the only source of truth.
       invalidate();
@@ -544,7 +729,7 @@ export function useVoice(speak: Speak): Voice {
       // the whole point of it.
       if (text === null && !undoable) {
         setHistory((past) => (index === null ? past : past.filter((_, i) => i !== index)));
-        return;
+        return 'unheard';
       }
 
       place(
@@ -561,7 +746,15 @@ export function useVoice(speak: Speak): Voice {
         index,
       );
       if (undoable) armUndo(receipt);
-      if (text !== null) await announce(text);
+      /*
+       * The Undo button is not a press this waits for, and that is deliberate.
+       * The change has already happened, nothing is blocked on the user, and the
+       * offer lapses on its own after ten seconds - which is why an explicit
+       * write is the one write a conversation can carry straight through. It is
+       * also why this phase adds no new write path: everything the loop can
+       * commit, one press already commits today.
+       */
+      return text === null ? 'unheard' : heard(await announce(text, token));
     },
     [announce, armUndo, deps, invalidate, place, sentence],
   );
@@ -583,15 +776,13 @@ export function useVoice(speak: Speak): Voice {
       index: number | null,
       aiFailure: AiFailureReason | null,
       transcribedOnline: boolean,
-    ) => {
-      setBusy(true);
-      setError(null);
+    ): Promise<TurnResult> => {
+      const token = beginTurn();
       try {
         const outcome = withExamples(await execute(deps, intent));
 
         if (outcome.kind === 'pending' && outcome.write.certainty === 'explicit') {
-          await store(said, outcome.write, index, true, transcribedOnline);
-          return;
+          return await store(said, outcome.write, index, true, transcribedOnline, token);
         }
 
         const text = sentence(outcome);
@@ -611,26 +802,33 @@ export function useVoice(speak: Speak): Voice {
         // A card is not a fact, and `sentence` returns null for one. The card
         // announces itself by moving focus to a button that carries the whole
         // change; speaking it here would say a change happened that has not.
-        if (text !== null) await announce(text);
+        if (text !== null) return heard(await announce(text, token));
+        return needsPress(outcome) ? 'waiting' : 'unheard';
       } catch (cause) {
+        // A thrown query or write is the sheet's alert and a conversation's
+        // last turn. Nothing was said, so there is nothing to listen after.
         setError(cause instanceof Error ? cause.message : String(cause));
+        return 'unheard';
       } finally {
-        setBusy(false);
+        endTurn(token);
       }
     },
-    [announce, deps, place, sentence, store, withExamples],
+    [announce, beginTurn, deps, endTurn, place, sentence, store, withExamples],
   );
 
   const askParser = useCallback(
-    async (question: string, aiFailure: AiFailureReason | null, transcribedOnline: boolean) => {
-      await turn(
+    async (
+      question: string,
+      aiFailure: AiFailureReason | null,
+      transcribedOnline: boolean,
+    ): Promise<TurnResult> =>
+      turn(
         question,
         parse(grammar, question, { today: itemContext.today }),
         null,
         aiFailure,
         transcribedOnline,
-      );
-    },
+      ),
     [grammar, itemContext.today, turn],
   );
 
@@ -643,19 +841,17 @@ export function useVoice(speak: Speak): Voice {
    * stopped answering.
    */
   const askClaude = useCallback(
-    async (question: string, transcribedOnline: boolean) => {
-      setBusy(true);
-      setError(null);
+    async (question: string, transcribedOnline: boolean): Promise<TurnResult> => {
+      const token = beginTurn();
 
       try {
-        const result = await converse(aiDeps, aiOptions, question);
+        const result = await askAssistant(aiDeps, aiOptions, question);
 
         // The whole point of keeping the parser: no key, no network, a refused
         // key or too many questions all still get an answer from the rules on
         // this device, which need none of those things.
         if (result.kind === 'failed') {
-          await askParser(question, result.reason, transcribedOnline);
-          return;
+          return await askParser(question, result.reason, transcribedOnline);
         }
 
         if (result.kind === 'refused') {
@@ -670,7 +866,9 @@ export function useVoice(speak: Speak): Voice {
             },
             null,
           );
-          return;
+          // Shown and not spoken, so nobody who is not looking at the sheet
+          // knows it arrived. A conversation ends here.
+          return 'unheard';
         }
 
         const proposals = result.proposals.map((write) => ({ write, done: null }));
@@ -694,23 +892,122 @@ export function useVoice(speak: Speak): Voice {
         // Read aloud like any other answer. Nothing here has been written, and
         // the cards below say so, so this states what was found rather than
         // what was done.
-        if (text !== '') await announce(text);
+        const said = text === '' ? 'silent' : await announce(text, token);
+
+        /*
+         * A PROPOSAL IS A CARD, AND A CARD ENDS A CONVERSATION. The sentence is
+         * still read out first - it was found, it is worth hearing - and then
+         * the loop stops, because underneath it are one or more changes nobody
+         * has agreed to and there is no spoken way to agree to them yet.
+         *
+         * The honest consequence, stated rather than hidden: a conversation with
+         * the assistant that produces a proposal is one turn long. Only the
+         * questions Claude answers without asking for a write keep going.
+         */
+        return proposals.length > 0 ? 'waiting' : heard(said);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
+        return 'unheard';
       } finally {
-        setBusy(false);
+        endTurn(token);
       }
     },
-    [aiDeps, aiOptions, announce, askParser, place, t],
+    [aiDeps, aiOptions, announce, askParser, beginTurn, endTurn, place, t],
   );
 
   const run = useCallback(
-    async (question: string, transcribedOnline = false) => {
-      if (engine === 'claude') await askClaude(question, transcribedOnline);
-      else await askParser(question, null, transcribedOnline);
-    },
+    async (question: string, transcribedOnline = false): Promise<TurnResult> =>
+      engine === 'claude'
+        ? askClaude(question, transcribedOnline)
+        : askParser(question, null, transcribedOnline),
     [askClaude, askParser, engine],
   );
+
+  /**
+   * One press of the microphone, and every turn that follows from it.
+   *
+   * THE LOOP IS HERE AND NOT IN THE SHEET OR THE BUTTON, for one reason: it has
+   * to know what the turn it just ran produced, and the only place that fact
+   * exists in time is the value `run` hands back. `history` is state, so a
+   * closure awaiting a turn is holding the array from before that turn ran.
+   *
+   * IT STOPS ON EVERY ONE OF THESE, and the list is the design rather than a
+   * detail:
+   *
+   *   `no-match`, which is how a conversation is MEANT to end. Android maps both
+   *   ERROR_NO_MATCH and ERROR_SPEECH_TIMEOUT to it, so "nobody spoke" arrives as
+   *   a distinct code and stopping talking is the natural way out. It is also the
+   *   one failure this does not report: `MicNotice` renders "I did not hear
+   *   anything" for it, which is right for a single press and would turn the
+   *   ordinary end of every conversation into an error panel. The FIRST turn
+   *   still reports it, because a press that heard nothing at all is exactly the
+   *   press that message was written for.
+   *
+   *   `cancelled`, which is the stop control, and `busy`, which is a recognizer
+   *   already holding the microphone. Neither is worth asking again after: the
+   *   first was deliberate and the second would land on the same CODE_BUSY.
+   *
+   *   Any other failure, an outcome that wants a press, a turn that threw, and
+   *   any answer that was not heard - see `TurnResult`.
+   *
+   *   The stop control and the sheet going away, through `ended` above.
+   *
+   *   And the cap, which is the only stop that is a number rather than an event.
+   *
+   * WHAT IT DOES NOT DO IS HOLD A RECOGNIZER OPEN BETWEEN TURNS. Every turn binds
+   * a fresh one and releases it, which is what keeps "the microphone is released
+   * on every path" true; the answer being read out is the gap between them.
+   */
+  const converse = useCallback(async (): Promise<SpeechFailure | null> => {
+    // One conversation at a time. A second press during one would be a second
+    // listen, which is the CODE_BUSY this whole arrangement exists to avoid.
+    if (running.current) return null;
+    running.current = true;
+    ended.current = false;
+    /*
+     * Read once, at the start, and not again. A conversation runs under the
+     * rules it began with: somebody who changes the setting from another screen
+     * mid-sentence is asking about the next press, and the way out of this one
+     * is the stop control.
+     */
+    const keepListening = settings.voiceKeepListening;
+    setConversing(keepListening);
+
+    try {
+      for (let spoken = 0; spoken < MAX_CONVERSATION_TURNS; spoken++) {
+        const result = await microphone.listen();
+        if (ended.current) return null;
+
+        if (result.kind === 'failed') {
+          const closing = spoken > 0 && result.reason === 'no-match';
+          return closing ? null : result.reason;
+        }
+
+        const turnResult = await run(result.text, result.online);
+        if (ended.current || !keepListening || turnResult !== 'answered') return null;
+      }
+      return null;
+    } finally {
+      running.current = false;
+      setConversing(false);
+    }
+  }, [microphone, run, settings.voiceKeepListening]);
+
+  const endConversation = useCallback(() => {
+    ended.current = true;
+    /*
+     * Both halves, and they do different jobs. The flag stops the turn that
+     * would have come next, which is the only thing that can be stopped while an
+     * answer is being read out. Cancelling releases the microphone if one is
+     * open, and the listen in flight then comes back as `cancelled` - the same
+     * one path out of a listen, however it was reached.
+     *
+     * The sentence being read is deliberately left to finish. The control is
+     * about listening, it says so, and cutting a phone off mid-word to honour a
+     * press about the microphone would be answering a different question.
+     */
+    void microphone.stop();
+  }, [microphone]);
 
   /** The confirmation card's button: the write the user was asked about. */
   const confirm = useCallback(
@@ -720,17 +1017,16 @@ export function useVoice(speak: Speak): Voice {
       if (entry.outcome.kind !== 'pending') return;
       const write = entry.outcome.write;
 
-      setBusy(true);
-      setError(null);
+      const token = beginTurn();
       try {
-        await store(entry.said, write, index, false, entry.transcribedOnline);
+        await store(entry.said, write, index, false, entry.transcribedOnline, token);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
-        setBusy(false);
+        endTurn(token);
       }
     },
-    [history, store],
+    [beginTurn, endTurn, history, store],
   );
 
   /**
@@ -749,8 +1045,7 @@ export function useVoice(speak: Speak): Voice {
       const target = entry.proposals[proposal];
       if (target === undefined || target.done !== null) return;
 
-      setBusy(true);
-      setError(null);
+      const token = beginTurn();
       try {
         await commit(deps, target.write);
         invalidate();
@@ -772,14 +1067,14 @@ export function useVoice(speak: Speak): Voice {
                 },
           ),
         );
-        if (said !== '') await announce(said);
+        if (said !== '') await announce(said, token);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
-        setBusy(false);
+        endTurn(token);
       }
     },
-    [announce, deps, history, invalidate, sentence],
+    [announce, beginTurn, deps, endTurn, history, invalidate, sentence],
   );
 
   /** Says no to one proposal. Nothing was written, so nothing is undone. */
@@ -806,8 +1101,7 @@ export function useVoice(speak: Speak): Voice {
       if (entry === undefined || entry.engine !== 'device' || entry.receipt === null) return;
       const { receipt } = entry;
 
-      setBusy(true);
-      setError(null);
+      const token = beginTurn();
       try {
         await undo(deps, receipt);
         invalidate();
@@ -820,14 +1114,14 @@ export function useVoice(speak: Speak): Voice {
               : existing,
           ),
         );
-        await announce(text);
+        await announce(text, token);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
-        setBusy(false);
+        endTurn(token);
       }
     },
-    [announce, deps, history, invalidate, t],
+    [announce, beginTurn, deps, endTurn, history, invalidate, t],
   );
 
   /** Picking from "Which one?" re-runs the intent against an exact name. */
@@ -867,6 +1161,9 @@ export function useVoice(speak: Speak): Voice {
     examples: grammar.examples,
     engine,
     run,
+    conversing,
+    converse,
+    endConversation,
     confirm,
     confirmProposal,
     discardProposal,

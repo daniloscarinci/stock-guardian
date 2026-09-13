@@ -13,6 +13,17 @@
  * out loud here. Only `cancelled` stays silent, because a banner after "never
  * mind" teaches people to ignore banners.
  *
+ * ONE OTHER REASON NEVER ARRIVES, AND IT IS FILTERED BEFORE IT GETS HERE RATHER
+ * THAN INSIDE THIS FILE. `no-match` maps to "I did not hear anything", which is
+ * right for a press that heard nothing: somebody asked to speak and did not, and
+ * saying so is the only way they learn the microphone was open. In a
+ * conversation it is the opposite - not speaking is how a conversation is meant
+ * to END - so a loop that ran at least one turn does not report its closing
+ * `no-match` at all, and every conversation would otherwise finish with an error
+ * panel. That decision is in `useVoice.converse`, where the turn count is; the
+ * mapping below is unchanged, and the FIRST turn of a conversation still reports
+ * it, because a press that heard nothing is a press that heard nothing.
+ *
  * IT RENDERS NEAR THE TOP OF THE SCROLL BOX, NOT UNDER THE BUTTON IT IS ABOUT.
  * Only a thrown error's alert comes above it, which is the right order: that one
  * is about the sentence and this one is about the microphone.

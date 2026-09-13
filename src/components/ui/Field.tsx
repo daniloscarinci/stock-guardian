@@ -180,11 +180,24 @@ export function SwitchRow({
   label,
   help,
   checked,
+  disabled = false,
   onChange,
 }: {
   readonly label: string;
   readonly help?: string | undefined;
   readonly checked: boolean;
+  /**
+   * The setting exists and cannot be moved from here yet.
+   *
+   * For a switch whose meaning depends on another one: reading answers aloud is
+   * off, so keeping the microphone open after each answer has nothing to keep it
+   * open for. `disabled` and not hidden, because a control that vanishes teaches
+   * nobody what turned it off - the row stays, the help text says which switch
+   * to move, and the stored value is untouched and comes back when the other one
+   * does. Real `disabled` rather than `inert`, so the label and the explanation
+   * are still read out.
+   */
+  readonly disabled?: boolean;
   readonly onChange: (checked: boolean) => void;
 }) {
   const id = useId();
@@ -205,6 +218,7 @@ export function SwitchRow({
         id={id}
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         aria-describedby={help === undefined ? undefined : helpId}
         onChange={(event) => {
           onChange(event.target.checked);

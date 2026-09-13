@@ -469,9 +469,10 @@
 /* ---- The composer, which is the dialog's footer --------------------------- */
 
 /*
- * A column rather than the row itself, because one thing appears above the row:
- * the line saying Claude is being waited on, which has to stand outside the part
- * that goes inert. The row is `.composerRow` below.
+ * A column rather than the row itself, because two things appear above the row
+ * and both have to stand outside the part that goes inert: the line saying
+ * Claude is being waited on, and the microphone's own line with the way out of a
+ * listen or a conversation beside it. The row is `.composerRow` below.
  *
  * `flex: 1` IS LOAD-BEARING AND IS NOT THE DEFAULT. Dialog's `.footer` is
  * `justify-content: flex-end`, which is the right arrangement for the two or
@@ -498,12 +499,39 @@
 }
 
 /*
+ * "Listening…" or "In a conversation", and the way out of either.
+ *
+ * A ROW OF ITS OWN, ABOVE THE COMPOSER RATHER THAN INSIDE IT, and the reason is
+ * `inert` rather than width. It used to sit beside the microphone inside
+ * `.composerRow`, which goes inert while the sheet is working something out - and
+ * a conversation runs in exactly that window. `inert` does not dim a control, it
+ * takes it out of the accessibility tree and stops it answering a pointer, so the
+ * stop button would have been gone at the one moment it is the only thing worth
+ * pressing. Out here it is a sibling of the thinking line, which stands outside
+ * for the same reason.
+ *
+ * Width settles the question the same way in any case: at 350px of inner width a
+ * status line and a second button leave the box no room at all, and they must not
+ * take the box away either, because somebody may have typed half a sentence
+ * before reaching for the microphone. So the footer grows by one row for as long
+ * as the listen or the conversation lasts, the scroll box above shortens by the
+ * same amount, and the box keeps what is in it.
+ */
+.listening {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/*
  * Microphone, box, Send - one row, in that order, and the order is the argument.
  * Both ways in are the same feature and neither is a fallback for the other, so
  * they are the same control group rather than a block above a block.
  *
- * It wraps so that the microphone's own row can claim the full width while a
- * listen is open. See `.micSlotListening`.
+ * It still wraps, because a long Send label in a wide language is better on a
+ * second line than squeezing the box.
  */
 .composerRow {
   display: flex;
@@ -523,24 +551,6 @@
   align-items: center;
   gap: var(--space-3);
   flex: none;
-}
-
-/*
- * While a listen is open the slot takes a row of its own and pushes the box and
- * Send onto the next one.
- *
- * "Listening…" and "Stop listening" appear inside this slot, beside the button
- * that opened the microphone, because stopping is the one urgent thing to be
- * able to do while it is open: on Android this process holds the recorder and the
- * platform puts nothing on screen while it does. They could not share the row - at
- * 350px of inner width a status line and a second button leave the box no room
- * at all - and they must not take the box away either, because somebody may
- * have typed half a sentence before reaching for the microphone. So the footer
- * grows by one row for as long as the listen lasts, the scroll box above
- * shortens by the same amount, and the box keeps what is in it.
- */
-.micSlotListening {
-  flex: 1 0 100%;
 }
 
 /*

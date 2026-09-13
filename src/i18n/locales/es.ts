@@ -501,6 +501,8 @@ export const es: LocaleTree = {
     micButton: 'Hablar en vez de escribir',
     listening: 'Escuchando…',
     stopListening: 'Dejar de escuchar',
+    stopConversation: 'Detener la conversación',
+    conversationNext: 'En una conversación: el micrófono se abre de nuevo tras la respuesta.',
     unavailable: 'Este dispositivo no puede transcribir voz por sí solo, así que el cuadro de abajo es la vía.',
     installable: 'En este dispositivo no hay instalado ningún paquete de voz para este idioma.',
     installDownloads: 'Instalarlo descarga el paquete. No se envía nada tuyo a cambio.',
@@ -544,6 +546,19 @@ export const es: LocaleTree = {
       'Muestra el botón en la cabecera. El cuadro de preguntas solo se abre desde ahí, así que si lo desactivas desaparecen los dos.',
     settingSpeak: 'Leer las respuestas en voz alta',
     settingSpeakHelp: 'Usa la voz del sistema. En Android manda el interruptor de silencio del teléfono.',
+    settingConversation: 'Seguir escuchando después de cada respuesta',
+    settingConversationHelp:
+      'Apagado. Pulsa el micrófono una vez y se queda contigo: di una frase, escucha la respuesta, di la siguiente. Termina cuando dejas de hablar, cuando algo necesita una pulsación — una tarjeta que confirmar, un nombre que elegir, un artículo que crear — o después de doce frases. Así no se puede guardar nada nuevo: todo lo que una conversación cambia, una sola pulsación ya lo cambia hoy.',
+    settingConversationNeedsSpeech:
+      'Esto necesita Leer las respuestas en voz alta, que está apagado. Una conversación con una aplicación que no dice nada no es una conversación.',
+    conversationSilenced:
+      'La conversación se detuvo tras una respuesta: el interruptor de silencio del teléfono está puesto, así que no se leyó nada. La respuesta está arriba.',
+    conversationMediaMuted:
+      'La conversación se detuvo tras una respuesta: el volumen multimedia está a cero, así que no se oiría nada. Súbelo con las teclas de volumen y pulsa el micrófono otra vez.',
+    conversationMute:
+      'La conversación se detuvo tras una respuesta: leer las respuestas en voz alta está apagado, y una conversación necesita oírse.',
+    conversationUnheard:
+      'La conversación se detuvo: este teléfono nunca dijo si la respuesta se leyó en voz alta, así que el micrófono quedó cerrado.',
     settingVoice: 'Qué voz',
     settingVoiceHelp:
       'Las voces que este dispositivo ya tiene para el idioma de la interfaz. No se descarga nada para llenar la lista, y la voz que elijas se usa hasta que deje de estar instalada.',

@@ -33,24 +33,37 @@
  * always worked; the microphone is on the platforms that have a recognizer, and
  * it was removed once because Android refused every offline request on a phone
  * with no Portuguese pack. It is back, on-device first, and when the device
- * cannot manage it tries once over the internet and says so - see `MicButton`,
- * which owns the listening and hands over one sentence at a time. A transcript
- * goes to `run`, the same function the Send button calls, so a spoken question
- * and a typed one take exactly the same path from here on. What travels with it
- * is one flag: whether the words were captured on the phone or over the
+ * cannot manage it tries once over the internet and says so - see `useListen`,
+ * which owns the recognizer and hands over one sentence at a time. Every
+ * transcript goes to `run`, the same function the Send button calls, so a spoken
+ * question and a typed one take exactly the same path from here on. What travels
+ * with it is one flag: whether the words were captured on the phone or over the
  * network. The exchange is marked with it below.
+ *
+ * ONE PRESS CAN NOW BE A WHOLE CONVERSATION, and this file composes the two
+ * halves of that rather than owning either. `useListen` is the microphone;
+ * `useVoice` is the loop, because only it knows what the turn it just ran
+ * produced. What belongs here is the arrangement: the press that starts a
+ * conversation, the stop control - which has to stand outside the region this
+ * sheet declares non-interactive, since a loop spends most of its life inside
+ * that window - and the sentence explaining a conversation that stopped because
+ * nobody could have heard the answer.
  *
  * THE MICROPHONE'S BUTTON AND THE MICROPHONE'S BAD NEWS ARE SPLIT, and this file
  * holds the seam. A button is a way in and belongs beside the other way in; the
  * `no-offline-model` panel is a paragraph, two buttons, a collapsible
  * explanation, a settings switch and a conditional hint, which is up to two
  * hundred pixels of furniture that has no business in a pinned footer. So the
- * failure code lives here, `MicButton` reports it, and `MicNotice` renders it at
- * the top of the scroll box where messages go.
+ * failure code lives here, `converse` hands it back at the end of a press, and
+ * `MicNotice` renders it at the top of the scroll box where messages go. It
+ * comes back as a return value rather than through a callback because one
+ * failure is not worth explaining - the `no-match` that ends a conversation -
+ * and only the loop knows which turn it was.
  *
- * THE ANSWER IS READ BACK. `createSpeaker` for the setting, `androidIsSilent`
- * for the switch on the side of the phone. Speaking is not listening and asks
- * for nothing; the composition of the two is a few lines below.
+ * THE ANSWER IS READ BACK. `createSpeaker` for the setting, `androidAudibility`
+ * for everything the phone decides - the switch on its side and the media
+ * volume, in one bridge call. Speaking is not listening and asks for nothing;
+ * the composition of the two is a few lines below.
  *
  * The component holds no logic of its own. `useVoice` owns the state machine
  * and is tested through this file's typed path, which needs no speech API at
@@ -63,9 +76,10 @@ import { Alert, Button } from '../../components/ui/primitives';
 import { fieldStyles } from '../../components/ui/Field';
 import { cx } from '../../components/ui/cx';
 import { createSpeaker, type SpeechOutcome } from '../../services/speech/speak';
-import { androidIsSilent } from '../../services/speech/ringer';
+import { androidAudibility } from '../../services/speech/ringer';
 import { CREATABLE_INTENTS } from '../../voice/intents';
 import { useVoice, type Exchange, type Voice } from './useVoice';
+import { useListen } from './useListen';
 import { MicButton } from './MicButton';
 import { MicNotice } from './MicNotice';
 import { ConfirmCard } from './ConfirmCard';
@@ -117,17 +131,53 @@ const AI_FAILURES: Readonly<Record<AiFailureReason, TranslationKey>> = {
  */
 const EXAMPLE_CHIPS = 6;
 
+/**
+ * Why a sentence was not heard, when a conversation needed it to be.
+ *
+ * Four causes and four different things to do about them, which is the whole
+ * reason this is a union rather than a boolean. Two are the phone - the switch
+ * on its side, and the media slider, which are different states and have
+ * different fixes. One is this application's own setting. And one is an engine
+ * that took the sentence and never said what became of it, where the honest
+ * thing to report is that nobody knows.
+ *
+ * A conversation stops on all four alike, because a loop listening for the
+ * answer to a question nobody heard is the failure this feature must not have.
+ * What differs is the sentence the sheet shows afterwards.
+ */
+type Silence = 'ringer' | 'media' | 'setting' | 'unknown';
+
+const SILENCES: Readonly<Record<Silence, TranslationKey>> = {
+  ringer: 'voice.conversationSilenced',
+  media: 'voice.conversationMediaMuted',
+  setting: 'voice.conversationMute',
+  unknown: 'voice.conversationUnheard',
+};
+
 export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
   const { t, settings } = useApp();
   const [typed, setTyped] = useState('');
   const [allExamples, setAllExamples] = useState(false);
   /*
-   * The microphone's last failure, held here rather than in `MicButton`, because
-   * the button and the panel explaining it no longer render in the same place:
-   * the button is in the pinned footer and the panel is at the top of the scroll
+   * The microphone's last failure, held here rather than in `useListen`, because
+   * the button and the panel explaining it do not render in the same place: the
+   * button is in the pinned footer and the panel is at the top of the scroll
    * box. See the note at the top of this file about why they were split.
    */
   const [micFailure, setMicFailure] = useState<SpeechFailure | null>(null);
+  /*
+   * Why the last conversation went quiet, or null.
+   *
+   * A ref AND a piece of state, deliberately. `speak` below writes the ref,
+   * because it runs inside a turn and the press that started the conversation is
+   * awaiting it several frames later; the state is what renders, and it is set
+   * once, at the end, from what the ref holds. Setting state from inside `speak`
+   * would put the panel up after any silenced answer, including a typed one -
+   * and "the conversation stopped" would be a sentence about something that was
+   * never running.
+   */
+  const silence = useRef<Silence | null>(null);
+  const [silenced, setSilenced] = useState<Silence | null>(null);
   const boxRef = useRef<HTMLInputElement>(null);
   const boxId = useId();
   // Names the chip list after the line above it, so a screen reader reaching
@@ -149,36 +199,102 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
   /**
    * The setting and the phone, composed.
    *
-   * `createSpeaker` deliberately knows nothing about platforms, and Android's
-   * ringer switch is a platform fact. On Android the switch wins over the
-   * setting; in a browser `androidIsSilent` resolves false, because a browser
-   * cannot read that state and the setting is the only control there is.
+   * `createSpeaker` deliberately knows nothing about platforms, and everything
+   * that can silence a phone is a platform fact. On Android the phone wins over
+   * the setting; in a browser `androidAudibility` resolves `audible`, because a
+   * browser cannot read that state and the setting is the only control there is.
    *
    * A SILENCED PHONE IS `silent`, NOT NOTHING. This used to return early with
    * no answer at all, which is the same nothing a failed engine produced, so
    * the state machine below could not tell "the person asked for quiet" from
    * "we do not know whether anybody heard that". The word is the seam's own -
    * `say` answers with it for the setting and for an empty answer - and the
-   * ringer is answered with it here, because here is where the platform is
-   * known. No check moved and none was added: the one that was already here
-   * only changed what it returns.
+   * phone is answered with it here, because here is where the platform is known.
+   *
+   * THE GAP PHASE ONE LEFT IS CLOSED HERE, AND IT IS CLOSED IN ONE ROUND TRIP.
+   * `say` reports `silent` for the two quiets it decides itself and knows
+   * nothing about a phone; the ringer check that used to be on this line knew
+   * about the switch and not about the media volume, so a phone with the ringer
+   * on and the media slider at zero read every answer out to nobody and reported
+   * `spoken`. `androidAudibility` answers both from the one `Ringer.isSilent`
+   * call the bridge was already making - not two, which is what composing
+   * `androidIsSilent` with `androidMediaMuted` would have cost on every
+   * sentence of every turn.
+   *
+   * TWO QUESTIONS, AND THEY ARE NOT THE SAME QUESTION. One is whether it is
+   * SAFE to open a microphone, and `spoken` answers that on its own: the engine
+   * holds the media stream for the length of an utterance whether or not the
+   * slider is up, so a phone with the volume at zero is no more likely to record
+   * itself than any other. The other is whether a conversation is worth
+   * continuing, and it is not: the person cannot hear the answers, so they
+   * cannot know what was said or that the microphone is open again. This
+   * function answers the second, which is the one a conversation turns on, and
+   * that is why a muted media stream is `silent` here and would not be if the
+   * only worry were the echo.
+   *
+   * Which is also why a muted phone is not handed the sentence at all. That is
+   * the behaviour `previewVoice` in Settings already has - it refuses and says
+   * to turn the volume up - and a sheet that quietly read answers into a stream
+   * at zero while Settings called the same state a problem would be two parts of
+   * one application disagreeing about a phone.
+   *
+   * Every cause arrives at the loop as the same word, which is all the loop
+   * needs: it must not listen. Which cause it was is written to the ref, which
+   * is all the sheet needs: it has a sentence for each.
    */
   const speak = useCallback(
     async (text: string, tag: string): Promise<SpeechOutcome> => {
-      if (await androidIsSilent()) return 'silent';
-      return speaker.say(text, tag);
+      const audibility = await androidAudibility();
+      if (audibility !== 'audible') {
+        silence.current = audibility === 'silenced' ? 'ringer' : 'media';
+        return 'silent';
+      }
+
+      const outcome = await speaker.say(text, tag);
+      // `silent` from the seam can only be the setting here: the empty answer it
+      // also reports it for never reaches this function, because every caller in
+      // `useVoice` guards on there being a sentence to read.
+      if (outcome !== 'spoken') silence.current = outcome === 'silent' ? 'setting' : 'unknown';
+      return outcome;
     },
     [speaker],
   );
 
-  const voice = useVoice(speak);
-  const { run } = voice;
+  const microphone = useListen();
+  const voice = useVoice(speak, microphone.microphone);
+  const { converse, endConversation, run } = voice;
 
-  // Nothing should still be talking over a sheet the user has closed.
+  /**
+   * One press, and everything that follows it.
+   *
+   * The two panels are cleared first, because a message about the last press
+   * standing over this one explains the wrong thing. The failure comes back from
+   * the loop rather than from a callback, so the decision not to raise "I did not
+   * hear anything" when a conversation simply ended is made where the turn count
+   * is - see `converse`.
+   *
+   * The silence panel is shown only where a conversation was asked for. With the
+   * setting off there is nothing for an unheard answer to have stopped, and the
+   * answer is on the screen either way.
+   */
+  const press = useCallback(async () => {
+    setMicFailure(null);
+    setSilenced(null);
+    silence.current = null;
+
+    const failure = await converse();
+
+    setMicFailure(failure);
+    setSilenced(settings.voiceKeepListening ? silence.current : null);
+  }, [converse, settings.voiceKeepListening]);
+
+  // Nothing should still be talking over a sheet the user has closed, and no
+  // conversation should still be waiting to open a microphone into one.
   const close = useCallback(() => {
+    endConversation();
     speaker.stop();
     onClose();
-  }, [onClose, speaker]);
+  }, [endConversation, onClose, speaker]);
 
   /**
    * Puts the cursor in the typed box.
@@ -281,19 +397,57 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
             </p>
           )}
 
+          {/*
+            The microphone's own line, and the way out of it - OUTSIDE the inert
+            row below, for the same reason the thinking line above is.
+
+            This used to sit inside `MicButton`, inside the form, and a
+            conversation made that untenable. A conversation passes through
+            `busy` on every single turn - it goes up while the sentence is being
+            worked out and comes down again before the answer is read - so a stop
+            control inside the form would blink out of reach once per sentence,
+            for as long as each query takes. `inert` does not dim a control, it
+            removes it from the accessibility tree, so it would not be dimmed and
+            unpressable: it would be gone.
+
+            It is still in the pinned footer, one line above the microphone that
+            opened it. It could not share that row anyway - at 350px of inner
+            width a status line and a second button leave the box no room at all
+            - and it must not replace the box either, since somebody may have
+            typed half a sentence before reaching for the microphone.
+          */}
+          {(microphone.open || voice.conversing) && (
+            <div className={styles.listening}>
+              <p role="status">
+                {microphone.open ? t('voice.listening') : t('voice.conversationNext')}
+              </p>
+              {(voice.conversing || microphone.cancellable) && (
+                <Button onClick={endConversation}>
+                  {t(voice.conversing ? 'voice.stopConversation' : 'voice.stopListening')}
+                </Button>
+              )}
+            </div>
+          )}
+
           <form
             className={styles.composerRow}
-            inert={voice.busy}
+            /*
+             * The box is not the way in while a conversation is running, and
+             * saying so is cheaper than making two `run` calls safe to
+             * interleave. `busy` on its own would not cover it: most of a
+             * conversation is the window `busy` is deliberately down for.
+             */
+            inert={voice.busy || voice.conversing}
             onSubmit={(event) => {
               event.preventDefault();
               submit();
             }}
           >
             <MicButton
-              onHeard={(transcript, online) => {
-                void run(transcript, online);
+              disabled={microphone.open || voice.conversing}
+              onPress={() => {
+                void press();
               }}
-              onFailure={setMicFailure}
             />
 
             {/*
@@ -343,6 +497,23 @@ export function VoiceSheet({ open, onClose }: VoiceSheetProps) {
           focusBox();
         }}
       />
+
+      {/*
+        Why the conversation stopped, when what stopped it was that nobody could
+        have heard the answer.
+
+        Beside the microphone's own panel and in the same place, because it is
+        the same kind of news: a control did less than was asked of it, and the
+        person is owed the reason rather than a sheet that quietly went back to
+        one sentence per press. It is the one thing the arming gate has to say
+        out loud - the other stops are all visible on the screen already, since a
+        card, a list of names and "I did not understand that" explain themselves.
+      */}
+      {silenced !== null && (
+        <Alert tone="info" role="status">
+          {t(SILENCES[silenced])}
+        </Alert>
+      )}
 
       <div className={styles.conversation} inert={voice.busy}>
         {/*

@@ -22,7 +22,7 @@ import {
   speechAvailable,
   type VoiceChoice,
 } from '../../services/speech/speak';
-import { androidIsSilent, androidMediaMuted } from '../../services/speech/ringer';
+import { androidAudibility } from '../../services/speech/ringer';
 import { LOCALE_TAGS } from '../../i18n/translate';
 import { BackupPanel } from './BackupPanel';
 import { NotificationsPanel } from './NotificationsPanel';
@@ -193,14 +193,24 @@ export function SettingsScreen() {
    */
   const previewVoice = async () => {
     setPreviewNote(null);
-    if (await androidIsSilent()) {
+
+    /*
+     * Both silences, from one bridge call.
+     *
+     * They are different states with different answers - the switch on the side
+     * of the phone is somebody saying "not now", and the media slider at zero is
+     * usually somebody who does not know they moved it - and both used to be
+     * asked separately, which is two `Ringer.isSilent` round trips for one
+     * plugin result. `androidAudibility` reports the pair, and the ask sheet
+     * needs it to: it asks before every sentence of every turn of a
+     * conversation, where twice is a cost rather than a tidiness question.
+     */
+    const audibility = await androidAudibility();
+    if (audibility === 'silenced') {
       setPreviewNote(t('voice.previewSilent'));
       return;
     }
-    // Different from the switch above, and worth its own sentence: the ringer
-    // is on, this would speak, and the media stream it speaks on is turned all
-    // the way down. Saying nothing here would be one more unexplained silence.
-    if (await androidMediaMuted()) {
+    if (audibility === 'mediaMuted') {
       setPreviewNote(t('voice.previewMediaMuted'));
       return;
     }
@@ -475,6 +485,33 @@ export function SettingsScreen() {
             void updateSettings({ voiceSpeakAnswers: on });
           }}
         />
+
+        {/*
+          One press, then a conversation. Directly under the switch it depends
+          on, and disabled rather than hidden while that one is off.
+
+          NOT MERGED WITH IT, AND THAT IS THE SAME ARGUMENT THIS CARD KEEPS
+          MAKING. Two switches that each mean what their label says are better
+          than one that quietly overrides the other. Depending on another switch
+          to be USEFUL is a different thing from being the same switch: a
+          conversation with an application that says nothing back is not a
+          conversation, so the row goes grey and the line under it says which
+          switch to move. The stored value is untouched and comes back when
+          speaking does.
+        */}
+        <SwitchRow
+          label={t('voice.settingConversation')}
+          help={t('voice.settingConversationHelp')}
+          checked={settings.voiceKeepListening}
+          disabled={!settings.voiceSpeakAnswers}
+          onChange={(on) => {
+            void updateSettings({ voiceKeepListening: on });
+          }}
+        />
+
+        {!settings.voiceSpeakAnswers && (
+          <p className={screens.pageSubtitle}>{t('voice.settingConversationNeedsSpeech')}</p>
+        )}
 
         {/*
           The one control here for something this application does unasked, and
