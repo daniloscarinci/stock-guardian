@@ -287,7 +287,9 @@ makes the whole parser testable with a string and an expectation, and it is why
 same search the inventory screen uses — the one that already folds accents and
 ANDs across terms, which is exactly the matching a garbled transcript needs. A
 phrase that fits two items raises **Which one?** rather than picking. It never
-guesses a tie, because the user is not looking at a list.
+guesses a tie, because the user is not looking at a list. For four of the intents
+that can raise it, the question is now read aloud like any other answer, and in a
+conversation it can be answered with a word — see *Answering Which one? out loud*.
 
 **Answer or propose.** A question returns an answer, rendered as a sentence and,
 if the setting is on, read aloud. A change returns a *pending write*: a
@@ -686,8 +688,8 @@ failure may put the switch in front of you; only you move it.
 on, one press of the microphone is a whole stock-take rather than one sentence:
 
 ```
-"quanto arroz eu tenho?"  → "Arroz: 12 quilos, na Despensa."   still listening
-"usei três ovos"          → "Ovos: 9 unidades, na Despensa."   still listening
+"quanto arroz eu tenho?"  → "Arroz: 12 quilos, em Despensa."   still listening
+"usei três ovos"          → "Ovos: 9 unidades, em Despensa."   still listening
 [silence]                 → the conversation ends
 ```
 
@@ -708,13 +710,72 @@ anything* is the right thing to say to a press that heard nothing and the wrong
 thing to say at the end of every conversation. A first listen that hears nothing
 still says it.
 
-**And it ends on anything that needs a finger.** A confirmation card, a list of
-names to choose between, an offer to create something that was not found. There
-is no spoken yes or no in this release, so listening again while a card stands
-would let the next sentence be parsed as though nobody had been asked anything.
-Stop, the sheet closing, a listen that fails for any other reason, and a
-recognizer that reports itself busy all end it too — the last one because asking
-again would land on the same refusal.
+**And it ends on anything that needs a finger.** A confirmation card, an offer to
+create something that was not found, and a **Which one?** raised by a sentence
+that would change something. There is no spoken yes or no in this release, so
+listening again while a card stands would let the next sentence be parsed as
+though nobody had been asked anything. Stop, the sheet closing, a listen that
+fails for any other reason, and a recognizer that reports itself busy all end it
+too — the last one because asking again would land on the same refusal.
+
+### Answering *Which one?* out loud
+
+A phrase that fits two items raises a list rather than a guess, and that list used
+to end a conversation as surely as a card does. It no longer does — **for the four
+questions where answering it writes nothing**:
+
+```
+"quanto arroz eu tenho?"
+  → "Qual deles? Arroz Branco, Arroz Integral."   spoken, still listening
+"o primeiro"
+  → "Arroz Branco: 12 quilos, em Despensa."       spoken, still listening
+```
+
+**Four intents, named, and a list that is total over all twenty-two.** The
+questions are QUERY_QUANTITY, QUERY_EXPIRY_OF, QUERY_WHERE and QUERY_HISTORY.
+Answering one of them re-runs a *question* against one exact name, so nothing
+reaches `commit` and the release promise — nothing new can be written by talking
+— holds by construction rather than by care.
+
+**Six intents are excluded, and they are the writes.** ADJUST_QUANTITY,
+SET_QUANTITY, SET_EXPIRY, MOVE_ITEM, SET_MINIMUM and SET_TARGET can all raise the
+same list, and picking a row for one of them supplies the exact name that makes
+the write *explicit* — the one branch that stores without asking. A word finishing
+one of those would be a spoken change to the database, and this release carries
+none of the protections that would have to come with it: no undo re-armed on a
+voice-confirmed write, no list of things a voice may never change, and no window
+anchored to the end of the question that was asked. Those are the next release's
+promise to make. Until then, a writing choice is not read out at all: it stops
+the conversation and waits for a finger. `ANSWERABLE_ALOUD` in `useVoice.ts` is that
+list, written as a record over every intent kind so that a twenty-third intent is
+a compile error until somebody decides in writing which side of it it is on.
+
+**Three names, because three is what a spoken sentence can carry.** The question
+obeys the same rule every other spoken answer obeys — name at most three and count
+the rest — and only those three can be answered, because nobody heard a fourth
+name. The screen keeps the whole list and its buttons for as long as the question
+stands.
+
+**A closed vocabulary, never a grammar rule.** *first / second / third*, with their
+articles and genders, and the counted forms — *number two*, *el número dos*, *o
+número dois* — in the three languages, plus the item's own name, because the names
+were just read aloud and "arroz branco" is a more natural answer than "o
+primeiro". The whole utterance is matched, folded, for equality: never a
+substring, so "first thing tomorrow" picks nothing, and a name only counts where
+exactly one of the offered items answers to it. A bare numeral is refused, because
+a number is a quantity in every other sentence this box listens to. This lives in
+`src/voice/ordinal.ts` and not in the grammar, for two reasons that are really the
+same reason: `parse` takes the first rule that matches and that order is
+load-bearing, and a grammar intent would also be reachable from the typed box and
+from HELP's list of examples, where "say: the first one" is an instruction about
+nothing.
+
+**Anything else stops it, with the list still up.** A sentence that is not one of
+the words it offered ends the conversation and leaves the buttons on the screen,
+which is the interface there would have been if none of this existed. So does a
+question the phone would not read out: the arming gate is the same one every other
+turn passes, and a microphone opened after a sentence nobody heard is listening
+into a room.
 
 **It will not start on a phone nobody could hear.** A turn that was not actually
 spoken does not re-open the microphone, and the sheet says which silence it was:
@@ -889,7 +950,12 @@ code it describes.
   after each answer** strings sentences together but does not join them up: each
   one is parsed entirely on its own, so "and two more" still refers to nothing,
   and a card cannot be answered out loud — a card ends the conversation instead.
-  There is no spoken yes, no spoken no, and no pronoun that reaches back.
+  There is no spoken yes, no spoken no, and no pronoun that reaches back. The one
+  sentence that does refer to the one before it is the answer to a spoken **Which
+  one?**, and it never goes through the grammar at all: it is matched whole
+  against a closed list of position words and the names that were just read out,
+  it can only follow one of four questions, and answering it writes nothing — see
+  *Answering Which one? out loud*.
 - **No settings from the box, and no editing of what it made.** It reads the
   inventory; it changes quantities, expiry dates, minimums and targets; it moves
   items; and it creates items, places, categories and contacts. A new row

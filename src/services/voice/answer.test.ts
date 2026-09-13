@@ -5,7 +5,7 @@ import type { ReplenishmentLine } from '../../domain/replenishment';
 import type { Contact, InventoryItemView } from '../../types/domain';
 import type { DashboardStats } from '../../repositories/items.repository';
 import type { Answer } from './execute';
-import { renderAnswer, type AnswerOptions } from './answer';
+import { renderAnswer, renderChoice, type AnswerOptions } from './answer';
 
 const withLanguage = (language: Language): TranslateFn =>
   (key, values) => translate(language, key, values);
@@ -494,6 +494,50 @@ describe('renderAnswer', () => {
           expect(sentence, where).not.toMatch(/\d{4}-\d{2}-\d{2}/);
         }
       }
+    }
+  });
+});
+
+/**
+ * The spoken half of "Which one?".
+ *
+ * The rule being pinned is this module's first one: name at most three and
+ * count the rest. It matters more here than anywhere else, because the names it
+ * reads out are the only ones anybody can answer with - `named` is what the
+ * listener resolves an answer against, so a question that recited three names
+ * and handed back four would offer a choice nobody heard.
+ */
+describe('renderChoice', () => {
+  it('asks the question and names the items', () => {
+    const choice = renderChoice(en, ['Rice', 'Brown Rice'], 2);
+    expect(choice.text).toBe('Which one? Rice, Brown Rice');
+    expect(choice.named).toEqual(['Rice', 'Brown Rice']);
+  });
+
+  it('names three and counts the rest, and hands back only the three', () => {
+    const names = ['Arroz Branco', 'Arroz Integral', 'Arroz Parboilizado', 'Arroz Arboreo'];
+    const choice = renderChoice(pt, names, 4);
+    expect(choice.text).toBe('Qual deles? Arroz Branco, Arroz Integral, Arroz Parboilizado e mais 1');
+    expect(choice.named).toEqual(names.slice(0, 3));
+  });
+
+  /**
+   * `resolveItem` caps its list at five before this ever sees it, so the count
+   * has to come from the total that tied rather than from the array length -
+   * "and 2 more" after a phrase that fit forty rows is simply a wrong number.
+   */
+  it('counts what tied, not what it was handed', () => {
+    const choice = renderChoice(en, ['A', 'B', 'C', 'D', 'E'], 40);
+    expect(choice.text).toBe('Which one? A, B, C and 37 more');
+    expect(choice.named).toEqual(['A', 'B', 'C']);
+  });
+
+  it('says something in all three languages', () => {
+    for (const language of ['en', 'pt-BR', 'es'] as const) {
+      const choice = renderChoice(withLanguage(language), ['Uno', 'Dos'], 2);
+      expect(choice.text, language).not.toContain('undefined');
+      expect(choice.text, language).not.toMatch(/\{\w+\}/);
+      expect(choice.named, language).toEqual(['Uno', 'Dos']);
     }
   });
 });

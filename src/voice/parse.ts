@@ -58,8 +58,15 @@ const DOT_OR_COMMA_OUTSIDE_A_NUMBER = /(?<!\d)[.,]|[.,](?!\d)/g;
  *   `'`  belongs to the name that carries it, and the item search is a
  *        substring match against text stored with the apostrophe still in it.
  *   `:`  is read by the CREATE_ITEM rules themselves - "criar item: arroz".
+ *
+ * EXPORTED, AND THE SECOND CALLER IS NOT A GRAMMAR RULE. `ordinal.ts` matches a
+ * whole utterance - "o primeiro." - against a closed list of position words and
+ * against the names a question has just read out, and it has to fold and strip
+ * exactly as this does or a trailing period would be the difference between an
+ * answer and a conversation that stops. It is the same rule, so there is one
+ * copy of it rather than two that can drift.
  */
-function stripPunctuation(folded: string): string {
+export function stripPunctuation(folded: string): string {
   return folded
     .replace(SENTENCE_PUNCTUATION, '')
     .replace(DOT_OR_COMMA_OUTSIDE_A_NUMBER, '')

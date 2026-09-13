@@ -42,6 +42,14 @@
  * at once and offered back for ten seconds, and everything else goes to a card -
  * which stops the loop. The set of things reaching `commit` is unchanged.
  *
+ * AND "WHICH ONE?" CAN NOW BE ANSWERED OUT LOUD, FOR FOUR INTENTS. A phrase that
+ * fits two items used to stop a conversation as surely as a card does. It no
+ * longer does where answering it writes nothing: the question is read out, the
+ * next utterance is matched against a closed list of position words and against
+ * the names themselves, and the intent is re-run against the one that was meant.
+ * `ANSWERABLE_ALOUD` below is the list of which intents those are, why the other
+ * six are not on it, and what a seventh would have to declare about itself.
+ *
  * Two things happen here that cannot happen in the layers below:
  *
  *   The grammar's examples are filled in. `execute` deliberately owns no
@@ -59,11 +67,12 @@ import { parse } from '../../voice/parse';
 import { grammarFor } from '../../voice/grammar/registry';
 import { execute, type Outcome, type PendingWrite, type VoiceDeps } from '../../services/voice/execute';
 import { commit, undo, type Receipt } from '../../services/voice/commit';
-import { renderAnswer, type AnswerOptions } from '../../services/voice/answer';
+import { renderAnswer, renderChoice, type AnswerOptions } from '../../services/voice/answer';
 import { converse as askAssistant, type AiFailureReason, type AiOptions } from '../../services/ai/converse';
 import type { AiDeps } from '../../services/ai/tools';
-import { LOCALE_TAGS } from '../../i18n/translate';
-import { CREATABLE_INTENTS, type Intent } from '../../voice/intents';
+import { LOCALE_TAGS, type TranslateFn } from '../../i18n/translate';
+import { matchChoice } from '../../voice/ordinal';
+import { CREATABLE_INTENTS, type Intent, type IntentKind } from '../../voice/intents';
 import type { InventoryItemView } from '../../types/domain';
 import type { SpeechOutcome } from '../../services/speech/speak';
 import type { SpeechFailure } from '../../services/speech/recognizer';
@@ -151,6 +160,29 @@ export interface ClaudeExchange extends HeardExchange {
 export type Exchange = DeviceExchange | ClaudeExchange;
 
 /**
+ * Where a result lands in the log.
+ *
+ *   `null`       appends it. Something newly asked.
+ *   a number     writes over the row at that position. Every button in the sheet
+ *                is handed its own index by the list that rendered it, so this
+ *                is what `confirm`, `choose` and `create` pass.
+ *   an Exchange  writes over the row that IS that object, wherever it has got
+ *                to, and appends if it has gone.
+ *
+ * THE THIRD ONE IS THE NEW ONE, AND IT IS NOT A CONVENIENCE. A spoken answer to
+ * "Which one?" arrives an utterance later than the question, and in that gap the
+ * user can press Cancel on an earlier card - `dismiss` removes an exchange, and
+ * every index after it moves by one. A number captured before the utterance
+ * would then overwrite somebody else's row. Identity cannot slide, which is why
+ * `armUndo` has always found its exchange this way over the same kind of gap.
+ *
+ * Appending when the target has gone rather than dropping the result: the answer
+ * was read out loud a moment ago, and a log that does not contain a sentence the
+ * user just heard is a worse lie than one with a row in an unexpected place.
+ */
+type Slot = number | Exchange | null;
+
+/**
  * Reads a sentence aloud, and resolves when it has been heard.
  *
  * Supplied by the sheet, which composes the platform: the seam decides the
@@ -172,30 +204,48 @@ export type Speak = (text: string, tag: string) => Promise<SpeechOutcome>;
 /**
  * What one turn left behind, for whatever has to decide what happens next.
  *
- * Three words rather than the `void` this used to be, because a conversation
+ * Four words rather than the `void` this used to be, because a conversation
  * cannot read them off `history`: that is React state, and the closure awaiting
  * a turn holds the array from before the turn ran. The value has to come back
  * from the call.
  *
  * It is deliberately this small. Everything the sheet needs in order to DRAW an
- * exchange is already in `history` and none of it is here; the only question
- * this answers is the one a loop has to ask - may the microphone open again, and
- * if not, what stopped it.
+ * exchange is already in `history` and none of it is here; the only questions
+ * this answers are the two a loop has to ask - may the microphone open again,
+ * and if it may, is what comes next a fresh sentence or the answer to something.
  */
 export type TurnResult =
   /**
    * A sentence was read out, the platform reported the end of it, and nothing
-   * on screen is waiting for a press. The only one of the three that re-arms.
+   * on screen is waiting for a press. One of the two that re-arm, and the one
+   * that leaves nothing standing: whatever is said next is a fresh sentence.
    */
   | 'answered'
   /**
+   * "Which one?" was read out, and the next sentence is an answer to it.
+   *
+   * The one result that re-arms the microphone for something other than a fresh
+   * question. It is only ever produced for an intent on `ANSWERABLE_ALOUD` -
+   * four queries, none of which can write - and only when the question was
+   * actually heard, which is the same arming gate `answered` passes. A turn that
+   * comes back with this has left the offer in `offered`, and the loop reads it
+   * there rather than off `history`, for the same reason `TurnResult` exists at
+   * all: `history` is state, and the closure awaiting a turn holds the array
+   * from before the turn ran.
+   */
+  | 'choosing'
+  /**
    * Something wants a finger: a confirmation card, a list of names to choose
-   * between, or an offer to create what was not found.
+   * between that may not be answered out loud, or an offer to create what was
+   * not found.
    *
    * This is the stop condition that matters most, and it is about consent rather
    * than about tidiness. There is no spoken yes or no in this release, so
    * listening again while a card stands would let the next sentence be parsed as
-   * though the question were not on the screen.
+   * though the question were not on the screen. A choice raised by one of the
+   * six WRITING intents is here for exactly that reason - see `ANSWERABLE_ALOUD`
+   * - and so is a choice whose question nobody heard, and an utterance offered
+   * to a choice that matched nothing in it.
    */
   | 'waiting'
   /**
@@ -299,6 +349,125 @@ function aimedAt(intent: Intent, name: string): Intent | null {
     default:
       return null;
   }
+}
+
+/**
+ * Whether a "Which one?" raised by this intent may be answered out loud.
+ *
+ * A POSITIVE LIST, AND TOTAL OVER `IntentKind`. It is a `Record` and not an
+ * array of the four, so a twenty-third intent is a compile error here until
+ * somebody decides in writing whether a spoken word may finish it. A negative
+ * check - "not one of the writing intents" - would have let a new writing intent
+ * default into voice, which is the mistake this arrangement exists to make
+ * impossible rather than unlikely.
+ *
+ * TEN INTENTS CAN PRODUCE A CHOICE, and only four of them are true here. Each of
+ * the ten calls `one()` in `execute.ts`, which raises a choice when a phrase
+ * fits more than one row. Four of them are questions:
+ *
+ *   QUERY_QUANTITY, QUERY_EXPIRY_OF, QUERY_WHERE, QUERY_HISTORY.
+ *
+ * Answering one of those re-runs a question against a name, and a question
+ * writes nothing. That is what makes them safe to answer with a word, and it is
+ * the whole of the safety argument: the release promise is that nothing new can
+ * be written by talking, and everything on this list keeps it by construction.
+ *
+ * THE OTHER SIX WOULD COMMIT, AND THIS IS THE PART WORTH BEING EXACT ABOUT.
+ * ADJUST_QUANTITY, SET_QUANTITY, SET_EXPIRY, MOVE_ITEM, SET_MINIMUM and
+ * SET_TARGET all reach `turn` with an item named exactly - `aimedAt` supplies
+ * the name off the row that was picked - and an exact name with a number the
+ * user actually spoke is `explicit`, which is the one branch that goes straight
+ * to `store` and `commit`. So "the first one" after "add five cans of oat" is a
+ * spoken word changing the database, with none of the protections that would
+ * have to come with it: no undo re-armed on a voice-confirmed write, no list of
+ * things a voice may never change, and no window anchored to the end of the
+ * question that was asked. Those are the next release's promise to make. Until
+ * they exist, a writing choice stops the conversation and waits for a finger,
+ * exactly as it did before this change.
+ *
+ * The remaining twelve are false because they never raise a choice at all -
+ * eight of them carry no item phrase for `one()` to fail on, and the four CREATE
+ * intents name something that does not exist yet and so cannot be one of
+ * several. False is the honest entry for them: nothing can consult this record
+ * about an intent that never reaches it, and a `true` nobody could ever read
+ * would be a claim about behaviour that does not happen.
+ */
+const ANSWERABLE_ALOUD: Readonly<Record<IntentKind, boolean>> = {
+  QUERY_QUANTITY: true,
+  QUERY_EXPIRY_OF: true,
+  QUERY_WHERE: true,
+  QUERY_HISTORY: true,
+
+  // Every one of these can be `explicit` once it has an exact name, and an
+  // explicit write is stored without being asked about. See above.
+  ADJUST_QUANTITY: false,
+  SET_QUANTITY: false,
+  SET_EXPIRY: false,
+  MOVE_ITEM: false,
+  SET_MINIMUM: false,
+  SET_TARGET: false,
+
+  // These never raise a choice: no item phrase, or a name that is new by
+  // definition.
+  QUERY_EXPIRING: false,
+  QUERY_MISSING: false,
+  QUERY_SCORE: false,
+  QUERY_CATEGORY: false,
+  QUERY_CONTACT: false,
+  QUERY_TOTAL: false,
+  CREATE_ITEM: false,
+  CREATE_LOCATION: false,
+  CREATE_CATEGORY: false,
+  CREATE_CONTACT: false,
+  HELP: false,
+  UNKNOWN: false,
+};
+
+/**
+ * A "Which one?" that was read out, and everything needed to answer it.
+ *
+ * `exchange` is the row in the log the list is drawn under, held as the OBJECT
+ * rather than as its index. `dismiss` removes an earlier exchange and every
+ * index after it moves, and the gap this has to survive is the length of an
+ * utterance - `armUndo` finds its own exchange by receipt identity for exactly
+ * this reason, over exactly the same kind of gap.
+ *
+ * `items` holds only the ones the question named. `renderChoice` names at most
+ * three and counts the rest, so a fourth has no referent: nobody heard a fourth
+ * name.
+ */
+interface Offer {
+  readonly text: string;
+  readonly intent: Intent;
+  readonly items: readonly InventoryItemView[];
+  readonly exchange: DeviceExchange;
+}
+
+/**
+ * The spoken half of a choice, or null where there must not be one.
+ *
+ * Two conditions, both required: the outcome is a choice, and the intent that
+ * raised it is on the allow-list above. A choice that fails the second is
+ * returned as null and therefore never spoken, which is what keeps the
+ * conversation stopping in front of every write exactly as it did before.
+ *
+ * Module-level and not a hook, so the narrowing on `outcome.kind` holds over
+ * the whole function and `outcome.intent` is a real `Intent` rather than a
+ * property TypeScript has lost track of.
+ */
+function offerOf(
+  t: TranslateFn,
+  outcome: Outcome,
+): Omit<Offer, 'exchange'> | null {
+  if (outcome.kind !== 'choice') return null;
+  if (!ANSWERABLE_ALOUD[outcome.intent.kind]) return null;
+
+  const spoken = renderChoice(t, outcome.items.map((item) => item.name), outcome.total);
+  return {
+    text: spoken.text,
+    intent: outcome.intent,
+    items: outcome.items.slice(0, spoken.named.length),
+  };
 }
 
 /**
@@ -455,6 +624,13 @@ const heard = (outcome: SpeechOutcome): TurnResult =>
  * finding no rice offers nothing to press. `unknown` offers nothing either:
  * the chips below the log are teaching material rather than an answer to this
  * sentence.
+ *
+ * A CHOICE THAT WAS READ OUT NEVER REACHES THIS, and the sentence above is
+ * still true of the ones that do. `turn` returns before consulting this
+ * whenever it spoke a question - see `ANSWERABLE_ALOUD` - so what arrives here
+ * as a `choice` is either raised by an intent that may not be answered aloud or
+ * a question the platform would not read. Both of those want a finger, which is
+ * what this says about them.
  *
  * Neither of the last two re-arms all the same, because neither says anything
  * out loud. Somebody who heard nothing has no way to know the microphone is
@@ -669,14 +845,17 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
 
   /**
    * Where a result lands - appended for something newly asked, or over the top
-   * of the exchange that raised the question.
+   * of the exchange that raised the question. See `Slot` for the three ways of
+   * saying which.
    */
-  const place = useCallback((entry: Exchange, index: number | null) => {
-    setHistory((past) =>
-      index === null
-        ? [...past, entry]
-        : past.map((existing, i) => (i === index ? entry : existing)),
-    );
+  const place = useCallback((entry: Exchange, at: Slot) => {
+    setHistory((past) => {
+      if (at === null) return [...past, entry];
+      if (typeof at === 'number') return past.map((existing, i) => (i === at ? entry : existing));
+      return past.includes(at)
+        ? past.map((existing) => (existing === at ? entry : existing))
+        : [...past, entry];
+    });
   }, []);
 
   /**
@@ -715,7 +894,7 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
     async (
       said: string,
       write: PendingWrite,
-      index: number | null,
+      at: Slot,
       undoable: boolean,
       transcribedOnline: boolean,
       /** The turn that raised `busy`, so only it may put the sheet back. */
@@ -733,7 +912,11 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
       // that states nothing; an undoable one keeps it, because its button is
       // the whole point of it.
       if (text === null && !undoable) {
-        setHistory((past) => (index === null ? past : past.filter((_, i) => i !== index)));
+        setHistory((past) => {
+          if (at === null) return past;
+          if (typeof at === 'number') return past.filter((_, i) => i !== at);
+          return past.filter((existing) => existing !== at);
+        });
         return 'unheard';
       }
 
@@ -748,7 +931,7 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
           undone: false,
           aiFailure: null,
         },
-        index,
+        at,
       );
       if (undoable) armUndo(receipt);
       /*
@@ -765,6 +948,21 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
   );
 
   /**
+   * The "Which one?" the last turn read out, or null.
+   *
+   * A ref, written by `turn` on the line before it returns `'choosing'` and read
+   * by the loop on the line after that call resolves, with no await between the
+   * two. It is not state because nothing renders from it - the list on screen is
+   * drawn from the exchange - and it is not a return value because `TurnResult`
+   * is deliberately four words about what may happen next rather than a payload.
+   *
+   * `turn` clears it on the way in, so every path that is not a spoken choice
+   * leaves it null: a stale offer read after some later turn would resolve an
+   * utterance against a list nobody had just heard.
+   */
+  const offered = useRef<Offer | null>(null);
+
+  /**
    * One parser turn: execute, record, speak - and, where nothing was guessed,
    * write.
    *
@@ -773,37 +971,64 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
    * just typed clearly is what made this tiring on a real phone, so it is
    * stored at once, stated as a fact, and offered back for a few seconds.
    * Everything else was guessed at somewhere and goes to the card.
+   *
+   * IT ALSO ASKS "WHICH ONE?" OUT LOUD, for the four intents on
+   * `ANSWERABLE_ALOUD` and no others. The question is a sentence like any other
+   * answer and passes the same arming gate: read out, and only re-arming if the
+   * platform says it was heard. What it leaves behind is the offer above, which
+   * is the only thing that lets the next utterance mean "the first one" instead
+   * of being parsed as a fresh sentence.
    */
   const turn = useCallback(
     async (
       said: string,
       intent: Intent,
-      index: number | null,
+      at: Slot,
       aiFailure: AiFailureReason | null,
       transcribedOnline: boolean,
     ): Promise<TurnResult> => {
       const token = beginTurn();
+      // Whatever was on offer is not on offer any more. Set before the first
+      // await, so no path out of here - including the throw below - can leave a
+      // question standing that has already been answered or replaced.
+      offered.current = null;
       try {
         const outcome = withExamples(await execute(deps, intent));
 
         if (outcome.kind === 'pending' && outcome.write.certainty === 'explicit') {
-          return await store(said, outcome.write, index, true, transcribedOnline, token);
+          return await store(said, outcome.write, at, true, transcribedOnline, token);
         }
 
-        const text = sentence(outcome);
-        place(
-          {
-            engine: 'device',
-            said,
-            transcribedOnline,
-            outcome,
-            text,
-            receipt: null,
-            undone: false,
-            aiFailure,
-          },
-          index,
-        );
+        const question = offerOf(t, outcome);
+        const text = question === null ? sentence(outcome) : question.text;
+        const entry: DeviceExchange = {
+          engine: 'device',
+          said,
+          transcribedOnline,
+          outcome,
+          text,
+          receipt: null,
+          undone: false,
+          aiFailure,
+        };
+        place(entry, at);
+
+        if (question !== null) {
+          /*
+           * A question, asked, and then held open.
+           *
+           * `'waiting'` when it was not heard, which is the truth twice over:
+           * the list is on the screen with its buttons on it, and a microphone
+           * opened after a sentence nobody heard is listening into a room. The
+           * offer is deliberately left null in that case, so an utterance that
+           * arrives anyway - from a press the user makes next - is parsed as the
+           * fresh sentence it is.
+           */
+          if ((await announce(question.text, token)) !== 'spoken') return 'waiting';
+          offered.current = { ...question, exchange: entry };
+          return 'choosing';
+        }
+
         // A card is not a fact, and `sentence` returns null for one. The card
         // announces itself by moving focus to a button that carries the whole
         // change; speaking it here would say a change happened that has not.
@@ -818,7 +1043,58 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
         endTurn(token);
       }
     },
-    [announce, beginTurn, deps, endTurn, place, sentence, store, withExamples],
+    [announce, beginTurn, deps, endTurn, place, sentence, store, t, withExamples],
+  );
+
+  /**
+   * One utterance, offered to the question that was just read out.
+   *
+   * NOTHING HERE GOES THROUGH THE GRAMMAR, and that is the point of it. The
+   * sentence is matched whole against a closed list of position words and
+   * against the names the question actually said - see `ordinal.ts` for why
+   * that list is not a grammar rule - and anything else is refused. A refusal
+   * returns `'waiting'`, which stops the conversation and leaves the list on the
+   * screen with its buttons still on it: somebody who said something else
+   * entirely gets the interface they would have had if this feature did not
+   * exist, rather than a guess.
+   *
+   * IT CANNOT REACH A WRITE. `offer.intent` is one of the four on
+   * `ANSWERABLE_ALOUD` - nothing else ever became an offer - so `aimedAt`
+   * produces a question, and a question has no `pending` outcome for `turn` to
+   * store.
+   *
+   * The exchange is rewritten rather than appended to, which is what the button
+   * under the same list does: the log reads as the original question and its
+   * answer, and the list disappears because it has been answered. The one thing
+   * that is carried forward rather than replaced is whether audio left the
+   * device - an ordinal transcribed over the network marks the exchange even
+   * where the question before it was heard on the phone, because that marker is
+   * a promise about audio and not about which sentence carried it.
+   */
+  const answerAloud = useCallback(
+    async (offer: Offer, said: string, transcribedOnline: boolean): Promise<TurnResult> => {
+      const chosen = matchChoice(
+        settings.language,
+        said,
+        offer.items.map((item) => item.name),
+      );
+      if (chosen === null) return 'waiting';
+
+      const item = offer.items[chosen];
+      if (item === undefined) return 'waiting';
+
+      const intent = aimedAt(offer.intent, item.name);
+      if (intent === null) return 'waiting';
+
+      return turn(
+        offer.exchange.said,
+        intent,
+        offer.exchange,
+        offer.exchange.aiFailure,
+        offer.exchange.transcribedOnline || transcribedOnline,
+      );
+    },
+    [settings.language, turn],
   );
 
   const askParser = useCallback(
@@ -955,6 +1231,10 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
    *   Any other failure, an outcome that wants a press, a turn that threw, and
    *   any answer that was not heard - see `TurnResult`.
    *
+   *   An utterance offered to a standing "Which one?" that matched none of the
+   *   names it read out. The list stays on the screen and the finger takes over,
+   *   which is the interface somebody would have had anyway.
+   *
    *   The stop control and the sheet going away, through `ended` above.
    *
    *   And the cap, which is the only stop that is a number rather than an event.
@@ -978,6 +1258,16 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
     const keepListening = settings.voiceKeepListening;
     setConversing(keepListening);
 
+    /*
+     * The question the last turn left standing, if it left one.
+     *
+     * A local, not a ref, and that is deliberate: it is the loop's own memory of
+     * its own last turn, so a press that starts a new conversation begins with
+     * nothing standing however the previous one ended - including a typed
+     * question that raised a choice while nobody was listening.
+     */
+    let offer: Offer | null = null;
+
     try {
       for (let spoken = 0; spoken < MAX_CONVERSATION_TURNS; spoken++) {
         const result = await microphone.listen();
@@ -988,15 +1278,28 @@ export function useVoice(speak: Speak, microphone: Microphone): Voice {
           return closing ? null : result.reason;
         }
 
-        const turnResult = await run(result.text, result.online);
-        if (ended.current || !keepListening || turnResult !== 'answered') return null;
+        // An utterance with a question standing is an answer to that question
+        // and is never parsed as a new sentence. `answerAloud` refuses anything
+        // that is not one of the words it offered, which ends the conversation
+        // with the list still on the screen.
+        const turnResult: TurnResult =
+          offer === null
+            ? await run(result.text, result.online)
+            : await answerAloud(offer, result.text, result.online);
+
+        // Read on the line after the turn resolved, with no await in between,
+        // which is what makes a ref safe here. See `offered`.
+        offer = turnResult === 'choosing' ? offered.current : null;
+
+        if (ended.current || !keepListening) return null;
+        if (turnResult !== 'answered' && turnResult !== 'choosing') return null;
       }
       return null;
     } finally {
       running.current = false;
       setConversing(false);
     }
-  }, [microphone, run, settings.voiceKeepListening]);
+  }, [answerAloud, microphone, run, settings.voiceKeepListening]);
 
   const endConversation = useCallback(() => {
     ended.current = true;

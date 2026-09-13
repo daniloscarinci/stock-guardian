@@ -10,6 +10,12 @@
  *   languages without this module knowing any of their rules.
  *   Every date and quantity goes through the user's own format. `2026-09-12`
  *   and `0.333333` are stored values; neither is a thing anyone says.
+ *
+ * AND ONE SENTENCE HERE IS NOT AN ANSWER. `renderChoice` renders "Which one?"
+ * with the names under it, because a spoken conversation has to be able to ask
+ * that out loud as well as draw it. It is here rather than beside the list it is
+ * the spoken half of because the first rule above is what shapes it: it names
+ * three and counts the rest, through the same `namesOf` every answer uses.
  */
 import { formatCalendarDate } from '../../domain/dates';
 import type { DateFormat, Language } from '../../domain/settings';
@@ -54,6 +60,47 @@ export function namesOf(t: TranslateFn, names: readonly string[], total = names.
   const shown = names.slice(0, MAX_NAMES).join(', ');
   const rest = total - Math.min(MAX_NAMES, names.length);
   return rest <= 0 ? shown : `${shown} ${t('voice.andMore', { count: rest })}`;
+}
+
+/**
+ * "Which one?" and the names, as a question somebody can answer out loud.
+ *
+ * WHY A CHOICE NEEDS ITS OWN SENTENCE AT ALL. `renderAnswer` below turns an
+ * `Answer` into a statement, and a choice is not one - it is the absence of an
+ * answer, held open until somebody says which item they meant. `sentence()` in
+ * `useVoice` returns null for it, which is why nothing was ever read out and
+ * why a conversation stopped dead at the one question it could most easily have
+ * answered.
+ *
+ * IT FOLLOWS THIS MODULE'S FIRST RULE, and that is the whole reason it lives
+ * here rather than in the sheet. `namesOf` names at most three and counts the
+ * rest, because forty names read aloud is noise; the screen has the whole list
+ * and always will. A question that recited forty names would be unanswerable by
+ * the time it finished.
+ *
+ * `named` IS WHAT THAT CAP LEFT, and it is returned rather than recomputed by
+ * the caller. Whoever listens for the answer may only resolve it against the
+ * items the question actually named - a fourth ordinal has no referent, because
+ * nobody heard a fourth name - and two places each slicing by their own idea of
+ * the limit is exactly the drift this hands back a value to prevent.
+ */
+export interface SpokenChoice {
+  /** The question, ready to be read out. */
+  readonly text: string;
+  /** The names it actually recited, in the order it recited them. */
+  readonly named: readonly string[];
+}
+
+export function renderChoice(
+  t: TranslateFn,
+  names: readonly string[],
+  /** How many tied before `resolveItem` capped the list, as `namesOf` wants it. */
+  total: number,
+): SpokenChoice {
+  return {
+    text: `${t('voice.which')} ${namesOf(t, names, total)}`,
+    named: names.slice(0, MAX_NAMES),
+  };
 }
 
 /**

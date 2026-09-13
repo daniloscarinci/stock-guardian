@@ -2221,6 +2221,200 @@ describe('the microphone: a conversation', () => {
 });
 
 /**
+ * "Which one?", asked out loud and answered out loud - for four intents.
+ *
+ * A phrase that fits two items used to stop a conversation as surely as a
+ * confirmation card does, and it is the one question in this whole feature that
+ * is trivially answerable by voice: the names were just read out, and picking
+ * one of them re-runs a QUESTION. Nothing is written by answering it.
+ *
+ * WHICH IS TRUE OF FOUR INTENTS AND FALSE OF SIX, AND THAT IS WHAT THE SECOND
+ * HALF OF THIS BLOCK IS FOR. Ten intents can raise a choice. Four of them are
+ * queries; the other six are writes, and every one of those reaches `turn` with
+ * an item named exactly once a row has been picked - which is the `explicit`
+ * branch, the one that commits without asking. So a word finishing one of those
+ * would be a spoken write, and this release does not carry the protections that
+ * would have to come with one. `ANSWERABLE_ALOUD` in `useVoice.ts` is the list;
+ * the tests below are what hold it to its word, and they read the quantity out
+ * of the real table rather than off the screen.
+ */
+describe('the microphone: answering "Which one?" out loud', () => {
+  /**
+   * Two rows that tie on one word, which is what raises a choice at all.
+   *
+   * Both are counted in cans, deliberately. A write aimed at one of them is then
+   * EXPLICIT - an exact name and a unit that matches - and goes straight to the
+   * database rather than to a card. That is what makes the write test below able
+   * to fail: flip the allow-list and the stock actually moves.
+   */
+  async function twoKindsOfOat() {
+    await items.create({ name: 'Oat Flakes', quantity: 4, unit: 'cans' });
+    await items.create({ name: 'Oat Milk', quantity: 7, unit: 'cans' });
+  }
+
+  /** Everything the phone was asked to read, in order. */
+  const readAloud = (spoken: ReturnType<typeof stubSpeaker>) =>
+    spoken.mock.calls.map(([utterance]) => (utterance as { text: string }).text);
+
+  it('reads the choice out, takes the answer, and goes on listening', async () => {
+    const spoken = stubSpeaker();
+    await twoKindsOfOat();
+    const mic = recognizerSaying('how much oat do i have', 'the first one');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    // ONE press, and the "Which one?" in the middle was answered without a
+    // finger ever coming back.
+    await listen(user);
+
+    expect(await screen.findByText(/Oat Flakes: 4 cans/i)).toBeTruthy();
+
+    // The question itself, named and counted the way a spoken sentence has to
+    // be. The screen still has the list; this is the half nobody was looking at.
+    await vi.waitFor(() => {
+      expect(readAloud(spoken)).toContain('Which one? Oat Flakes, Oat Milk');
+    });
+
+    // Three listens from one press: the question, the answer to "Which one?",
+    // and the silence that ended it.
+    await vi.waitFor(() => {
+      expect(mic.heard()).toBe(3);
+    });
+
+    // Answered, so the list has gone.
+    expect(screen.queryByRole('group', { name: 'Which one?' })).toBeNull();
+    // And a question wrote nothing, which is the whole reason it may be
+    // answered this way.
+    expect(await quantityOf('Oat Flakes')).toBe(4);
+    expect(await quantityOf('Oat Milk')).toBe(7);
+  });
+
+  /**
+   * The names answer too, and they are the more natural answer: they were read
+   * out a second ago, and saying one back requires no counting.
+   */
+  it('takes the name itself as the answer', async () => {
+    stubSpeaker();
+    await twoKindsOfOat();
+    const mic = recognizerSaying('how much oat do i have', 'oat milk');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    expect(await screen.findByText(/Oat Milk: 7 cans/i)).toBeTruthy();
+  });
+
+  /**
+   * Anything that is not one of the words it offered ends the conversation with
+   * the list still on the screen.
+   *
+   * Which is the interface somebody would have had if none of this existed. The
+   * matcher is an equality against a closed list, never a substring, so a
+   * sentence that merely mentions a colour is not a pick - `ordinal.test.ts`
+   * pins the rest of that.
+   */
+  it('stops and leaves the list up when the answer is not one of the names', async () => {
+    stubSpeaker();
+    await twoKindsOfOat();
+    const mic = recognizerSaying('how much oat do i have', 'the purple one', 'oat milk');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    const list = await screen.findByRole('group', { name: 'Which one?' });
+    expect(within(list).getByRole('button', { name: /Oat Flakes/i })).toBeTruthy();
+
+    // Two listens, not three. The third sentence was never asked for, so the
+    // name in it picked nothing.
+    await vi.waitFor(() => {
+      expect(mic.heard()).toBe(2);
+    });
+    expect(screen.queryByText(/Oat Milk: 7 cans/i)).toBeNull();
+    // The list is still there and still pressable.
+    expect(screen.queryByRole('group', { name: 'Which one?' })).not.toBeNull();
+  });
+
+  /**
+   * THE ASSERTION THE WHOLE ALLOW-LIST EXISTS FOR.
+   *
+   * "add five cans of oat" fits two rows, so it raises the same list the query
+   * above raised - and this one must not be spoken and must not be answerable.
+   * A word picking a row here would make "add five cans" explicit against an
+   * exact name, which is the branch that writes without asking.
+   *
+   * Four things are asserted here, and letting ADJUST_QUANTITY onto the
+   * allow-list breaks every one of them: the list would be gone from the screen
+   * because a word had answered it, the question would have been read out, the
+   * microphone would have opened three times rather than once, and Oat Flakes
+   * would hold nine cans instead of four - which is the one read out of the
+   * table rather than off the screen, and the one that says what actually
+   * happened.
+   */
+  it('will not speak a write’s choice, and will not let a word finish one', async () => {
+    const spoken = stubSpeaker();
+    await twoKindsOfOat();
+    const mic = recognizerSaying('add five cans of oat', 'the first one');
+    vi.mocked(selectRecognizer).mockResolvedValue(mic.recognizer);
+
+    const { user, view } = await setup({ voiceKeepListening: true });
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await listen(user);
+
+    // The list is on the screen, waiting for a finger, exactly as before.
+    const list = await screen.findByRole('group', { name: 'Which one?' });
+    expect(within(list).getByRole('button', { name: /Oat Flakes/i })).toBeTruthy();
+
+    // Nothing was read out. A choice raised by a write has no spoken form.
+    expect(readAloud(spoken)).toEqual([]);
+
+    // One listen. The conversation stopped at the list, so "the first one" was
+    // never asked for.
+    await vi.waitFor(() => {
+      expect(mic.heard()).toBe(1);
+    });
+
+    // And the database, which is the only witness that matters.
+    expect(await quantityOf('Oat Flakes')).toBe(4);
+    expect(await quantityOf('Oat Milk')).toBe(7);
+  });
+
+  /**
+   * The same list, the same word, and a finger instead - which still works and
+   * still writes, because that is a press and a press is consent.
+   *
+   * Here so that the test above cannot be passed by breaking the choice list
+   * itself. What is forbidden is answering it by voice, not answering it.
+   */
+  it('still writes when the same choice is answered with a press', async () => {
+    stubSpeaker();
+    await twoKindsOfOat();
+    vi.mocked(selectRecognizer).mockResolvedValue(recognizerFailing('cancelled'));
+
+    const { user, view } = await setup();
+    view(<VoiceSheet open onClose={vi.fn()} />);
+
+    await say(user, 'add five cans of oat');
+
+    const list = await screen.findByRole('group', { name: 'Which one?' });
+    await user.click(within(list).getByRole('button', { name: /Oat Flakes/i }));
+
+    await vi.waitFor(async () => {
+      expect(await quantityOf('Oat Flakes')).toBe(9);
+    });
+    expect(await quantityOf('Oat Milk')).toBe(7);
+  });
+});
+
+/**
  * The arming gate: a turn nobody heard does not open a microphone.
  *
  * There is no echo cancellation here and nothing coordinates audio focus, and
