@@ -291,6 +291,36 @@ export const settingsSchema = z.object({
    * the list on its own and leaves a purchase in the item's history.
    */
   replenishmentDismissed: z.array(z.string()).default([]),
+
+  /**
+   * When the last backup file was made, as an ISO-8601 instant. Null until the
+   * first one.
+   *
+   * It records that an export was STARTED, which is all the web side can know:
+   * on Android the native shell writes the file to Downloads and reports nothing
+   * back. Every export stamps this into the file it produces, so a backup
+   * restored onto a new device says, truthfully, when that data was saved. On
+   * import the newer of the stored and the incoming value wins - see
+   * `applyImport` - so restoring an old file can never move it backwards.
+   *
+   * An unparseable value is dropped by `parseSettings` and reads as "no backup
+   * yet", like any other setting.
+   */
+  lastBackupAt: z
+    .string()
+    .refine((value) => !Number.isNaN(Date.parse(value)), 'not a date')
+    .nullable()
+    .default(null),
+
+  /**
+   * Whether the dashboard shows the backup line and, when one is overdue, the
+   * warning. On: a passive line is the behaviour somebody would choose anyway,
+   * and nothing here interrupts anybody.
+   */
+  backupReminderEnabled: z.boolean().default(true),
+
+  /** How many days old a backup may be before, and only if data has changed since, it is flagged. */
+  backupReminderDays: z.number().int().min(1).max(365).default(30),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
@@ -300,6 +330,20 @@ export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({});
 export type SettingsKey = keyof Settings;
 
 export const SETTINGS_KEYS = Object.keys(DEFAULT_SETTINGS) as SettingsKey[];
+
+/**
+ * Settings that belong to THIS device and never travel in a backup.
+ *
+ * A backup is a file the user is encouraged to copy to a USB stick or to cloud
+ * storage, and until this list existed it contained the Anthropic API key in
+ * plain text. Export skips these keys; import ignores them, so even a file made
+ * by an older version cannot overwrite the key the receiving device already has.
+ */
+export const DEVICE_ONLY_SETTING_KEYS = ['anthropicApiKey'] as const satisfies readonly SettingsKey[];
+
+export function isDeviceOnlySettingKey(key: string): boolean {
+  return (DEVICE_ONLY_SETTING_KEYS as readonly string[]).includes(key);
+}
 
 /**
  * Builds a complete `Settings` from stored key/value rows.

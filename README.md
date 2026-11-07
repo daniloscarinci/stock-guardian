@@ -113,6 +113,18 @@ Import a Stock Guardian backup or an export from the original application.
 Nothing is written until you have seen what the file contains and chosen merge or
 replace.
 
+**A reminder to back up.** The dashboard says when you last made a backup. When
+one is overdue (30 days by default, 7 to 90 in Settings → Backup, or switched off)
+and something has changed since, that line becomes a warning with a **Back up now**
+button. Only a JSON export counts; the CSV cannot be restored. The application
+knows an export was *started*, not that the file was kept: on Android it cannot see
+whether the file reached Downloads. A backup protects you once the file is
+somewhere other than this device.
+
+**Your Anthropic key is never in a backup.** After restoring on another device,
+enter it again in Settings. Backups made by versions before this one **do** contain
+the key in plain text; if you stored or shared one, replace the key.
+
 **Three languages.** English, Portuguese (Brazil) and Spanish, switchable at any
 time. Your choice persists — the original reset to Portuguese on every reload.
 

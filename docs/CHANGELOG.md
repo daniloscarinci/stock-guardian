@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### A reminder to back up
+
+Everything lives in a database on the device and nothing syncs, so the only
+protection is an exported file - and nothing told anyone when they last made one.
+
+The dashboard now carries one line: *Last backup: 12 days ago*, with **Back up
+now**. When a backup is overdue and something has changed since, it becomes a
+warning. "Overdue" is 30 days by default, 7 to 90 in **Settings → Backup**, and the
+reminder can be switched off. An old backup of data that has not changed is not
+flagged, and somebody who installed yesterday is not nagged.
+
+The date is one new setting, stamped into every backup file so a backup restored
+onto a new phone says when that data was saved. Importing never moves it backwards.
+Only the JSON export counts. On Android the application can only know the export was
+started, so the words say "last backup" and never "you are safe".
+
+### The API key is no longer in backups
+
+A backup file contained the Anthropic API key in plain text, and importing a file
+overwrote the receiving device's key. The key is now left out of every export and
+ignored on every import, in merge and replace alike. After restoring on another
+device, enter it again.
+
+**If you stored or shared a backup made by version 2.8.0 or earlier, it contains
+your key. Replace the key.**
+
 ## 2.8.0
 
 ### "Which one?" can be answered out loud

@@ -21,6 +21,8 @@
 import type { SqlDriver, SqlValue } from '../../database/driver/types';
 import { nowInstant, toCalendarDate } from '../../domain/dates';
 import { foldText } from '../../domain/normalize';
+import { newerInstant, parseStoredInstant } from '../../domain/backup-reminder';
+import { isDeviceOnlySettingKey } from '../../domain/settings';
 import { LATEST_SCHEMA_VERSION } from '../../database/migrations';
 import {
   BACKUP_FORMAT,
@@ -675,10 +677,30 @@ export async function applyImport(
     // ---- settings ----------------------------------------------------------
     let settingsApplied = 0;
     for (const [key, value] of Object.entries(data.settings)) {
+      // Device-only settings (the API key) are never restored. A file written by
+      // an older version can still contain one; it must not overwrite the key
+      // this device already has, nor plant one that was never entered here.
+      if (isDeviceOnlySettingKey(key)) continue;
+
+      let stored: unknown = value;
+      if (key === 'lastBackupAt') {
+        // Importing an old file must never move "last backup" backwards. Keep the
+        // later of the stored and the incoming instant, in both modes.
+        const rows = await tx.select<{ value: string }>(
+          'SELECT value FROM settings WHERE key = :key',
+          { key },
+        );
+        const existing = parseStoredInstant(rows[0]?.value);
+        const incoming = typeof value === 'string' ? value : null;
+        const winner = newerInstant(existing, incoming);
+        if (winner === null || winner === existing) continue;
+        stored = winner;
+      }
+
       await tx.exec(
         `INSERT INTO settings (key, value, updated_at) VALUES (:key, :value, :now)
          ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-        { key, value: JSON.stringify(value), now },
+        { key, value: JSON.stringify(stored), now },
       );
       settingsApplied += 1;
     }

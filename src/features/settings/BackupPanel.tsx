@@ -14,15 +14,16 @@ import { useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import { Alert, Badge, Button, Card, Loading } from '../../components/ui/primitives';
 import { SwitchRow } from '../../components/ui/Field';
-import { backupFilename, serializeBackup } from '../../services/backup/export.service';
+import { exportBackupToDevice } from '../../services/backup/run-export';
 import { applyImport, inspectBackup, type ImportPreview, type ImportResult } from '../../services/backup/import.service';
 import { LIMITS } from '../../services/backup/format';
 import { downloadText, readFileAsText, toCsv } from '../../services/download';
 import { formatCalendarDate } from '../../domain/dates';
+import { BackupReminderSettings } from './BackupReminderSettings';
 import screens from '../screens.module.css';
 
 export function BackupPanel() {
-  const { t, db, repositories, itemContext, settings, invalidate } = useApp();
+  const { t, db, repositories, itemContext, settings, invalidate, updateSettings } = useApp();
 
   const [includeHistory, setIncludeHistory] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -35,9 +36,11 @@ export function BackupPanel() {
     setBusy('export');
     setError(null);
     try {
-      const json = await serializeBackup(db, { includeTransactions: includeHistory });
-      const filename = backupFilename();
-      downloadText(filename, json, 'application/json');
+      const { filename } = await exportBackupToDevice({
+        db,
+        updateSettings,
+        includeTransactions: includeHistory,
+      });
       setMessage(t('backup.exported', { filename }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -146,6 +149,7 @@ export function BackupPanel() {
             {busy === 'csv' ? t('common.loading') : t('backup.exportCsv')}
           </Button>
         </div>
+        <BackupReminderSettings />
       </Card>
 
       <Card title={t('backup.importTitle')} hint={t('backup.importBody')}>

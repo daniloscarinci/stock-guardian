@@ -9,6 +9,7 @@
  */
 import type { SqlDriver, SqlRow } from '../../database/driver/types';
 import { nowInstant } from '../../domain/dates';
+import { isDeviceOnlySettingKey } from '../../domain/settings';
 import {
   BACKUP_FORMAT,
   BACKUP_FORMAT_VERSION,
@@ -22,6 +23,14 @@ export const APP_VERSION = '2.0.0';
 export interface ExportOptions {
   /** Movement history can dwarf the inventory itself; opt in when needed. */
   readonly includeTransactions?: boolean;
+  /**
+   * When given, the file records this instant as its own `lastBackupAt`.
+   *
+   * Applied before the data is assembled, so the checksum - which covers `data` -
+   * verifies. A backup restored onto a new device then says, truthfully, when
+   * that data was saved.
+   */
+  readonly stampLastBackupAt?: string;
 }
 
 /**
@@ -68,12 +77,18 @@ export async function buildBackup(
 
   const settings: Record<string, unknown> = {};
   for (const row of settingRows) {
+    // Device-only settings (the API key) never leave the device in a backup.
+    if (isDeviceOnlySettingKey(String(row.key))) continue;
     try {
       settings[String(row.key)] = JSON.parse(String(row.value));
     } catch {
       // A corrupt setting is skipped rather than aborting the whole backup:
       // losing one preference is recoverable, losing the inventory is not.
     }
+  }
+
+  if (options.stampLastBackupAt !== undefined) {
+    settings.lastBackupAt = options.stampLastBackupAt;
   }
 
   const data: BackupData = {

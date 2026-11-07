@@ -349,6 +349,21 @@ export const es: LocaleTree = {
     exportCsv: 'Exportar inventario (CSV)',
     includeHistory: 'Incluir historial de movimientos',
     exported: 'Copia guardada como {filename}',
+    reminderStatus: 'Última copia: {when}',
+    reminderNever: 'Aún no hay copia de seguridad',
+    backUpNow: 'Hacer copia ahora',
+    backingUp: 'Haciendo copia…',
+    overdueTitle: 'Tu última copia de seguridad fue {when}',
+    overdueTitleNever: 'Nunca has hecho una copia de seguridad',
+    overdueBody: 'Los cambios hechos desde entonces solo existen en este dispositivo.',
+    overdueBodyNever: 'Todo lo que has anotado solo existe en este dispositivo.',
+    reminderSwitch: 'Recordarme hacer copias de seguridad',
+    reminderAfter: 'Recordarme después de',
+    reminderDaysOption: '{count} días',
+    reminderAdvice:
+      'Una copia solo te protege cuando el archivo está en algún sitio distinto de este dispositivo.',
+    keyNotIncluded:
+      'Tu clave de Anthropic nunca se incluye en una copia. Después de restaurar en otro dispositivo, vuelve a introducirla en Ajustes.',
     importTitle: 'Importar',
     importBody:
       'Restaura desde una copia de Stock Guardian, o trae datos de la versión original. No se cambia nada hasta que confirmes.',

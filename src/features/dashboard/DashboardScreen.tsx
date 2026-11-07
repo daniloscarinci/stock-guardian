@@ -18,6 +18,7 @@ import { Button, Card, EmptyState, Loading, Alert } from '../../components/ui/pr
 import { BarChart, ScoreMeter, StatusChart, STATUS_FILL, type BarDatum } from '../../components/charts/BarChart';
 import { evaluatePreparedness } from '../../domain/preparedness';
 import { PREPAREDNESS_PRIORITY_WEIGHTS } from '../../domain/preparedness';
+import { BackupReminder } from './BackupReminder';
 import screens from '../screens.module.css';
 
 export function DashboardScreen() {
@@ -199,6 +200,8 @@ export function DashboardScreen() {
           </Button>
         </div>
       </header>
+
+      <BackupReminder />
 
       <section className={screens.statGrid} aria-label={t('dashboard.inventoryOverview')}>
         <StatButton
