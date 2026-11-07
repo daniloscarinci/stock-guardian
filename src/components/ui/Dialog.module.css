@@ -10,6 +10,14 @@
 .dialog {
   width: min(40rem, calc(100vw - 2rem - var(--inset-left) - var(--inset-right)));
   max-height: min(calc(90dvh - var(--inset-top) - var(--inset-bottom)), 56rem);
+  /*
+   * What centres it. The browser's own rule is `dialog:modal { margin: auto }`,
+   * and base.css has `* { margin: 0 }`, which silently cancelled it: above the
+   * phone breakpoint every dialog sat in the top-left corner of the window. A
+   * phone never showed it, because the bottom-sheet rule below sets its own
+   * margin. Restated here so the reset cannot take it away again.
+   */
+  margin: auto;
   padding: 0;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
