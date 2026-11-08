@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.8.2
 
 ### Restoring a backup shows at once
 
