@@ -258,7 +258,7 @@ Stated rather than glossed, in the manner of the rest of this page.
 - **The audit is a text match.** The SDK reaches that host by default without
   being told to, so a second module that builds a client without naming a URL is
   invisible to the source rule. The Content-Security-Policy still binds the
-  whole page to one host and the Android gate to two permissions, neither of
+  whole page to one host and the Android gate to three permissions, none of
   which is a network beyond `INTERNET`, so the shape of what could go wrong is
   "a second place in this codebase talks to Anthropic", never "this application
   talks to somewhere else".

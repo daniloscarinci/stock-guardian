@@ -299,23 +299,26 @@ built from the same source and carrying every asset inside the file. It needs no
 network even on first launch, and it keeps Android's automatic backup switched
 off, so the database never reaches Google Drive.
 
-It asks the operating system for two permissions and no others.
+It asks the operating system for three permissions and no others.
 `android.permission.INTERNET`, so the AI assistant can reach Anthropic with your
-key — leave the key blank and the application opens no connection at all. And
+key — leave the key blank and the application opens no connection at all.
 `android.permission.RECORD_AUDIO`, for the microphone in the ask box, requested
-the first time you press it rather than at startup.
+the first time you press it rather than at startup. And
+`android.permission.POST_NOTIFICATIONS`, for the expiry reminders, requested only
+when you switch them on in Settings and never at startup — they ship off.
 
-Both are changes, and both were argued for one at a time. The APK used to ask
+All three are changes, and each was argued for one at a time. The APK used to ask
 for nothing at all, which was the better sentence. `INTERNET` went first because
 Android offers no narrower way to reach one host. `RECORD_AUDIO` went second
 because the permission-free path it replaces — handing recording to Google's
 voice search screen — does not work on the phone this was built for, while the
-keyboard's voice typing on that same phone does. The reasoning in full is in
-`docs/ANDROID.md`.
+keyboard's voice typing on that same phone does. `POST_NOTIFICATIONS` is the
+newest: from Android 13 nothing may post a notification without it. The reasoning
+in full is in `docs/ANDROID.md`.
 
-So the build's check was narrowed rather than dropped, twice. It allows exactly
-those two names and fails on every other — camera, location, contacts, storage —
-and you can run it yourself against a built APK.
+So the build's check was narrowed rather than dropped, three times. It allows
+exactly those three names and fails on every other — camera, location, contacts,
+storage — and you can run it yourself against a built APK.
 
 `docs/ANDROID.md` explains how to produce the APK and what to check after
 installing it. Nothing else here changes: the phone still holds its own database,
