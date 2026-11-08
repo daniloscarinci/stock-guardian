@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Restoring a backup shows at once
+
+The application reads its settings from the database one time, when it starts, and
+keeps that copy. Restoring a backup wrote the file's settings to the database but
+never refreshed the copy, so for the rest of that session the screen showed the old
+values.
+
+Measured in a real browser, restoring a backup that carries a Portuguese interface,
+a low-stock threshold of 9, two warning windows and a last-backup date: three seconds
+later Settings still said "Settings", 5 and 7, 30, 90, and both Settings and the
+dashboard still said "No backup yet". After a reload every one of them was right.
+So the 2.8.1 backup line could say "No backup yet" straight after restoring a backup
+that carried a date.
+
+Nothing was ever lost; only what was shown was out of date. Now everything updates
+the moment the restore finishes: the last-backup line (dashboard and Settings), the
+language and theme, and the three Settings boxes you type into - low-stock
+threshold, warning windows and AI model - which start over from the restored values.
+The API key is not part of a restore (since 2.8.1), so it is untouched.
+
+One change you will notice: a backup made with a different interface language
+switches the language straight away. Before, that happened the next time the app was
+opened.
+
 ## 2.8.1
 
 ### A reminder to back up

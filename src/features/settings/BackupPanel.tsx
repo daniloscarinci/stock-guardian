@@ -23,7 +23,7 @@ import { BackupReminderSettings } from './BackupReminderSettings';
 import screens from '../screens.module.css';
 
 export function BackupPanel() {
-  const { t, db, repositories, itemContext, settings, invalidate, updateSettings } = useApp();
+  const { t, db, repositories, itemContext, settings, reloadSettings, updateSettings } = useApp();
 
   const [includeHistory, setIncludeHistory] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -123,7 +123,9 @@ export function BackupPanel() {
       const outcome = await applyImport(db, preview.payload, mode);
       setResult(outcome);
       setPreview(null);
-      invalidate();
+      // The file's settings are now in the database; bring the screen up to date
+      // with them (this also makes every list read again).
+      await reloadSettings();
     } catch (cause) {
       setError(
         `${cause instanceof Error ? cause.message : String(cause)} — ${t('backup.dataIsSafe')}`,

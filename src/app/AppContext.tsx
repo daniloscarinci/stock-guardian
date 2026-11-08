@@ -25,6 +25,17 @@ export interface AppValue extends Omit<StartupContext, 'settings'> {
   readonly t: TranslateFn;
   /** Persists a settings change and updates the interface immediately. */
   readonly updateSettings: (patch: Partial<Settings>) => Promise<void>;
+  /**
+   * Reads the settings back from the database and updates the interface. For
+   * after something other than `updateSettings` has written them: a restored
+   * backup. Also bumps `revision`, even if the read fails, so lists re-read.
+   */
+  readonly reloadSettings: () => Promise<void>;
+  /**
+   * Counts the reloads. A form that keeps a draft of a setting while it is
+   * being edited starts over from the stored value when this moves.
+   */
+  readonly settingsEpoch: number;
   /** Today, the low-stock threshold and the expiry windows, as the queries need them. */
   readonly itemContext: ItemContext;
   /** Bumped after a write so views re-read from the database. */
@@ -42,6 +53,7 @@ export function AppProvider({
   children: ReactNode;
 }) {
   const [settings, setSettings] = useState<Settings>(startup.settings);
+  const [settingsEpoch, setSettingsEpoch] = useState(0);
   const [revision, setRevision] = useState(0);
 
   const invalidate = useCallback(() => {
@@ -56,6 +68,23 @@ export function AppProvider({
     },
     [startup.repositories.settings],
   );
+
+  /*
+   * THE SETTINGS ARE READ FROM THE DATABASE ONCE, AT START-UP, AND HELD IN STATE.
+   * `updateSettings` keeps that copy current for the writes that go through it.
+   * A restored backup writes the settings table directly, so without this the
+   * last-backup line, the language and the theme of the restored file showed
+   * only after the app was opened again (2.8.1 and earlier).
+   */
+  const reloadSettings = useCallback(async () => {
+    try {
+      const { settings: stored } = await startup.repositories.settings.load();
+      setSettings(stored);
+      setSettingsEpoch((value) => value + 1);
+    } finally {
+      setRevision((value) => value + 1);
+    }
+  }, [startup.repositories.settings]);
 
   const t = useCallback<TranslateFn>(
     (key, values) => translate(settings.language, key, values),
@@ -77,11 +106,23 @@ export function AppProvider({
       settings,
       t,
       updateSettings,
+      reloadSettings,
+      settingsEpoch,
       itemContext,
       revision,
       invalidate,
     }),
-    [startup, settings, t, updateSettings, itemContext, revision, invalidate],
+    [
+      startup,
+      settings,
+      t,
+      updateSettings,
+      reloadSettings,
+      settingsEpoch,
+      itemContext,
+      revision,
+      invalidate,
+    ],
   );
 
   return <Context.Provider value={value}>{children}</Context.Provider>;

@@ -32,13 +32,40 @@ import { LATEST_SCHEMA_VERSION } from '../../database/migrations';
 import screens from '../screens.module.css';
 
 export function SettingsScreen() {
-  const { t, settings, updateSettings, repositories, diagnostics, refreshDiagnostics, db, revision } =
-    useApp();
+  const {
+    t,
+    settings,
+    settingsEpoch,
+    updateSettings,
+    repositories,
+    diagnostics,
+    refreshDiagnostics,
+    db,
+    revision,
+  } = useApp();
 
   const [threshold, setThreshold] = useState(String(settings.defaultLowStockThreshold));
   const [windows, setWindows] = useState(settings.expiryWarningDays.join(', '));
   const [apiKey, setApiKey] = useState(settings.anthropicApiKey);
   const [model, setModel] = useState(settings.aiModel);
+
+  /*
+   * These three inputs keep what is being typed, and save when the field loses
+   * focus, so they are copies of the stored values taken once. A restored backup
+   * replaces the stored values underneath them; when the settings are re-read,
+   * start over from the stored ones rather than keep showing the old text next to
+   * a setting that has changed. (Adjusting state while rendering, as React
+   * documents, rather than in an effect, so there is no frame of the old text.)
+   * The API key is left out: a restore never changes it (it is a device-only
+   * setting, see `DEVICE_ONLY_SETTING_KEYS`).
+   */
+  const [draftsEpoch, setDraftsEpoch] = useState(settingsEpoch);
+  if (draftsEpoch !== settingsEpoch) {
+    setDraftsEpoch(settingsEpoch);
+    setThreshold(String(settings.defaultLowStockThreshold));
+    setWindows(settings.expiryWarningDays.join(', '));
+    setModel(settings.aiModel);
+  }
   const [error, setError] = useState<string | null>(null);
   const [integrity, setIntegrity] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
