@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.8.3
 
 ### Open-source notices
 
