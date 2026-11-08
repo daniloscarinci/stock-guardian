@@ -16,6 +16,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "generate:catalog": "node scripts/extract-legacy-catalog.mjs",
+    "notices": "node scripts/generate-third-party-notices.mjs",
+    "notices:check": "node scripts/generate-third-party-notices.mjs --check",
     "audit:offline": "node scripts/audit-offline.mjs",
     "generate:icons": "node scripts/generate-icons.mjs",
     "smoke": "node scripts/smoke.mjs",
