@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.8.1
 
 ### A reminder to back up
 
@@ -27,6 +27,26 @@ device, enter it again.
 
 **If you stored or shared a backup made by version 2.8.0 or earlier, it contains
 your key. Replace the key.**
+
+### Dialogs are centred on wide screens
+
+`base.css` resets every element's margin to zero, and that cancelled the browser's
+own rule that centres a modal dialog. On any screen wider than a phone - the
+Windows application, a browser on a computer - the ask box and the add-item form
+sat in the top-left corner of the window. Phones never showed it, because the
+bottom sheet sets its own margin, which is why it went unnoticed.
+
+They are centred now. Measured in a real browser: the ask box went from the
+corner to 320 px either side of a 1280 px window, and the phone layout did not
+change.
+
+### The README counted two Android permissions; there are three
+
+The README, and one sentence in `docs/OFFLINE.md`, said the Android application
+asks for two permissions. The manifest declares three - `INTERNET`,
+`RECORD_AUDIO` and `POST_NOTIFICATIONS` - and the build's own check enforces
+exactly those three. Nothing about the application changed; the documents now
+agree with it.
 
 ## 2.8.0
 
